@@ -3,6 +3,7 @@ import { useApp } from '../App'
 import type { NmrStatus } from '../components/Prediction'
 import { api, when, type AuditEvent, type Role, type User } from '../api'
 import Modal from '../components/Modal'
+import PasswordField from '../components/PasswordField'
 
 function EditUser({ u, onClose, onSaved }: { u: User; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState({ username: u.username, full_name: u.full_name, email: u.email })
@@ -27,21 +28,39 @@ function EditUser({ u, onClose, onSaved }: { u: User; onClose: () => void; onSav
 }
 
 function UserForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState({ username: '', full_name: '', email: '', password: '', role: 'scientist' as Role })
+  const [f, setF] = useState({ username: '', full_name: '', email: '', password: '', role: 'scientist' as Role, must_change: true })
   const [err, setErr] = useState('')
+  const [valid, setValid] = useState(false)
   const save = async () => { try { await api.post('/api/users', f); onSaved() } catch (e: any) { setErr(e.message) } }
   return (
     <Modal title="Add user" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn primary" disabled={!f.username || f.password.length < 8} onClick={save}>Add user</button></>}>
+      <button className="btn primary" disabled={!f.username || !valid} onClick={save}>Add user</button></>}>
       <div className="form-grid">
         <label className="field">Username<input className="input" autoFocus value={f.username} onChange={e => setF({ ...f, username: e.target.value })} /></label>
         <label className="field">Full name<input className="input" value={f.full_name} onChange={e => setF({ ...f, full_name: e.target.value })} /></label>
         <label className="field">Email<input className="input" type="email" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} /></label>
         <label className="field">Role<select className="select" value={f.role} onChange={e => setF({ ...f, role: e.target.value as Role })}>
           <option value="scientist">Scientist</option><option value="viewer">Viewer (read-only)</option><option value="admin">Admin</option></select></label>
-        <label className="field">Initial password<input className="input" type="password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></label>
       </div>
-      <p className="faint">At least 8 characters. Ask them to change it after first sign-in.</p>
+      <PasswordField label="First password (give it to them privately)" value={f.password} onChange={v => setF({ ...f, password: v })} onValid={setValid}
+        username={f.username} fullName={f.full_name} email={f.email} />
+      <label className="check-row" style={{ marginTop: 8 }}><input type="checkbox" checked={f.must_change} onChange={e => setF({ ...f, must_change: e.target.checked })} />
+        Ask them to choose their own password when they first sign in (recommended: you know this one)</label>
+      {err && <p className="error">{err}</p>}
+    </Modal>
+  )
+}
+
+function ResetPassword({ u, onClose, onDone }: { u: User; onClose: () => void; onDone: () => void }) {
+  const [pw, setPw] = useState('')
+  const [valid, setValid] = useState(false)
+  const [err, setErr] = useState('')
+  const save = async () => { try { await api.patch(`/api/users/${u.id}`, { password: pw }); onDone() } catch (e: any) { setErr(e.message) } }
+  return (
+    <Modal title={`Reset ${u.username}'s password`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn primary" disabled={!valid} onClick={save}>Reset password</button></>}>
+      <p style={{ marginTop: 0 }}>Set a temporary password and give it to them privately. They'll be signed out everywhere now and asked to choose their own password the next time they sign in.</p>
+      <PasswordField label="Temporary password" value={pw} onChange={setPw} onValid={setValid} username={u.username} fullName={u.full_name} email={u.email} autoFocus />
       {err && <p className="error">{err}</p>}
     </Modal>
   )
@@ -117,9 +136,10 @@ export default function Admin() {
 
   const toggle = async (u: User) => { await api.patch(`/api/users/${u.id}`, { active: !u.active }); load() }
   const role = async (u: User, r: Role) => { await api.patch(`/api/users/${u.id}`, { role: r }); load() }
-  const reset = async (u: User) => {
-    const pw = prompt(`New password for ${u.username} (at least 8 characters):`)
-    if (pw && pw.length >= 8) { await api.patch(`/api/users/${u.id}`, { password: pw }); toast('Password reset') }
+  const [resetting, setResetting] = useState<User | null>(null)
+  const signOut = async (u: User) => {
+    try { const r = await api.post<{ ended: number }>(`/api/users/${u.id}/sign-out`); toast(`Signed ${u.username} out of ${r.ended} device${r.ended === 1 ? '' : 's'}`) }
+    catch (e: any) { toast(e.message) }
   }
 
   return (
@@ -133,9 +153,10 @@ export default function Admin() {
               <tr key={u.id}><td>{u.username}</td><td>{u.full_name}</td><td className="faint">{u.email}</td>
                 <td><select className="select" style={{ padding: '2px 6px' }} value={u.role} disabled={u.id === me.id} onChange={e => role(u, e.target.value as Role)} aria-label={`Role for ${u.username}`}>
                   <option value="scientist">scientist</option><option value="viewer">viewer</option><option value="admin">admin</option></select></td>
-                <td>{u.active ? 'Active' : 'Disabled'}</td>
+                <td>{u.active ? (u.must_change_password ? 'Active · must set password' : u.has_password === false ? 'Active · single sign-on' : 'Active') : 'Disabled'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}><button className="btn ghost sm" onClick={() => setEditing(u)}>Edit</button>
-                  <button className="btn ghost sm" onClick={() => reset(u)}>Reset password</button>
+                  <button className="btn ghost sm" onClick={() => setResetting(u)}>Reset password</button>
+                  {u.id !== me.id && <button className="btn ghost sm" onClick={() => signOut(u)} title="End all of their sessions, e.g. a lost laptop">Sign out everywhere</button>}
                   {u.id !== me.id && <button className="btn ghost sm" onClick={() => toggle(u)}>{u.active ? 'Disable' : 'Enable'}</button>}</td></tr>
             ))}</tbody></table>
         </div>
@@ -155,6 +176,7 @@ export default function Admin() {
         </div>
       </section>
       {editing && <EditUser u={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); toast('User updated') }} />}
+      {resetting && <ResetPassword u={resetting} onClose={() => setResetting(null)} onDone={() => { setResetting(null); load(); toast(`Password reset; ${resetting.username} was signed out and will choose a new one`) }} />}
       {adding && <UserForm onClose={() => setAdding(false)} onSaved={() => { setAdding(false); load() }} />}
     </div>
   )

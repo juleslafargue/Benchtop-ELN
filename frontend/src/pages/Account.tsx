@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApp } from '../App'
-import { api, type Preferences, type User } from '../api'
+import { ago, api, when, type Preferences, type User } from '../api'
 import { initials } from '../components/Layout'
 import PasswordDialog from '../components/PasswordDialog'
 import Modal from '../components/Modal'
@@ -83,6 +83,9 @@ export default function Account() {
           </div>
         </div>
 
+        <div><h2>Where you're signed in</h2><p className="help">Each browser you've signed in with. Sign out any you don't recognise, or that you can't get to any more (a lab computer, a lost laptop). Changing your password signs out all the others automatically.</p></div>
+        <Sessions />
+
         <div><h2>Preferences</h2><p className="help">Saved to your account, so they follow you to other computers.</p></div>
         <div className="panel">
           <div className="section">
@@ -111,6 +114,39 @@ export default function Account() {
       </div>
       {pw && <PasswordDialog onClose={() => setPw(false)} />}
       {uname && <UsernameDialog current={user.username} onClose={() => setUname(false)} onDone={u => { setUser(u); setUname(false); toast('Username changed') }} />}
+    </div>
+  )
+}
+
+
+interface SessionRow { id: string; created_at: string; last_seen_at: string; expires_at: string; method: string; user_agent: string; ip: string; current: boolean }
+
+function device(ua: string) {
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : ua ? 'Browser' : 'Unknown browser'
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : ''
+  return os ? `${browser} on ${os}` : browser
+}
+
+function Sessions() {
+  const { toast } = useApp()
+  const [rows, setRows] = useState<SessionRow[] | null>(null)
+  const load = () => api.get<SessionRow[]>('/api/auth/sessions').then(setRows).catch(() => setRows([]))
+  useEffect(() => { load() }, [])
+  const end = async (id: string) => { try { await api.del(`/api/auth/sessions/${id}`); toast('Signed out that device'); load() } catch (e: any) { toast(e.message) } }
+  const others = async () => { try { const r = await api.post<{ ended: number }>('/api/auth/sessions/end-others'); toast(`Signed out ${r.ended} other device${r.ended === 1 ? '' : 's'}`); load() } catch (e: any) { toast(e.message) } }
+  if (!rows) return <div className="panel"><div className="section faint">Loading…</div></div>
+  return (
+    <div className="panel">
+      {rows.map(r => (
+        <div key={r.id} className="section spread session-row">
+          <div>
+            <b style={{ fontWeight: 600 }}>{device(r.user_agent)}</b>{r.current && <span className="tag lead" style={{ marginLeft: 8 }}>This browser</span>}
+            <div className="faint">{r.ip ? `${r.ip} · ` : ''}{r.method === 'sso' ? 'single sign-on · ' : ''}signed in {when(r.created_at)} · active {ago(r.last_seen_at)}</div>
+          </div>
+          {!r.current && <button className="btn sm" onClick={() => end(r.id)}>Sign out</button>}
+        </div>
+      ))}
+      {rows.length > 1 && <div className="section"><button className="btn sm" onClick={others}>Sign out all other devices</button></div>}
     </div>
   )
 }

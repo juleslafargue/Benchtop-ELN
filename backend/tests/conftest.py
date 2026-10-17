@@ -37,9 +37,9 @@ def admin(client):
 @pytest.fixture(scope="session")
 def users(client, admin):
     for u, role in (("alice", "scientist"), ("bob", "scientist"), ("vic", "viewer")):
-        client.post("/api/users", headers=admin, json={"username": u, "password": "password123",
+        client.post("/api/users", headers=admin, json={"username": u, "password": "lab-bench-pw-2026", "must_change": False,
                                                        "full_name": u.title(), "role": role})
-    return {u: _login(client, u, "password123") for u in ("alice", "bob", "vic")}
+    return {u: _login(client, u, "lab-bench-pw-2026") for u in ("alice", "bob", "vic")}
 
 
 @pytest.fixture()

@@ -16,6 +16,7 @@ import Templates from './pages/Templates'
 import Admin from './pages/Admin'
 import Account from './pages/Account'
 import Groups from './pages/Groups'
+import PasswordDialog from './components/PasswordDialog'
 
 interface Ctx {
   user: User
@@ -38,7 +39,10 @@ export default function App() {
   const [groups, setGroups] = useState<Group[]>([])
   const [toastMsg, setToastMsg] = useState<string | null>(null)
 
-  const logout = useCallback(() => { setToken(null); setUser(null) }, [])
+  const logout = useCallback(() => {
+    if (getToken()) api.post('/api/auth/logout').catch(() => {})  // end the session on the server too
+    setToken(null); setUser(null)
+  }, [])
   useEffect(() => setUnauthorizedHandler(logout), [logout])
 
   useEffect(() => {
@@ -60,7 +64,7 @@ export default function App() {
   const refreshGroups = useCallback(async () => {
     try { setGroups(await api.get<Group[]>('/api/groups')) } catch { /* older server */ }
   }, [])
-  useEffect(() => { if (user) { refreshNotebooks(); refreshGroups() } }, [user?.id, refreshNotebooks, refreshGroups]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (user && !user.must_change_password) { refreshNotebooks(); refreshGroups() } }, [user?.id, user?.must_change_password, refreshNotebooks, refreshGroups]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toast = useCallback((msg: string) => {
     setToastMsg(msg)
@@ -75,6 +79,15 @@ export default function App() {
 
   if (booting) return null
   if (!user) return <Login onLogin={(t, u) => { setToken(t); setUser(u) }} />
+
+  // an admin set this password: choose your own before anything else loads
+  if (user.must_change_password) return (
+    <AppCtx.Provider value={{ user, notebooks, refreshNotebooks, groups, refreshGroups, toast, logout, canWrite: user.role !== 'viewer', setUser }}>
+      <div className="login" />
+      <PasswordDialog onClose={() => {}} />
+      {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
+    </AppCtx.Provider>
+  )
 
   return (
     <AppCtx.Provider value={{ user, notebooks, refreshNotebooks, groups, refreshGroups, toast, logout, canWrite: user.role !== 'viewer', setUser }}>

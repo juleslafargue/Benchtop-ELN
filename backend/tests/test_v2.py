@@ -168,8 +168,8 @@ def test_markdown_export_and_vault_sync(client, users, notebook, tmp_path):
 
 
 def test_account_settings(client, admin):
-    client.post("/api/users", headers=admin, json={"username": "carol", "password": "password123", "full_name": "Carol"})
-    h = {"Authorization": "Bearer " + client.post("/api/auth/login", json={"username": "carol", "password": "password123"}).json()["token"]}
+    client.post("/api/users", headers=admin, json={"username": "carol", "password": "lab-bench-pw-2026", "must_change": False, "full_name": "Carol"})
+    h = {"Authorization": "Bearer " + client.post("/api/auth/login", json={"username": "carol", "password": "lab-bench-pw-2026"}).json()["token"]}
     r = client.patch("/api/auth/me", headers=h, json={"full_name": "Carol Diaz", "email": "carol@uni.edu",
                                                       "preferences": {"theme": "dark", "bogus": 1, "default_notebook_id": "3"}})
     assert r.status_code == 200 and r.json()["full_name"] == "Carol Diaz"
@@ -177,10 +177,10 @@ def test_account_settings(client, admin):
     assert client.patch("/api/auth/me", headers=h, json={"email": "not-an-email"}).status_code == 422
     assert client.patch("/api/auth/me", headers=h, json={"full_name": "  "}).status_code == 422
     assert client.post("/api/auth/username", headers=h, json={"new_username": "cdiaz", "password": "wrong"}).status_code == 400
-    assert client.post("/api/auth/username", headers=h, json={"new_username": "alice", "password": "password123"}).status_code == 409
-    assert client.post("/api/auth/username", headers=h, json={"new_username": "Bad Name!", "password": "password123"}).status_code == 422
-    assert client.post("/api/auth/username", headers=h, json={"new_username": "CDiaz", "password": "password123"}).json()["username"] == "cdiaz"
-    assert client.post("/api/auth/login", json={"username": "cdiaz", "password": "password123"}).status_code == 200
+    assert client.post("/api/auth/username", headers=h, json={"new_username": "alice", "password": "lab-bench-pw-2026"}).status_code == 409
+    assert client.post("/api/auth/username", headers=h, json={"new_username": "Bad Name!", "password": "lab-bench-pw-2026"}).status_code == 422
+    assert client.post("/api/auth/username", headers=h, json={"new_username": "CDiaz", "password": "lab-bench-pw-2026"}).json()["username"] == "cdiaz"
+    assert client.post("/api/auth/login", json={"username": "cdiaz", "password": "lab-bench-pw-2026"}).status_code == 200
     # admin edits someone else
     uid = r.json()["id"]
     assert client.patch(f"/api/users/{uid}", headers=admin, json={"full_name": "Dr Carol Diaz", "email": "c@lab.org"}).json()["email"] == "c@lab.org"
@@ -190,7 +190,7 @@ def test_signature_keeps_name_at_signing(client, users, notebook):
     a = users["alice"]
     exp = new_exp(client, a, notebook, title="Name freeze")
     client.patch("/api/auth/me", headers=a, json={"full_name": "Alice Chen"})
-    client.post(f"/api/experiments/{exp['id']}/sign", headers=a, json={"password": "password123"})
+    client.post(f"/api/experiments/{exp['id']}/sign", headers=a, json={"password": "lab-bench-pw-2026"})
     client.patch("/api/auth/me", headers=a, json={"full_name": "Alice Chen-Okafor"})
     sig = client.get(f"/api/experiments/{exp['id']}", headers=a).json()["signatures"][0]
     assert sig["signer_name"] == "Alice Chen" and sig["user"]["full_name"] == "Alice Chen-Okafor"
@@ -219,18 +219,18 @@ from fastapi.testclient import TestClient
 from app.main import app
 with TestClient(app) as c:
     assert c.get("/api/setup").json() == {"needs_setup": True}
-    assert c.post("/api/setup", json={"full_name": "", "username": "jules", "password": "longenough"}).status_code == 422
+    assert c.post("/api/setup", json={"full_name": "", "username": "jules", "password": "violet-anvil-river"}).status_code == 422
     assert c.post("/api/setup", json={"full_name": "Jules L", "username": "jules", "password": "short"}).status_code == 422
     r = c.post("/api/setup", json={"full_name": "Jules Lafargue", "username": "Jules", "email": "j@x.org",
-                                   "password": "longenough", "load_demo": True})
+                                   "password": "violet-anvil-river", "load_demo": True})
     assert r.status_code == 201, r.text
     assert r.json()["user"]["role"] == "admin" and r.json()["user"]["username"] == "jules" and r.json()["demo_loaded"]
     assert c.get("/api/setup").json() == {"needs_setup": False}
-    assert c.post("/api/setup", json={"full_name": "X", "username": "x2", "password": "longenough"}).status_code == 409
+    assert c.post("/api/setup", json={"full_name": "X", "username": "x2", "password": "violet-anvil-river"}).status_code == 409
     assert c.post("/api/auth/login", json={"username": "admin", "password": "admin"}).status_code == 401
     assert c.post("/api/auth/login", json={"username": "alice", "password": "benchtop123"}).status_code == 200
     import base64, json, time
-    tok = c.post("/api/auth/login", json={"username": "jules", "password": "longenough", "remember": True}).json()["token"]
+    tok = c.post("/api/auth/login", json={"username": "jules", "password": "violet-anvil-river", "remember": True}).json()["token"]
     exp = json.loads(base64.urlsafe_b64decode(tok.split(".")[0] + "=="))["exp"]
     assert exp - time.time() > 29 * 24 * 3600
 print("ok")
@@ -271,8 +271,8 @@ def test_spectra_listing_for_overlay(client, users, notebook):
 def test_dashboard_and_prefs(client, users, admin, notebook):
     a, b = users["alice"], users["bob"]
     exp = new_exp(client, a, notebook, title="Dash returned")
-    client.post(f"/api/experiments/{exp['id']}/sign", headers=a, json={"password": "password123"})
-    client.post(f"/api/experiments/{exp['id']}/reject", headers=b, json={"password": "password123", "comment": "add yield"})
+    client.post(f"/api/experiments/{exp['id']}/sign", headers=a, json={"password": "lab-bench-pw-2026"})
+    client.post(f"/api/experiments/{exp['id']}/reject", headers=b, json={"password": "lab-bench-pw-2026", "comment": "add yield"})
     m = client.post("/api/materials", headers=a, json={"name": "Dash reagent", "smiles": "CC(C)(C)O"}).json()
     lot = client.post(f"/api/materials/{m['id']}/lots", headers=a, json={"amount": 10, "unit": "g", "expires_at": "2026-10-20T00:00:00"}).json()
     client.post(f"/api/lots/{lot['id']}/transactions", headers=a, json={"amount": 9, "unit": "g"})

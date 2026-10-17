@@ -57,8 +57,8 @@ from tests.conftest import _login  # noqa: E402
 def lab(client, admin, users):
     """Smith lab: alice leads, bob and dave are members; carol is in another lab; vic is a viewer."""
     for u in ("carol", "dave"):
-        client.post("/api/users", headers=admin, json={"username": u, "password": "password123", "full_name": u.title()})
-    h = {**users, **{u: _login(client, u, "password123") for u in ("carol", "dave")}}
+        client.post("/api/users", headers=admin, json={"username": u, "password": "lab-bench-pw-2026", "must_change": False, "full_name": u.title()})
+    h = {**users, **{u: _login(client, u, "lab-bench-pw-2026") for u in ("carol", "dave")}}
     ids = {u["username"]: u["id"] for u in client.get("/api/users", headers=admin).json()}
     g = client.post("/api/groups", headers=admin, json={"name": "Smith lab"}).json()
     assert client.post("/api/groups", headers=h["alice"], json={"name": "Nope"}).status_code == 403   # admins create groups
@@ -155,7 +155,7 @@ def test_sharing_one_experiment(client, lab):
     client.put(f"/api/experiments/{eid}/shares/{ids['carol']}", headers=h["bob"], json={"permission": "edit"})
     assert client.get(f"/api/experiments/{eid}", headers=c).json()["can_edit"] is True
     assert client.put(f"/api/entries/{sec['id']}", headers=c, json={"title": "Carol's notes", "content": sec["content"], "version": sec["version"]}).status_code == 200
-    assert client.post(f"/api/experiments/{eid}/sign", headers=c, json={"password": "password123"}).status_code == 403
+    assert client.post(f"/api/experiments/{eid}/sign", headers=c, json={"password": "lab-bench-pw-2026"}).status_code == 403
     assert client.patch(f"/api/experiments/{eid}", headers=c, json={"notebook_id": 1}).status_code in (403, 404)
     # viewers can only be given view access
     assert client.put(f"/api/experiments/{eid}/shares/{ids['vic']}", headers=h["bob"], json={"permission": "edit"}).status_code == 422
@@ -210,7 +210,7 @@ def test_comments_mentions_and_notifications(client, lab):
     assert client.get(f"/api/experiments/{eid}", headers=h["bob"]).json()["open_comments"] == 0
 
     # comments work on signed records and don't change what was signed
-    client.post(f"/api/experiments/{eid}/sign", headers=h["bob"], json={"password": "password123"})
+    client.post(f"/api/experiments/{eid}/sign", headers=h["bob"], json={"password": "lab-bench-pw-2026"})
     before = client.get(f"/api/experiments/{eid}/verify", headers=h["bob"]).json()
     assert client.post(f"/api/experiments/{eid}/comments", headers=h["alice"], json={"body": "Looks good, witnessing"}).status_code == 201
     after = client.get(f"/api/experiments/{eid}/verify", headers=h["bob"]).json()
@@ -313,7 +313,7 @@ def test_sso_signs_in_creates_and_links_accounts(client, admin, idp):
     assert "welcome" not in frag2
     assert client.get("/api/auth/me", headers={"Authorization": f"Bearer {frag2['sso'][0]}"}).json()["id"] == me["id"]
     # an existing password account with the same email is linked rather than duplicated
-    client.post("/api/users", headers=admin, json={"username": "quinn", "password": "password123", "email": "quinn@example.edu"})
+    client.post("/api/users", headers=admin, json={"username": "quinn", "password": "lab-bench-pw-2026", "must_change": False, "email": "quinn@example.edu"})
     frag3, _ = _sso_login(client, idp, "c3", {"sub": "u-999", "email": "quinn@example.edu", "name": "Quinn"})
     assert client.get("/api/auth/me", headers={"Authorization": f"Bearer {frag3['sso'][0]}"}).json()["username"] == "quinn"
 
@@ -352,5 +352,5 @@ def test_sso_off_and_password_login_off(client, admin, monkeypatch):
     assert client.get("/api/auth/sso").json()["enabled"] is False
     assert client.get("/api/auth/sso/start", follow_redirects=False).status_code == 404
     monkeypatch.setattr(settings, "password_login", False)
-    assert client.post("/api/auth/login", json={"username": "bob", "password": "password123"}).status_code == 403
+    assert client.post("/api/auth/login", json={"username": "bob", "password": "lab-bench-pw-2026"}).status_code == 403
     assert client.post("/api/auth/login", json={"username": "admin", "password": "adminpass"}).status_code == 200  # break-glass

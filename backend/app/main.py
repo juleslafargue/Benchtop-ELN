@@ -94,6 +94,34 @@ app = FastAPI(title="Benchtop ELN", version=__version__, lifespan=lifespan,
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
+# Browser security headers. The policy allows only this server's own scripts (the structure editor
+# also needs WebAssembly and generated validation code, hence the eval allowances; inline and
+# third-party scripts stay blocked), Google Fonts, and images from this server, data: and blob: URLs, so an
+# injected <script> or a malicious file can't run or phone home; pages can't be framed by other sites.
+CSP = "; ".join([
+    "default-src 'self'", "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:", "img-src 'self' data: blob: https://pubchem.ncbi.nlm.nih.gov", "connect-src 'self'",
+    "worker-src 'self' blob:", "frame-src 'self' blob:", "object-src 'none'", "base-uri 'self'", "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    resp = await call_next(request)
+    h = resp.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Referrer-Policy", "same-origin")
+    h.setdefault("Permissions-Policy", "camera=(self), microphone=(), geolocation=(), payment=()")
+    h.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    if not request.url.path.startswith("/docs") and not request.url.path.startswith("/redoc"):
+        h.setdefault("Content-Security-Policy", CSP)
+    if request.url.path.startswith("/api/"):
+        h.setdefault("Cache-Control", "no-store")  # nothing from the API lingers in shared browser caches
+    return resp
+
+
 for r in (auth, experiments, materials, chemistry, search, reactions, admin, dashboard, safety_router, nmr_router, groups, comments, sso):
     app.include_router(r.router)
 

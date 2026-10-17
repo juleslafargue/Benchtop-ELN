@@ -3,14 +3,17 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlmodel import select
 
 from .. import audit
 from ..models import Role, User
 from ..config import settings
-from ..security import DB, Admin, CurrentUser, create_token, hash_password, verify_password
+from .. import passwords
+from ..models import AuthSession, utcnow
+from ..security import (MAX_PER_ACCOUNT, MAX_PER_IP, DB, Admin, CurrentUser, burn_time, check_throttle, clear_failures,
+                        client_ip, end_sessions, hash_password, needs_rehash, record_failure, start_session, verify_password)
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -28,7 +31,7 @@ def user_out(u: User) -> dict:
     from ..security import has_password
     return {"id": u.id, "username": u.username, "full_name": u.full_name, "email": u.email,
             "role": u.role.value, "active": u.active, "preferences": u.preferences or {},
-            "has_password": has_password(u.password_hash)}
+            "has_password": has_password(u.password_hash), "must_change_password": bool(u.must_change_password)}
 
 
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -137,8 +140,7 @@ class UsernameIn(BaseModel):
 
 @router.post("/auth/username")
 def change_username(body: UsernameIn, user: CurrentUser, session: DB):
-    if not verify_password(body.password, user.password_hash):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Password is wrong")
+    _confirm_password(session, user, body.password)
     new = _check_username(session, body.new_username, user.id)
     old = user.username
     if new != old:
@@ -149,20 +151,55 @@ def change_username(body: UsernameIn, user: CurrentUser, session: DB):
     return user_out(user)
 
 
+def _confirm_password(session, user: User, password: str) -> None:
+    """Re-check someone's password before a sensitive change; guesses are throttled like sign-ins."""
+    key = f"confirm:{user.id}"
+    check_throttle(session, (key, MAX_PER_ACCOUNT))
+    if not verify_password(password, user.password_hash):
+        record_failure(session, key)
+        audit.record(session, user, "password_check_failed", "user", user.id)
+        session.commit()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Password is wrong")
+    clear_failures(session, key)
+
+
+def _default_admin_untouched(session) -> bool:
+    """A fresh install that still has the built-in admin/admin login (only possible before setup)."""
+    return settings.admin_password == "admin" and _needs_setup(session)
+
+
+def _is_local(request: Request) -> bool:
+    return client_ip(request) in ("127.0.0.1", "::1", "localhost", "testclient")
+
+
 @router.post("/auth/login")
-def login(body: LoginIn, session: DB):
+def login(body: LoginIn, request: Request, session: DB):
+    name = body.username.strip().lower()
+    acct_key, ip_key = f"login:{name}", f"ip:{client_ip(request)}"
+    check_throttle(session, (acct_key, MAX_PER_ACCOUNT), (ip_key, MAX_PER_IP))
     user = (session.exec(select(User).where(User.username == body.username)).first()
-            or session.exec(select(User).where(User.username == body.username.strip().lower())).first())
-    if not user or not user.active or not verify_password(body.password, user.password_hash):
+            or session.exec(select(User).where(User.username == name)).first())
+    if user is None:
+        burn_time(body.password)  # same delay as a real check, so usernames can't be probed by timing
+    ok = bool(user) and user.active and verify_password(body.password, user.password_hash)
+    if ok and user.username == settings.admin_username and _default_admin_untouched(session):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Finish setting up Benchtop first: create your own account on the welcome screen")
+    if not ok:
+        record_failure(session, acct_key, ip_key)
         audit.record(session, None, "login_failed", "user", user.id if user else None,
-                     username=body.username)
+                     username=body.username, ip=client_ip(request))
         session.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
     if not settings.password_login and user.role != Role.admin:  # admins keep a password as a way in if SSO breaks
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This Benchtop uses single sign-on; use the sign-in button instead")
-    audit.record(session, user, "login", "user", user.id, remember=body.remember)
+    clear_failures(session, acct_key)
+    if needs_rehash(user.password_hash):  # quietly move older hashes to the current strength
+        user.password_hash = hash_password(body.password)
+        session.add(user)
+    token = start_session(session, user, request, REMEMBER_HOURS if body.remember else None)
+    audit.record(session, user, "login", "user", user.id, remember=body.remember, ip=client_ip(request))
     session.commit()
-    return {"token": create_token(user.id, REMEMBER_HOURS if body.remember else None), "user": user_out(user)}
+    return {"token": token, "user": user_out(user)}
 
 
 # ------------------------------------------------------------------ first-run setup
@@ -190,20 +227,22 @@ class SetupIn(BaseModel):
 
 
 @router.post("/setup", status_code=201)
-def run_setup(body: SetupIn, session: DB):
+def run_setup(body: SetupIn, request: Request, session: DB):
     """Create the first real account (an admin) and retire the default admin login."""
     if not _needs_setup(session):
         raise HTTPException(409, "Setup has already been done; sign in instead")
+    if settings.admin_password == "admin" and not _is_local(request):
+        # with the built-in default, only the computer Benchtop runs on may claim the admin account
+        raise HTTPException(403, "Finish setup on the computer Benchtop is running on (open http://localhost:8000 there)")
     if not body.full_name.strip():
         raise HTTPException(422, "Your name appears on your signatures, so it can't be empty")
-    if len(body.password) < 8:
-        raise HTTPException(422, "Use at least 8 characters for your password")
     username = _check_username(session, body.username)
+    passwords.check(body.password, username, body.full_name, body.email)
     default = session.exec(select(User)).one()
     if username == default.username:
         raise HTTPException(422, f"Pick a username other than '{default.username}'")
     me = User(username=username, full_name=body.full_name.strip(), email=_check_email(body.email),
-              role=Role.admin, password_hash=hash_password(body.password))
+              role=Role.admin, password_hash=hash_password(body.password), password_changed_at=utcnow())
     session.add(me)
     session.flush()
     default.active = False  # kept (not deleted) so earlier audit entries still resolve
@@ -217,7 +256,9 @@ def run_setup(body: SetupIn, session: DB):
         from ..main import app
         from ..seed import load_demo
         demo = load_demo(TestClient(app))
-    return {"token": create_token(me.id, REMEMBER_HOURS), "user": user_out(me), "demo_loaded": demo}
+    token = start_session(session, me, request, REMEMBER_HOURS, method="setup")
+    session.commit()
+    return {"token": token, "user": user_out(me), "demo_loaded": demo}
 
 
 @router.get("/auth/me")
@@ -232,16 +273,87 @@ class PasswordIn(BaseModel):
 
 @router.post("/auth/password")
 def change_password(body: PasswordIn, user: CurrentUser, session: DB):
-    """Change your password, or (for an account made by single sign-on) set one: signatures need it."""
+    """Change your password, or (for an account made by single sign-on) set one: signatures need it.
+    Every other signed-in browser is signed out, in case the old password was the problem."""
     from ..security import has_password
-    if has_password(user.password_hash) and not verify_password(body.current_password, user.password_hash):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is wrong")
-    if len(body.new_password) < 8:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Use at least 8 characters")
+    if has_password(user.password_hash) and not user.must_change_password:
+        try:
+            _confirm_password(session, user, body.current_password)
+        except HTTPException as e:
+            if e.status_code == 400:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is wrong") from None
+            raise
+    passwords.check(body.new_password, user.username, user.full_name, user.email)
+    if has_password(user.password_hash) and verify_password(body.new_password, user.password_hash):
+        raise HTTPException(422, "Choose a password different from your current one.")
     user.password_hash = hash_password(body.new_password)
+    user.must_change_password = None
+    user.password_changed_at = utcnow()
     session.add(user)
-    audit.record(session, user, "password_changed", "user", user.id)
+    ended = end_sessions(session, user.id, keep=getattr(user, "_sid", None))
+    audit.record(session, user, "password_changed", "user", user.id, other_sessions_ended=ended)
     session.commit()
+    return {"ok": True, "other_sessions_ended": ended}
+
+
+class PasswordCheckIn(BaseModel):
+    password: str
+    username: str = ""
+    full_name: str = ""
+    email: str = ""
+
+
+@router.post("/auth/password-check")
+def password_check(body: PasswordCheckIn):
+    """Live feedback while someone types a new password (the same rules the server enforces)."""
+    return {"problems": passwords.problems(body.password, body.username, body.full_name, body.email), "min_length": passwords.MIN_LEN}
+
+
+# ------------------------------------------------------------------ sessions
+
+def _session_out(s: AuthSession, current: str | None) -> dict:
+    return {"id": s.id, "created_at": s.created_at.isoformat() + "Z", "last_seen_at": s.last_seen_at.isoformat() + "Z",
+            "expires_at": s.expires_at.isoformat() + "Z", "method": s.method, "user_agent": s.user_agent, "ip": s.ip,
+            "current": s.id == current}
+
+
+@router.get("/auth/sessions")
+def my_sessions(user: CurrentUser, session: DB):
+    rows = session.exec(select(AuthSession).where(AuthSession.user_id == user.id, AuthSession.revoked_at == None,  # noqa: E711
+                                                  AuthSession.expires_at > utcnow()).order_by(AuthSession.last_seen_at.desc())).all()
+    cur = getattr(user, "_sid", None)
+    return [_session_out(s, cur) for s in rows]
+
+
+@router.delete("/auth/sessions/{sid}")
+def end_session(sid: str, user: CurrentUser, session: DB):
+    s = session.get(AuthSession, sid)
+    if s is None or s.user_id != user.id:
+        raise HTTPException(404, "No such session")
+    if s.revoked_at is None:
+        s.revoked_at = utcnow()
+        session.add(s)
+        audit.record(session, user, "session_ended", "user", user.id, ip=s.ip)
+        session.commit()
+    return {"ok": True}
+
+
+@router.post("/auth/sessions/end-others")
+def end_other_sessions(user: CurrentUser, session: DB):
+    n = end_sessions(session, user.id, keep=getattr(user, "_sid", None))
+    audit.record(session, user, "sessions_ended", "user", user.id, count=n)
+    session.commit()
+    return {"ended": n}
+
+
+@router.post("/auth/logout")
+def logout(user: CurrentUser, session: DB):
+    s = session.get(AuthSession, getattr(user, "_sid", ""))
+    if s and s.revoked_at is None:
+        s.revoked_at = utcnow()
+        session.add(s)
+        audit.record(session, user, "logout", "user", user.id)
+        session.commit()
     return {"ok": True}
 
 
@@ -258,14 +370,18 @@ class UserIn(BaseModel):
     full_name: str = ""
     email: str = ""
     role: Role = Role.scientist
+    must_change: bool = True  # they choose their own password at first sign-in
 
 
 @router.post("/users", status_code=201)
 def create_user(body: UserIn, actor: Admin, session: DB):
     if session.exec(select(User).where(User.username == body.username)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Username taken")
-    u = User(username=_check_username(session, body.username), full_name=body.full_name, email=_check_email(body.email),
-             role=body.role, password_hash=hash_password(body.password))
+    uname = _check_username(session, body.username)
+    passwords.check(body.password, uname, body.full_name, body.email)
+    # the person chooses their own password the first time they sign in
+    u = User(username=uname, full_name=body.full_name, email=_check_email(body.email),
+             role=body.role, password_hash=hash_password(body.password), must_change_password=True if body.must_change else None)
     session.add(u)
     session.flush()
     audit.record(session, actor, "create", "user", u.id, username=u.username, role=u.role.value)
@@ -292,13 +408,32 @@ def update_user(uid: int, body: UserPatch, actor: Admin, session: DB):
         changes["username"] = _check_username(session, changes["username"], u.id)
     if "email" in changes and changes["email"] is not None:
         changes["email"] = _check_email(changes["email"])
+    ended = 0
     if "password" in changes:
-        u.password_hash = hash_password(changes.pop("password"))
+        new = changes.pop("password")
+        passwords.check(new, u.username, u.full_name, u.email)
+        u.password_hash = hash_password(new)
+        u.must_change_password = True  # a password someone else knows: they pick their own at next sign-in
         changes["password"] = "(reset)"
+        ended = end_sessions(session, u.id)
+    if changes.get("active") is False:
+        ended = end_sessions(session, u.id)
     for k, v in changes.items():
         if k != "password":
             setattr(u, k, v)
     session.add(u)
-    audit.record(session, actor, "update", "user", u.id, changes=changes)
+    audit.record(session, actor, "update", "user", u.id, changes=changes, sessions_ended=ended)
     session.commit()
     return user_out(u)
+
+
+@router.post("/users/{uid}/sign-out")
+def sign_out_user(uid: int, actor: Admin, session: DB):
+    """Admin: end every session of an account (a lost laptop, someone leaving the lab)."""
+    u = session.get(User, uid)
+    if not u:
+        raise HTTPException(404, "User not found")
+    n = end_sessions(session, u.id, keep=getattr(actor, "_sid", None) if actor.id == u.id else None)
+    audit.record(session, actor, "sessions_ended", "user", u.id, count=n, by_admin=True)
+    session.commit()
+    return {"ended": n}

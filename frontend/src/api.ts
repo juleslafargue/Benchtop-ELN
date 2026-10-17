@@ -5,7 +5,7 @@ export type Status = 'open' | 'signed' | 'witnessed' | 'voided'
 export type EntryKind = 'text' | 'reaction' | 'table' | 'file' | 'purification' | 'characterization' | 'safety' | 'screen'
 
 export interface Preferences { theme?: 'system' | 'light' | 'dark'; default_notebook_id?: number | null; spectrum_expanded?: boolean; pinned?: number[]; dashboard?: { widgets: unknown[] } }
-export interface User { id: number; username: string; full_name: string; email: string; role: Role; active: boolean; preferences: Preferences; has_password?: boolean }
+export interface User { id: number; username: string; full_name: string; email: string; role: Role; active: boolean; preferences: Preferences; has_password?: boolean; must_change_password?: boolean }
 export interface UserBrief { id: number; username: string; full_name: string }
 export type Visibility = 'everyone' | 'group' | 'private'
 export interface Notebook {
@@ -106,7 +106,7 @@ async function request<T>(method: string, path: string, body?: unknown, raw = fa
   if (body instanceof FormData) payload = body
   else if (body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body) }
   const res = await fetch(path, { method, headers, body: payload })
-  if (res.status === 401 && path !== '/api/auth/login') onUnauthorized()
+  if (res.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/logout' && !/\/(sign|witness|reject|withdraw|void)$/.test(path)) onUnauthorized()
   if (!res.ok) {
     let msg = res.statusText
     try {

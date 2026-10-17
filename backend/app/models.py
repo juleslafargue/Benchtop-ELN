@@ -58,6 +58,29 @@ class User(SQLModel, table=True):
     created_at: NaiveDatetime = Field(default_factory=utcnow)
     # added in 0.4 (nullable so existing databases can be upgraded in place)
     preferences: Optional[dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+    # added in 0.9.1: an admin reset the password, so the person must choose their own at next sign-in
+    must_change_password: Optional[bool] = Field(default=None, nullable=True)
+    password_changed_at: Optional[NaiveDatetime] = Field(default=None, nullable=True)
+
+
+class AuthSession(SQLModel, table=True):
+    """One signed-in browser. Tokens name their session, so a session can be ended from anywhere."""
+    id: str = Field(primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    last_seen_at: NaiveDatetime = Field(default_factory=utcnow)
+    expires_at: NaiveDatetime
+    method: str = "password"  # password | sso | setup
+    user_agent: str = ""
+    ip: str = ""
+    revoked_at: Optional[NaiveDatetime] = None
+
+
+class AuthFailure(SQLModel, table=True):
+    """A failed password check (sign-in, signature, password change), for throttling guessing."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    key: str = Field(index=True)
+    at: NaiveDatetime = Field(default_factory=utcnow, index=True)
 
 
 class UserIdentity(SQLModel, table=True):

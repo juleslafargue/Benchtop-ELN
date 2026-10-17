@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, type User } from '../api'
+import PasswordField from '../components/PasswordField'
 
 function Setup({ onLogin }: { onLogin: (token: string, user: User) => void }) {
   const [f, setF] = useState({ full_name: '', username: '', email: '', password: '', confirm: '', load_demo: true })
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [valid, setValid] = useState(false)
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
   const suggested = f.full_name.trim().split(/\s+/)[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, '') || ''
@@ -32,17 +34,18 @@ function Setup({ onLogin }: { onLogin: (token: string, user: User) => void }) {
         <div className="form-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
           <label className="field">Username<input className="input" autoComplete="username" value={f.username} onChange={e => setF({ ...f, username: e.target.value.toLowerCase() })} placeholder={suggested || 'e.g. jules'} /></label>
           <label className="field">Email (optional)<input className="input" type="email" autoComplete="email" value={f.email} onChange={set('email')} /></label>
-          <label className="field">Password<input className="input" type="password" autoComplete="new-password" value={f.password} onChange={set('password')} /></label>
-          <label className="field">Repeat password<input className="input" type="password" autoComplete="new-password" value={f.confirm} onChange={set('confirm')} /></label>
         </div>
+        <PasswordField label="Password" value={f.password} onChange={v => setF({ ...f, password: v })} onValid={setValid}
+          username={f.username || suggested} fullName={f.full_name} email={f.email} />
+        <label className="field">Repeat password<input className="input" type="password" autoComplete="new-password" value={f.confirm} onChange={set('confirm')} /></label>
         <label className="check-row">
           <input type="checkbox" checked={f.load_demo} onChange={set('load_demo')} />
           Add a demo notebook to explore (two worked Suzuki couplings, sample reagents, an NMR spectrum)
         </label>
         {err && <p className="error" role="alert" style={{ margin: 0 }}>{err}</p>}
-        <button className="btn primary" disabled={busy || !f.full_name.trim() || f.password.length < 8 || !(f.username || suggested)}
+        <button className="btn primary" disabled={busy || !f.full_name.trim() || !valid || !(f.username || suggested)}
           style={{ justifyContent: 'center' }}>{busy ? (f.load_demo ? 'Setting up and adding the demo…' : 'Setting up…') : 'Create account'}</button>
-        <p className="faint" style={{ margin: 0 }}>Passwords need at least 8 characters. The built-in “admin” login is switched off once your account exists.</p>
+        <p className="faint" style={{ margin: 0 }}>The built-in “admin” login is switched off once your account exists.</p>
       </form>
     </div>
   )

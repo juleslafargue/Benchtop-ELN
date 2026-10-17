@@ -50,7 +50,7 @@ def put(client, h, e, content, **kw):
 
 def test_login_wrong_password_and_case_insensitive(client, S):
     assert client.post("/api/auth/login", json={"username": "alice", "password": "nope"}).status_code == 401
-    assert client.post("/api/auth/login", json={"username": "ALICE", "password": "password123"}).status_code == 200
+    assert client.post("/api/auth/login", json={"username": "ALICE", "password": "lab-bench-pw-2026"}).status_code == 200
     assert client.post("/api/auth/login", json={"username": "", "password": ""}).status_code in (401, 422)
     assert client.post("/api/auth/login", json={"username": "x" * 10000, "password": "y"}).status_code in (401, 422)
 
@@ -80,23 +80,23 @@ def test_other_scientist_cannot_edit_my_experiment(client, S):
 
 def test_deactivated_user_token_stops_working(client, S):
     admin = S["admin"]
-    client.post("/api/users", headers=admin, json={"username": "temp1", "password": "password123", "role": "scientist"})
-    h = _login(client, "temp1", "password123")
+    client.post("/api/users", headers=admin, json={"username": "temp1", "password": "lab-bench-pw-2026", "must_change": False, "role": "scientist"})
+    h = _login(client, "temp1", "lab-bench-pw-2026")
     uid = client.get("/api/auth/me", headers=h).json()["id"]
     assert client.patch(f"/api/users/{uid}", headers=admin, json={"active": False}).status_code == 200
     assert client.get("/api/auth/me", headers=h).status_code == 401
-    assert client.post("/api/auth/login", json={"username": "temp1", "password": "password123"}).status_code in (401, 403)
+    assert client.post("/api/auth/login", json={"username": "temp1", "password": "lab-bench-pw-2026"}).status_code in (401, 403)
 
 
 def test_username_and_password_changes(client, S):
     admin = S["admin"]
-    client.post("/api/users", headers=admin, json={"username": "temp2", "password": "password123", "role": "scientist"})
-    h = _login(client, "temp2", "password123")
-    assert client.post("/api/auth/username", headers=h, json={"new_username": "alice", "password": "password123"}).status_code in (400, 409)
-    assert client.post("/api/auth/username", headers=h, json={"new_username": "bad name!", "password": "password123"}).status_code in (400, 422)
-    assert client.post("/api/auth/password", headers=h, json={"current_password": "password123", "new_password": "x"}).status_code in (400, 422)
+    client.post("/api/users", headers=admin, json={"username": "temp2", "password": "lab-bench-pw-2026", "must_change": False, "role": "scientist"})
+    h = _login(client, "temp2", "lab-bench-pw-2026")
+    assert client.post("/api/auth/username", headers=h, json={"new_username": "alice", "password": "lab-bench-pw-2026"}).status_code in (400, 409)
+    assert client.post("/api/auth/username", headers=h, json={"new_username": "bad name!", "password": "lab-bench-pw-2026"}).status_code in (400, 422)
+    assert client.post("/api/auth/password", headers=h, json={"current_password": "lab-bench-pw-2026", "new_password": "x"}).status_code in (400, 422)
     assert client.post("/api/auth/password", headers=h, json={"current_password": "wrong", "new_password": "longenough1"}).status_code in (400, 401, 403)
-    assert client.post("/api/auth/password", headers=h, json={"current_password": "password123", "new_password": "longenough1"}).status_code == 200
+    assert client.post("/api/auth/password", headers=h, json={"current_password": "lab-bench-pw-2026", "new_password": "longenough1"}).status_code == 200
     _login(client, "temp2", "longenough1")
     assert client.patch("/api/auth/me", headers=h, json={"email": "not-an-email"}).status_code in (400, 422)
     assert client.patch("/api/auth/me", headers=h, json={"full_name": "Ünïcødé Ñame 化学"}).status_code == 200
@@ -104,7 +104,7 @@ def test_username_and_password_changes(client, S):
 
 def test_setup_cannot_be_rerun(client):
     assert client.get("/api/setup").json()["needs_setup"] is False
-    r = client.post("/api/setup", json={"full_name": "Evil", "username": "evil", "password": "password123"})
+    r = client.post("/api/setup", json={"full_name": "Evil", "username": "evil", "password": "lab-bench-pw-2026"})
     assert r.status_code in (403, 409), f"setup re-run allowed: {r.status_code}"
 
 
@@ -152,27 +152,27 @@ def test_full_signing_lifecycle(client, S):
     exp = new_exp(client, a, S["nb"], "Lifecycle")
     eid = exp["id"]
     assert client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "wrong"}).status_code in (401, 403)
-    assert client.post(f"/api/experiments/{eid}/witness", headers=b, json={"password": "password123"}).status_code in (400, 409), "witnessed an unsigned record"
-    assert client.post(f"/api/experiments/{eid}/sign", headers=b, json={"password": "password123"}).status_code in (403,), "non-owner signed as author"
-    assert client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "password123"}).status_code == 200
-    assert client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "password123"}).status_code in (400, 409), "signed twice"
+    assert client.post(f"/api/experiments/{eid}/witness", headers=b, json={"password": "lab-bench-pw-2026"}).status_code in (400, 409), "witnessed an unsigned record"
+    assert client.post(f"/api/experiments/{eid}/sign", headers=b, json={"password": "lab-bench-pw-2026"}).status_code in (403,), "non-owner signed as author"
+    assert client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "lab-bench-pw-2026"}).status_code == 200
+    assert client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "lab-bench-pw-2026"}).status_code in (400, 409), "signed twice"
     assert put(client, a, entry(exp, "text"), {"html": "<p>after signing</p>"}).status_code in (403, 409), "edited a signed record"
     assert client.post(f"/api/experiments/{eid}/entries", headers=a, json={"kind": "text"}).status_code in (403, 409)
-    assert client.post(f"/api/experiments/{eid}/witness", headers=a, json={"password": "password123"}).status_code in (400, 403), "author witnessed own record"
-    assert client.post(f"/api/experiments/{eid}/witness", headers=S["v"], json={"password": "password123"}).status_code == 403, "viewer witnessed"
+    assert client.post(f"/api/experiments/{eid}/witness", headers=a, json={"password": "lab-bench-pw-2026"}).status_code in (400, 403), "author witnessed own record"
+    assert client.post(f"/api/experiments/{eid}/witness", headers=S["v"], json={"password": "lab-bench-pw-2026"}).status_code == 403, "viewer witnessed"
     # reject, fix, resubmit, witness
-    assert client.post(f"/api/experiments/{eid}/reject", headers=b, json={"password": "password123", "comment": "Add the TLC"}).status_code == 200
+    assert client.post(f"/api/experiments/{eid}/reject", headers=b, json={"password": "lab-bench-pw-2026", "comment": "Add the TLC"}).status_code == 200
     dash = client.get("/api/dashboard", headers=a).json()
     assert any(x["id"] == eid and x["reason"] == "Add the TLC" for x in dash["lists"]["returned"])
     assert put(client, a, entry(exp, "text"), {"html": "<p>TLC added</p>"}).status_code == 200
-    assert client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "password123"}).status_code == 200
-    assert client.post(f"/api/experiments/{eid}/witness", headers=b, json={"password": "password123"}).status_code == 200
+    assert client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "lab-bench-pw-2026"}).status_code == 200
+    assert client.post(f"/api/experiments/{eid}/witness", headers=b, json={"password": "lab-bench-pw-2026"}).status_code == 200
     v = client.get(f"/api/experiments/{eid}/verify", headers=a).json()
     assert v["intact"]
-    assert client.post(f"/api/experiments/{eid}/withdraw", headers=a, json={"password": "password123"}).status_code in (400, 409), "withdrew a witnessed record"
-    assert client.post(f"/api/experiments/{eid}/void", headers=b, json={"password": "password123", "comment": "x"}).status_code == 403, "non-owner voided"
-    assert client.post(f"/api/experiments/{eid}/void", headers=a, json={"password": "password123", "comment": "duplicate"}).status_code == 200
-    assert client.post(f"/api/experiments/{eid}/void", headers=a, json={"password": "password123", "comment": "again"}).status_code in (400, 409)
+    assert client.post(f"/api/experiments/{eid}/withdraw", headers=a, json={"password": "lab-bench-pw-2026"}).status_code in (400, 409), "withdrew a witnessed record"
+    assert client.post(f"/api/experiments/{eid}/void", headers=b, json={"password": "lab-bench-pw-2026", "comment": "x"}).status_code == 403, "non-owner voided"
+    assert client.post(f"/api/experiments/{eid}/void", headers=a, json={"password": "lab-bench-pw-2026", "comment": "duplicate"}).status_code == 200
+    assert client.post(f"/api/experiments/{eid}/void", headers=a, json={"password": "lab-bench-pw-2026", "comment": "again"}).status_code in (400, 409)
     # deleting a section of a voided record must fail
     sec = client.get(f"/api/experiments/{eid}", headers=a).json()["entries"][0]
     assert client.delete(f"/api/entries/{sec['id']}", headers=a).status_code in (403, 409)

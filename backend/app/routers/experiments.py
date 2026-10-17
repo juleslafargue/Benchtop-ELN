@@ -631,10 +631,15 @@ def _check_password(user: User, password: str, session) -> None:
     from ..security import has_password
     if not has_password(user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Signing needs a password. You sign in with single sign-on, so set a signing password in Account settings first.")
+    from ..security import MAX_PER_ACCOUNT, check_throttle, clear_failures, record_failure
+    key = f"sign:{user.id}"
+    check_throttle(session, (key, MAX_PER_ACCOUNT))
     if not verify_password(password, user.password_hash):
+        record_failure(session, key)
         audit.record(session, user, "signature_failed", "user", user.id)
         session.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Password re-entry failed; signature not applied")
+    clear_failures(session, key)
 
 
 def _sign(session, exp: Experiment, user: User, meaning: str, comment: str) -> Signature:

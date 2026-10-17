@@ -68,14 +68,14 @@ def test_sign_witness_lock_and_tamper(client, users, notebook):
     exp = new_exp(client, a, notebook)
     eid = exp["id"]
     assert client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "wrong"}).status_code == 401
-    assert client.post(f"/api/experiments/{eid}/sign", headers=b, json={"password": "password123"}).status_code == 403
-    r = client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "password123", "comment": "done"})
+    assert client.post(f"/api/experiments/{eid}/sign", headers=b, json={"password": "lab-bench-pw-2026"}).status_code == 403
+    r = client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "lab-bench-pw-2026", "comment": "done"})
     assert r.status_code == 200 and r.json()["status"] == "signed"
     # locked
     entry_id = exp["entries"][0]["id"]
     assert client.put(f"/api/entries/{entry_id}", headers=a, json={"title": "x"}).status_code == 409
     # author cannot witness
-    assert client.post(f"/api/experiments/{eid}/witness", headers=a, json={"password": "password123"}).status_code == 403
+    assert client.post(f"/api/experiments/{eid}/witness", headers=a, json={"password": "lab-bench-pw-2026"}).status_code == 403
     assert client.get(f"/api/experiments/{eid}/verify", headers=a).json()["intact"]
 
     # simulate out-of-band DB tampering
@@ -85,19 +85,19 @@ def test_sign_witness_lock_and_tamper(client, users, notebook):
         s.add(e)
         s.commit()
     assert not client.get(f"/api/experiments/{eid}/verify", headers=a).json()["intact"]
-    assert client.post(f"/api/experiments/{eid}/witness", headers=b, json={"password": "password123"}).status_code == 409
+    assert client.post(f"/api/experiments/{eid}/witness", headers=b, json={"password": "lab-bench-pw-2026"}).status_code == 409
 
 
 def test_witness_and_reject_flow(client, users, notebook):
     a, b = users["alice"], users["bob"]
     exp = new_exp(client, a, notebook)
     eid = exp["id"]
-    client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "password123"})
-    assert client.post(f"/api/experiments/{eid}/reject", headers=b, json={"password": "password123"}).status_code == 400
-    r = client.post(f"/api/experiments/{eid}/reject", headers=b, json={"password": "password123", "comment": "add yield"})
+    client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "lab-bench-pw-2026"})
+    assert client.post(f"/api/experiments/{eid}/reject", headers=b, json={"password": "lab-bench-pw-2026"}).status_code == 400
+    r = client.post(f"/api/experiments/{eid}/reject", headers=b, json={"password": "lab-bench-pw-2026", "comment": "add yield"})
     assert r.json()["status"] == "open"
-    client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "password123"})
-    r = client.post(f"/api/experiments/{eid}/witness", headers=b, json={"password": "password123"})
+    client.post(f"/api/experiments/{eid}/sign", headers=a, json={"password": "lab-bench-pw-2026"})
+    r = client.post(f"/api/experiments/{eid}/witness", headers=b, json={"password": "lab-bench-pw-2026"})
     assert r.json()["status"] == "witnessed"
     assert [s["meaning"] for s in r.json()["signatures"]] == ["author", "rejected", "author", "witness"]
     html = client.get(f"/api/experiments/{eid}/export", headers=a).text

@@ -30,7 +30,7 @@ from sqlmodel import select
 from .. import __version__, audit
 from ..config import settings
 from ..models import Role, User, UserIdentity, utcnow
-from ..security import DB, SSO_ONLY, create_token
+from ..security import DB, SSO_ONLY, start_session
 
 router = APIRouter(prefix="/api/auth/sso", tags=["single sign-on"])
 COOKIE = "benchtop_sso"
@@ -205,9 +205,9 @@ def callback(request: Request, session: DB, code: str = "", state: str = "", err
         ident = UserIdentity(user_id=user.id, issuer=issuer, subject=sub, email=email)
     ident.last_login_at = utcnow()
     session.add(ident)
+    token = start_session(session, user, request, 24 * 30 if saved.get("r") else None, method="sso")
     audit.record(session, user, "login", "user", user.id, method="sso", new_account=created)
     session.commit()
-    token = create_token(user.id, 24 * 30 if saved.get("r") else None)
     r = RedirectResponse(f"{_base(request)}/#{urlencode({'sso': token, **({'welcome': '1'} if created else {})})}", status_code=302)
     r.delete_cookie(COOKIE, path="/api/auth/sso")
     return r

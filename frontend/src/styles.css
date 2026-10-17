@@ -757,3 +757,16 @@ kbd { font: 11px var(--sans); border: 1px solid var(--rule-strong); border-botto
 .sso-btn { justify-content: center; text-decoration: none; }
 .or-rule { display: flex; align-items: center; gap: 10px; color: var(--ink-3); font-size: 12.5px; }
 .or-rule::before, .or-rule::after { content: ''; flex: 1; border-top: 1px solid var(--rule); }
+
+/* ---- passwords and sessions */
+.pw-field > span:first-child { display: block; }
+.pw-row { display: flex; gap: 6px; align-items: center; }
+.pw-row .input { flex: 1; min-width: 0; }
+.pw-meter { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 6px; }
+.pw-meter i { height: 4px; border-radius: 2px; background: var(--rule); }
+.pw-meter.s1 i:nth-child(1) { background: var(--danger); }
+.pw-meter.s2 i:nth-child(-n+2) { background: var(--signed); }
+.pw-meter.s3 i { background: var(--witnessed); }
+.pw-help { font-size: 12.5px; margin-top: 4px; min-height: 18px; font-weight: 400; }
+.ok-text { color: var(--witnessed); }
+.session-row { align-items: center; gap: 12px; }

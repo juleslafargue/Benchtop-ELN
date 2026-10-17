@@ -186,6 +186,16 @@ TOKEN=$(curl -s localhost:8000/api/auth/login -H 'content-type: application/json
 curl -s localhost:8000/api/search -G -d q='c1ccccc1Br' -d mode=substructure -H "Authorization: Bearer $TOKEN"
 ```
 
+## Security
+
+- **Passwords** are hashed with PBKDF2-HMAC-SHA256 at 600,000 iterations (OWASP's recommendation) with a random salt; older hashes are upgraded silently at the next sign-in. New passwords follow NIST SP 800-63B: at least 10 characters, not among the 10,000 most common passwords (or one with a digit tacked on), not built from your username, name or email, and no forced symbol rules or expiry. You get live feedback while typing.
+- **Guessing is throttled**: 5 wrong passwords for an account (or 30 from one network address) in 15 minutes pause sign-in for that account; the same applies to password re-entry when signing records and when changing your username or password. Failed attempts are in the audit trail, and a wrong username takes as long to reject as a wrong password, so accounts can't be discovered by timing.
+- **Sessions live on the server**: Account settings lists every browser you're signed in on and can sign any of them out. Signing out really ends the session, changing your password signs out all your other devices, and admins can sign a person out everywhere (a lost laptop) or deactivate them, which ends their sessions immediately.
+- **Admin-set passwords are temporary**: accounts an admin creates, or whose password an admin resets, must choose their own password at the next sign-in.
+- **First-run safety**: until setup is done, the built-in admin/admin login can't be used, and setup can only be completed from the computer Benchtop runs on, so nobody else on a shared network can claim the admin account.
+- **Browser protections**: a Content Security Policy (only Benchtop's own scripts run; pages can't be framed by other sites), `nosniff`, no referrer leaks, and API responses that aren't cached.
+- Report security problems privately as described in [SECURITY.md](SECURITY.md).
+
 ## Regulatory note
 
 Benchtop implements technical controls that 21 CFR Part 11 / EU Annex 11 expect (unique
