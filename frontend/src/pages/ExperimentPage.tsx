@@ -6,6 +6,7 @@ import EntryCard from '../components/EntryCard'
 import SignDialog, { type SignAction } from '../components/SignDialog'
 import WriteupDialog from '../components/WriteupDialog'
 import ScaleDialog from '../components/ScaleDialog'
+import { useBackTarget } from '../components/BackButton'
 import { parseSpectrumBuffer, techniqueFor } from '../spectra'
 import type { Attachment, Entry, User } from '../api'
 
@@ -85,6 +86,8 @@ export default function ExperimentPage() {
   }, [id])
   useEffect(() => { load(); setVerify(null); setTab('record') }, [load])
 
+  useBackTarget(exp?.notebook_id ? `/notebooks/${exp.notebook_id}` : exp?.is_template ? '/templates' : null,
+    exp?.notebook_name || (exp?.is_template ? 'Templates' : 'Dashboard'))
   if (err) return <p className="empty">{err}</p>
   if (!exp) return null
 

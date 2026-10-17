@@ -5,6 +5,7 @@ import { displayName } from '../api'
 import NewNotebookDialog from './NewNotebookDialog'
 import NewExperimentDialog from './NewExperimentDialog'
 import CommandPalette from './CommandPalette'
+import BackButton, { BackProvider } from './BackButton'
 
 export const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'
 
@@ -30,6 +31,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   useEffect(() => setOpen(false), [loc.pathname])
 
   return (
+    <BackProvider>
     <div className="shell">
       <aside className={`side${open ? ' open' : ''}`} aria-label="Main navigation">
         <NavLink to="/" className="brand"><img src="/flask.svg" alt="" />Benchtop</NavLink>
@@ -70,11 +72,12 @@ export default function Layout({ children }: { children: ReactNode }) {
       </aside>
       <main className="main">
         <button className="btn menu-btn" onClick={() => setOpen(o => !o)} aria-expanded={open}>Menu</button>
-        <div className="page">{children}</div>
+        <div className="page"><BackButton />{children}</div>
       </main>
       {creating && <NewNotebookDialog onClose={() => setCreating(false)} />}
       {newExp && <NewExperimentDialog onClose={() => setNewExp(false)} />}
       {palette && <CommandPalette onClose={() => setPalette(false)} onNewExperiment={() => setNewExp(true)} onNewNotebook={() => setCreating(true)} />}
     </div>
+    </BackProvider>
   )
 }
