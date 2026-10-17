@@ -42,46 +42,48 @@ export default function CharacterizationEntry({ content, onChange, readOnly, exp
     } finally { setUploading(null) }
   }
 
+  const rowsFor = (t: string) => Math.min(8, Math.max(2, t.split('\n').reduce((n, l) => n + Math.ceil((l.length || 1) / 80), 0)))
+
   return (
-    <div className="stack" style={{ gap: 6 }}>
+    <div className="char-list">
       {items.map((it, i) => {
         const att = attachments.find(a => a.id === it.attachment_id)
         const viewable = att && SPECTRUM_EXT.test(att.filename)
+        const defaultCond = TECHNIQUES.find(t => t[0] === it.technique)?.[1]
         return (
-          <div key={i}>
-            <div className="char-item">
+          <div key={i} className={`char-card${open === i ? ' open' : ''}`}>
+            <div className="char-head">
               <label className="fld"><span className="fld-cap">Technique</span>
-                <input className="input" list="char-techniques" disabled={readOnly} value={it.technique}
-                  onChange={e => patch(i, { technique: e.target.value })} style={{ fontWeight: 600 }} /></label>
+                <input className="input char-tech" list="char-techniques" disabled={readOnly} value={it.technique}
+                  onChange={e => patch(i, { technique: e.target.value })} /></label>
               <label className="fld"><span className="fld-cap">Instrument & solvent</span>
-                <input className="input" placeholder={TECHNIQUES.find(t => t[0] === it.technique)?.[1] || 'conditions'} disabled={readOnly} value={it.conditions}
+                <input className="input" placeholder={defaultCond || 'optional'} disabled={readOnly} value={it.conditions}
                   onChange={e => patch(i, { conditions: e.target.value })} /></label>
-              <label className="fld fld-data"><span className="fld-cap" title="The line that goes into your write-up. From a spectrum, click 'Use as characterisation data' to fill it.">Reported data</span>
-                <textarea className="input" rows={Math.min(5, Math.max(1, Math.ceil(it.data.length / 70)))}
-                  placeholder={PLACEHOLDER[it.technique] || 'result'} disabled={readOnly} value={it.data}
-                  onChange={e => patch(i, { data: e.target.value })} /></label>
-              <div className="fld"><span className="fld-cap">Data file</span>
-              <div className="row" style={{ gap: 4, flexWrap: 'nowrap' }}>
-                {!readOnly && (
-                  <select className="select" style={{ maxWidth: 150, padding: '4px 6px', fontSize: 13 }} aria-label="Linked file" value={it.attachment_id ?? ''}
-                    onChange={e => { if (e.target.value === 'upload') return; patch(i, { attachment_id: e.target.value ? Number(e.target.value) : null }) }}>
-                    <option value="">No file</option>
-                    {attachments.map(a => <option key={a.id} value={a.id}>{a.filename}</option>)}
-                  </select>
-                )}
-                {!readOnly && (
-                  <label className="btn ghost sm" title="Upload a spectrum or data file">
-                    {uploading === i ? '…' : 'Upload'}
-                    <input type="file" hidden onChange={e => upload(i, e.target.files?.[0])} />
-                  </label>
-                )}
-                {readOnly && att && <span className="faint">{att.filename}</span>}
-                {viewable && <button className={`btn sm${open === i ? ' primary' : ''}`} onClick={() => setOpen(open === i ? null : i)}
-                  title={open === i ? 'Close the spectrum viewer' : 'Open the spectrum viewer'}>
-                  {open === i ? 'Hide spectrum' : 'View spectrum'}</button>}
-                {!readOnly && <button className="btn ghost sm" aria-label={`Remove ${it.technique}`} title={`Remove this ${it.technique} item`} onClick={() => set(items.filter((_, j) => j !== i))}>×</button>}
-              </div></div>
+              <div className="fld char-file-wrap"><span className="fld-cap">Data file</span>
+                <div className="char-file">
+                  {readOnly ? <span className="faint char-fname">{att ? att.filename : 'No file'}</span> : <>
+                    <select className="select" aria-label="Linked file" value={it.attachment_id ?? ''} title={att?.filename}
+                      onChange={e => patch(i, { attachment_id: e.target.value ? Number(e.target.value) : null })}>
+                      <option value="">No file linked</option>
+                      {attachments.map(a => <option key={a.id} value={a.id}>{a.filename}</option>)}
+                    </select>
+                    <label className="btn sm" title="Upload a spectrum or data file">
+                      {uploading === i ? 'Uploading…' : 'Upload'}
+                      <input type="file" hidden onChange={e => upload(i, e.target.files?.[0])} />
+                    </label>
+                  </>}
+                  {viewable && <button className={`btn sm${open === i ? ' primary' : ''}`} onClick={() => setOpen(open === i ? null : i)}
+                    title={open === i ? 'Close the spectrum viewer' : 'Open the spectrum viewer'}>
+                    {open === i ? 'Hide spectrum' : 'View spectrum'}</button>}
+                </div>
+              </div>
+              {!readOnly && <button className="btn ghost sm char-remove" aria-label={`Remove ${it.technique}`} title={`Remove this ${it.technique || 'item'}`}
+                onClick={() => set(items.filter((_, j) => j !== i))}>×</button>}
             </div>
+            <label className="fld"><span className="fld-cap" title="The line that goes into your write-up. From a spectrum, click 'Use as characterisation data' to fill it.">Reported data</span>
+              <textarea className="input char-data" rows={rowsFor(it.data)}
+                placeholder={PLACEHOLDER[it.technique] || 'Result as it should appear in the write-up'} disabled={readOnly} value={it.data}
+                onChange={e => patch(i, { data: e.target.value })} /></label>
             {/HRMS|^MS\b|ESI|APCI/i.test(it.technique) && context.productSmiles && !readOnly && (
               <HrmsHelper smiles={context.productSmiles} current={it.data} onUse={d => patch(i, { data: d, conditions: it.conditions || 'ESI' })} />
             )}
@@ -97,8 +99,8 @@ export default function CharacterizationEntry({ content, onChange, readOnly, exp
       })}
       <datalist id="char-techniques">{TECHNIQUES.map(([t]) => <option key={t} value={t} />)}</datalist>
       {!readOnly && (
-        <div className="chips" style={{ marginTop: 4 }}>
-          <span className="faint" style={{ marginRight: 4 }}>Add:</span>
+        <div className="chips char-add">
+          <span className="faint" style={{ marginRight: 4 }}>Add a measurement:</span>
           {TECHNIQUES.map(([t, c]) => <button key={t} className="chip" onClick={() => add(t, c)}>{t}</button>)}
         </div>
       )}
