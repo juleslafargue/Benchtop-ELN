@@ -67,6 +67,13 @@ export default function Login({ onLogin }: { onLogin: (token: string, user: User
     if (m) { setErr(decodeURIComponent(m[1].replace(/\+/g, ' '))); history.replaceState(null, '', location.pathname + location.search) }
   }, [])
   const [showPw, setShowPw] = useState(false)
+  const [demo, setDemo] = useState<{ enabled: boolean; password?: string; accounts?: { username: string; full_name: string; role: string; about: string }[] } | null>(null)
+  useEffect(() => { api.get<typeof demo>('/api/demo').then(setDemo).catch(() => setDemo(null)) }, [])
+  const demoLogin = async (u: string) => {
+    setBusy(true); setErr('')
+    try { const r = await api.post<{ token: string; user: User }>('/api/auth/login', { username: u, password: demo!.password, remember: true }); onLogin(r.token, r.user) }
+    catch (e: any) { setErr(e.message); setBusy(false) }
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -81,6 +88,15 @@ export default function Login({ onLogin }: { onLogin: (token: string, user: User
   if (needsSetup) return <Setup onLogin={onLogin} />
   return (
     <div className="login">
+      {demo?.enabled && <div className="panel panel-pad demo-panel">
+        <div><span className="demo-badge">Demo</span><h2>The Ruiz lab (demo data)</h2>
+          <p className="faint" style={{ margin: '2px 0 0' }}>Three months of a fictional research group's work. Sign in as anyone to see Benchtop from their side; each sees only what their groups and shares allow.</p></div>
+        <ul className="demo-people">{demo.accounts!.map(a => (
+          <li key={a.username}><button className="demo-person" disabled={busy} onClick={() => demoLogin(a.username)}>
+            <span className="avatar sm" aria-hidden>{a.full_name.split(' ').map(w => w[0]).join('')}</span>
+            <span><b>{a.full_name}</b><span className="faint">{a.about}</span></span></button></li>))}</ul>
+        <p className="faint" style={{ margin: 0 }}>Or type a username below; every demo account's password is <code>{demo.password}</code>.</p>
+      </div>}
       <form className="panel panel-pad login-card stack" onSubmit={submit}>
         <img src="/flask.svg" alt="" width={36} height={36} />
         <div>

@@ -100,6 +100,25 @@ case "$cmd" in
     cd "$BACKEND" && exec "$VENV/bin/python" -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT"
     ;;
 
+  demo)
+    # a fictional research group's three months of work, kept apart from your real notebook
+    export BENCHTOP_DATA_DIR="$BACKEND/data/demo" BENCHTOP_DEMO=1 BENCHTOP_BACKUP_INTERVAL_HOURS=0
+    unset BENCHTOP_OBSIDIAN_DIR BENCHTOP_BACKUP_DIR BENCHTOP_OIDC_ISSUER
+    PORT="${BENCHTOP_DEMO_PORT:-8001}"
+    if running; then say "The demo is already running."; open_browser; exit 0; fi
+    ensure_python_env
+    ensure_ui
+    if [ "${2:-}" = "--reset" ]; then rm -rf "$BENCHTOP_DATA_DIR"; say "Demo data cleared."; fi
+    if [ ! -f "$BENCHTOP_DATA_DIR/benchtop.db" ]; then
+      say "Building the demo lab (three months of a fictional group's work; about a minute)…"
+      BENCHTOP_PUBCHEM=off py -m app.demo_lab || { rm -rf "$BENCHTOP_DATA_DIR"; fail "Couldn't build the demo data."; }
+    fi
+    say "Starting the DEMO on http://localhost:$PORT  (your real notebook is untouched)"
+    say "Pick anyone on the sign-in page. Close this window or press Ctrl+C to stop. ./benchtop demo --reset starts it fresh."
+    ( wait_up && open_browser ) &
+    cd "$BACKEND" && exec "$VENV/bin/python" -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT"
+    ;;
+
   lab)
     # share this computer's Benchtop with labmates on the same network
     remove_old_login_item
@@ -170,6 +189,7 @@ Everyday
   ./benchtop status       is it running, which version, where is the data
   ./benchtop upgrade ZIP  install a new version from its zip (backs up first, keeps your data)
   ./benchtop lab          start it so labmates on the same network can use it too
+  ./benchtop demo         open a demo lab (fictional group, separate from your data; --reset to rebuild)
 
 Data
   ./benchtop backup       make a backup now

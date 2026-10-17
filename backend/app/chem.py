@@ -538,8 +538,8 @@ def reaction_similarity(q: dict[str, Any], c: dict[str, Any]) -> Optional[dict[s
         kind, score = "same", max(score, 0.95)
     elif same_prod:
         kind = "same_product"
-    elif trans is not None and trans >= 0.6 and (sub or 0) >= 0.3:
-        kind = "analogue"      # same transformation on a different substrate
+    elif (trans is not None and trans >= 0.6 and (sub or 0) >= 0.3) or (q["sub_keys"] & c["sub_keys"] and max(prod or 0, trans or 0) >= 0.35):
+        kind = "analogue"      # same transformation on a different substrate (or a different coupling partner)
     elif same_sub or (sub or 0) >= 0.7:
         kind = "same_substrate"
     else:

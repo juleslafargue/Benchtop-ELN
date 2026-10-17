@@ -128,7 +128,16 @@ for r in (auth, experiments, materials, chemistry, search, reactions, admin, das
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "version": __version__}
+    return {"ok": True, "version": __version__, "demo": settings.demo}
+
+
+@app.get("/api/demo")
+def demo_accounts():
+    """Demo mode only: who to sign in as."""
+    if not settings.demo:
+        return {"enabled": False}
+    from .demo_lab import PEOPLE, PW
+    return {"enabled": True, "password": PW, "accounts": [{"username": u, "full_name": n, "role": r, "about": a} for u, n, r, a in PEOPLE]}
 
 
 # Serve the built single-page app when BENCHTOP_STATIC_DIR is set (Docker image does this)

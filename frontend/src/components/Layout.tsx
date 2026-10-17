@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useApp } from '../App'
-import { displayName } from '../api'
+import { api, displayName } from '../api'
 import NewNotebookDialog from './NewNotebookDialog'
 import NewExperimentDialog from './NewExperimentDialog'
 import CommandPalette from './CommandPalette'
@@ -17,6 +17,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [creating, setCreating] = useState(false)
   const [palette, setPalette] = useState(false)
   const [newExp, setNewExp] = useState(false)
+  const [demo, setDemo] = useState(false)
+  useEffect(() => { api.get<{ demo?: boolean }>('/api/health').then(h => setDemo(!!h.demo)).catch(() => {}) }, [])
   const [narrow, setNarrow] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 900px)').matches)
   useEffect(() => {
     const mq = matchMedia('(max-width: 900px)'); const on = () => setNarrow(mq.matches)
@@ -41,7 +43,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     <BackProvider>
     <div className="shell">
       <aside className={`side${open ? ' open' : ''}`} aria-label="Main navigation">
-        <div className="brand-row"><NavLink to="/" className="brand"><img src="/flask.svg" alt="" />Benchtop</NavLink>{!narrow && <Notifications />}</div>
+        <div className="brand-row"><NavLink to="/" className="brand"><img src="/flask.svg" alt="" />Benchtop{demo && <span className="demo-badge" title="Demo data: nothing here is real">Demo</span>}</NavLink>{!narrow && <Notifications />}</div>
         <button className="palette-trigger" onClick={() => setPalette(true)}>
           <span>Find or do anything…</span><kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
         </button>

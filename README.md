@@ -8,6 +8,49 @@ inventory, and an author/witness e-signature workflow backed by a tamper-evident
 This is a clean-room implementation built from publicly documented ELN concepts. It contains
 no code, assets or data formats from any proprietary product and is not affiliated with Revvity.
 
+![An experiment in Benchtop: reaction scheme, conditions and stoichiometry table, signature stamp and discussion panel](docs/screenshots/reaction.png)
+
+## A look around
+
+All screenshots come from the built-in demo lab (`./benchtop demo`): a fictional research group and
+three months of their work. Nothing in them is real data.
+
+**Spectra.** A raw Bruker FID of ibuprofen, phased and processed in the browser, auto-integrated and
+assigned against predicted shifts (atom numbers match the structure):
+
+![1H NMR of ibuprofen processed from the raw FID, with auto-analysis, predicted shifts and atom assignments](docs/screenshots/spectrum.png)
+
+<table>
+<tr>
+<td width="62%"><img src="docs/screenshots/similar.png" alt="Have we done this before? panel listing similar past reactions with yields"><br>
+<b>Have we done this before?</b> Similar reactions the lab has already run, with conditions, yields and
+notes, under every reaction table, including the failures.</td>
+<td width="38%" align="center"><img src="docs/screenshots/discussion.png" width="240" alt="Discussion thread with mentions on a section"><br>
+<b>Discussion.</b> Threads on any section, with @mentions and notifications, even on signed records.</td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/screenshots/dashboard.png" alt="Dashboard with witness queue, yield trend, inventory alerts and recent spectra"><br>
+<b>Dashboard.</b> What's waiting for your signature, the lab's yields over time, low or expiring stock and
+recent spectra. Everyone arranges their own.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/reactions.png" alt="Reactions overview table with schemes, scale, reagents and conditions"><br>
+<b>Reactions overview.</b> Every reaction you can see, filterable by substructure, yield, temperature and
+atmosphere, and exportable as CSV.</td>
+<td><img src="docs/screenshots/screen.png" alt="Ligand by base screening grid shown as a heatmap"><br>
+<b>Screening grids.</b> Two-factor screens as a heatmap with the best conditions picked out.</td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/screenshots/groups.png" alt="Groups page with members and leads"><br>
+<b>Groups.</b> Research groups with leads; each notebook is open to everyone, to one group, or kept private.</td>
+</tr>
+</table>
+
+**Impurity checks, in dark mode.** Residual solvents are recognised and quantified (here 3.6 mol% EtOAc)
+and kept out of the integrals:
+
+![Dark mode spectrum viewer with a residual ethyl acetate impurity flagged](docs/screenshots/dark.png)
+
 ## What it does
 
 | Area | Features |
@@ -70,6 +113,17 @@ Needs Python 3.11+ (python.org); Node is only needed if the bundled interface ha
 Backups are automatic: one on start-up if the newest is more than a day old, then daily while running,
 keeping the newest 14. Each is a single zip with a consistent database snapshot and every attachment.
 Set `BENCHTOP_BACKUP_DIR` to a folder in iCloud Drive or Dropbox to keep copies off your Mac.
+
+**Want to explore with realistic data first?** `./benchtop demo` opens a demo lab on
+http://localhost:8001, kept completely apart from your own notebook: the fictional Ruiz group
+(a PI, a postdoc, PhD students, an undergraduate, a process chemist, a lab manager and a read-only
+collaborator) and three months of their work. It includes a Suzuki substrate scope, base × solvent and
+ligand × base screens, the KX-101 med-chem series (Suzuki, hydrolysis, HATU amides incl. a failed hindered
+aniline, Boc chemistry, reductive amination), a 1 g → 10 g → 50 g process scale-up with IPC data and Pd
+levels, NaH/DMF and azide safety cases, CuAAC, teaching-lab preps, and an ibuprofen reference with real raw
+FIDs. Records are witnessed, signed, returned and voided; there are comment threads, shares, inventory use and
+spectra to analyse. The sign-in page lists everyone; click a name to see Benchtop as them.
+`./benchtop demo --reset` rebuilds it.
 
 **Using it as a group?** See [docs/SERVER.md](docs/SERVER.md): a lab Mac on the local network
 (`./benchtop lab`), the same over Tailscale from anywhere, or a server with HTTPS, Postgres and single
