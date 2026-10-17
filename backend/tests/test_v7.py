@@ -193,7 +193,7 @@ def test_experiment_safety_rules(client, H):
     d = r.json()
     texts = " ".join(w["text"] for w in d["warnings"])
     assert "Sodium hydride in DMF" in texts
-    assert "Water-reactive reagent alongside water or an alcohol" in texts
+    assert "Water-reactive reagent together with water or an alcohol" in texts
     assert "reproductive toxin" in texts
     assert d["warnings"][0]["level"] == "danger"
     assert any("inert gas" in c for c in d["controls"]) and any("fume hood" in c.lower() for c in d["controls"])

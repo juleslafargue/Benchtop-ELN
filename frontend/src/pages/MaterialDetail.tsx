@@ -54,8 +54,10 @@ export default function MaterialDetail() {
   const [editing, setEditing] = useState(false)
   const [addingLot, setAddingLot] = useState(false)
   const [history, setHistory] = useState<Lot | null>(null)
-  const load = useCallback(() => api.get<Material>(`/api/materials/${id}`).then(setM), [id])
+  const [err, setErr] = useState('')
+  const load = useCallback(() => api.get<Material>(`/api/materials/${id}`).then(x => { setM(x); setErr('') }).catch(e => setErr(e.message)), [id])
   useEffect(() => { load() }, [load])
+  if (err && !m) return <div className="stack"><h1 className="page-title">Material not found</h1><p className="lede">{err}</p><p><Link to="/materials">Back to Materials</Link></p></div>
   if (!m) return null
 
   return (

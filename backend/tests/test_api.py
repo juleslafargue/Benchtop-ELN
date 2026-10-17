@@ -171,11 +171,18 @@ def test_audit_chain(client, users, admin):
     assert v["ok"] and v["checked"] > 10
     with Session(engine) as s:
         ev = s.get(AuditEvent, 3)
+        original = dict(ev.details)
         ev.details = {**ev.details, "forged": True}
         s.add(ev)
         s.commit()
     v = client.get("/api/audit/verify", headers=admin).json()
     assert not v["ok"] and v["broken_at"] == 3
+    with Session(engine) as s:  # put it back so later tests see an intact chain
+        ev = s.get(AuditEvent, 3)
+        ev.details = original
+        s.add(ev)
+        s.commit()
+    assert client.get("/api/audit/verify", headers=admin).json()["ok"]
 
 
 def test_parse_reaction_keeps_salts_together(client, users):

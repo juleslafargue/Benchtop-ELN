@@ -83,7 +83,10 @@ def valid_cas(s: str) -> bool:
 
 
 def _cids(d: Optional[dict[str, Any]]) -> list[int]:
-    return list(((d or {}).get("IdentifierList") or {}).get("CID") or [])
+    try:
+        return [int(c) for c in ((d or {}).get("IdentifierList") or {}).get("CID") or [] if c]
+    except (AttributeError, TypeError, ValueError):
+        raise PubChemError("PubChem returned an unexpected response")
 
 
 def find_cid(*, inchikey: str = "", cas: str = "", name: str = "", smiles: str = "") -> Optional[int]:
@@ -106,6 +109,13 @@ def find_cid(*, inchikey: str = "", cas: str = "", name: str = "", smiles: str =
 
 def compound(cid: int) -> dict[str, Any]:
     """Name, structure, formula, MW, InChIKey, CAS and (best effort) density."""
+    try:
+        return _compound(cid)
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as e:
+        raise PubChemError("PubChem returned an unexpected response") from e
+
+
+def _compound(cid: int) -> dict[str, Any]:
     p = _get(f"/pug/compound/cid/{cid}/property/Title,IsomericSMILES,MolecularFormula,MolecularWeight,InChIKey/JSON")
     props = (((p or {}).get("PropertyTable") or {}).get("Properties") or [{}])[0]
     smiles = next((props[k] for k in ("SMILES", "IsomericSMILES", "CanonicalSMILES", "ConnectivitySMILES") if props.get(k)), "")
@@ -127,7 +137,10 @@ def compound(cid: int) -> dict[str, Any]:
 
 def _sections(node: dict[str, Any], heading: str) -> list[dict[str, Any]]:
     found = []
-    for s in node.get("Section") or []:
+    secs = node.get("Section") if isinstance(node, dict) else None
+    for s in secs if isinstance(secs, list) else []:
+        if not isinstance(s, dict):
+            continue
         if s.get("TOCHeading") == heading:
             found.append(s)
         found.extend(_sections(s, heading))
@@ -266,7 +279,11 @@ def parse_ghs(d: Optional[dict[str, Any]], cid: int | None = None) -> Optional[d
 
 
 def ghs(cid: int) -> Optional[dict[str, Any]]:
-    return parse_ghs(_get(f"/pug_view/data/compound/{cid}/JSON", {"heading": "GHS Classification"}), cid)
+    d = _get(f"/pug_view/data/compound/{cid}/JSON", {"heading": "GHS Classification"})
+    try:
+        return parse_ghs(d, cid)
+    except (AttributeError, TypeError, KeyError, ValueError) as e:  # PubChem changed its format
+        raise PubChemError("PubChem's safety data came back in an unexpected format") from e
 
 
 # ---------------------------------------------------------------- interpreting codes

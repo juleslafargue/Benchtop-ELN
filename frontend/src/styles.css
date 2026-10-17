@@ -240,7 +240,8 @@ dialog.modal.wide { max-width: min(1100px, 96vw); }
 .login-card h1 { font-family: var(--serif); font-weight: 500; font-size: 34px; margin: 14px 0 4px; }
 
 /* materials */
-.mat-row { grid-template-columns: 96px 1.4fr 1fr 110px minmax(0, 130px) 90px 90px; }
+.mat-row { grid-template-columns: 96px minmax(0, 1.4fr) minmax(0, 1fr) 110px minmax(0, 130px) 90px 90px; }
+.mat-row > span { min-width: 0; overflow-wrap: anywhere; }
 .mat-thumb { width: 96px; height: 58px; background: var(--paper-2); border-radius: 6px; display: grid; place-items: center; overflow: hidden; }
 .mat-thumb img { max-width: 100%; max-height: 100%; }
 .kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; font-size: 14px; margin: 0; }
@@ -265,7 +266,8 @@ table.plain td.num { text-align: right; }
   .exp-head { grid-template-columns: minmax(0, 1fr); }
   .exp-head .stamp { justify-self: start; }
   .exp-title, .exp-title-input { font-size: 25px; }
-  .mat-row { grid-template-columns: 72px 1fr 90px; }
+  .mat-row { grid-template-columns: 72px minmax(0, 1fr) auto; }
+  .mat-row > span { min-width: 0; overflow-wrap: anywhere; }
   .mat-row .hide-sm { display: none; }
   .timeline li { grid-template-columns: 1fr; gap: 2px; }
 }
@@ -348,7 +350,9 @@ table.plain td.num { text-align: right; }
   .char-head .char-file-wrap { grid-column: 1 / -1; grid-row: 2; }
   .char-head .char-remove { grid-column: 3; grid-row: 1; }
   .char-file .select { max-width: none; flex: 1; }
-  .filters { grid-template-columns: 1fr 1fr; }
+  .filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .filters .field:first-child, .filters .field:nth-child(2) { grid-column: 1 / -1; }
+  .filters .input, .filters .select { min-width: 0; width: 100%; }
 }
 .ketcher-loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--paper); color: var(--ink-2); z-index: 5; font-size: 14px; }
 .editor-fallback { position: fixed; inset: 0; background: rgba(14, 22, 30, .45); display: grid; place-items: center; z-index: 60; }

@@ -6,6 +6,8 @@ Units used throughout the stoichiometry table (the same conventions as most chem
 """
 from __future__ import annotations
 
+import math
+
 from typing import Any, Optional
 
 from rdkit import Chem, DataStructs, RDLogger
@@ -198,11 +200,17 @@ def _f(v: Any) -> Optional[float]:
         x = float(v)
     except (TypeError, ValueError):
         return None
-    return x
+    return x if math.isfinite(x) else None  # "NaN"/"Infinity" would make invalid JSON
 
 
 def _r(v: Optional[float], nd: int = 4) -> Optional[float]:
-    return None if v is None else round(v, nd)
+    """Round for display without destroying small amounts: at least `nd` decimals and 6 significant figures."""
+    if v is None or not math.isfinite(v):
+        return None
+    if v == 0:
+        return 0.0
+    digits = max(nd, 5 - int(math.floor(math.log10(abs(v)))))
+    return round(v, min(digits, 12))
 
 
 def compute_stoichiometry(rows_in: list[dict[str, Any]], target_conc_m: Any = None) -> dict[str, Any]:
@@ -297,7 +305,10 @@ def compute_stoichiometry(rows_in: list[dict[str, Any]], target_conc_m: Any = No
                     r["theoretical_mass_mg"] = _r(r["mmol"] * mw, 3)
             actual = _f(r["actual_mass_mg"])
             if actual is not None and _f(r["theoretical_mass_mg"]):
-                r["yield_pct"] = _r(100.0 * actual * purity / r["theoretical_mass_mg"], 1)
+                r["yield_pct"] = round(100.0 * actual * purity / r["theoretical_mass_mg"], 1)
+                if r["yield_pct"] > 100.5:
+                    warnings.append(f"Yield of {r['name'] or 'the product'} is {r['yield_pct']:g}%: over 100% usually means residual solvent "
+                                    "or impurities, or a mass entered in the wrong unit")
             else:
                 r["yield_pct"] = None
             r["mmol"] = _r(_f(r["mmol"]))

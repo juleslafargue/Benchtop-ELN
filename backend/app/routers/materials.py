@@ -196,6 +196,8 @@ def create_lot(mat_id: int, body: LotIn, user: Writer, session: DB):
     m = get_or_404(session, Material, mat_id)
     if body.unit not in _UNITS:
         raise HTTPException(400, f"unit must be one of {list(_UNITS)}")
+    if not (body.amount > 0 and body.amount < 1e12):
+        raise HTTPException(400, "Amount must be a positive number")
     lot = Lot(material_id=m.id, created_by=user.id, **body.model_dump())
     session.add(lot)
     session.flush()
@@ -260,7 +262,11 @@ def lot_transaction(lot_id: int, body: TxIn, user: Writer, session: DB):
         raise HTTPException(400, "unknown unit")
     if body.experiment_id:
         get_or_404(session, Experiment, body.experiment_id)
-    qty = convert(abs(body.amount), body.unit, lot.unit, m.density)
+    if body.direction not in ("out", "in"):
+        raise HTTPException(400, "direction must be 'out' or 'in'")
+    if not (body.amount > 0 and body.amount < 1e12):
+        raise HTTPException(400, "Amount must be a positive number")
+    qty = convert(body.amount, body.unit, lot.unit, m.density)
     delta = -qty if body.direction == "out" else qty
     if lot.amount + delta < -1e-9:
         raise HTTPException(409, f"Only {lot.amount:g} {lot.unit} left in {lot.barcode}")

@@ -112,7 +112,7 @@ export function parseJcamp(raw: string): Spectrum {
       const [x, vals, endsDif] = parseLine(line)
       const v = prevDif ? vals.slice(1) : vals // DIF check value repeats the previous line's last Y
       xFirsts.push(x)
-      for (const y of v) ys.push(y * yFactor)
+      for (const y of v) ys.push(Number.isFinite(y) ? y * yFactor : (ys.length ? ys[ys.length - 1] : 0)) // unreadable token: hold the last value
       prevDif = endsDif
     }
     const firstX = num('FIRSTX') ?? xFirsts[0] * xFactor
@@ -126,7 +126,9 @@ export function parseJcamp(raw: string): Spectrum {
     for (let i = ptIdx + 1; i < lines.length && !lines[i].startsWith('##'); i++) {
       for (const t of lines[i].split(/[\s,;]+/)) if (t) nums.push(Number(t))
     }
-    for (let i = 0; i + 1 < nums.length; i += 2) { xs.push(nums[i] * xFactor); ys.push(nums[i + 1] * yFactor) }
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      if (Number.isFinite(nums[i]) && Number.isFinite(nums[i + 1])) { xs.push(nums[i] * xFactor); ys.push(nums[i + 1] * yFactor) }
+    }
   } else {
     throw new Error('No ##XYDATA or ##PEAK TABLE block found in this JCAMP-DX file.')
   }
@@ -154,8 +156,9 @@ export function parseDelimited(raw: string, name: string): Spectrum {
     if (Number.isFinite(a) && Number.isFinite(b)) { xs.push(a); ys.push(b) }
   }
   if (xs.length < 2) throw new Error('Expected two numeric columns (x, y).')
-  const ppmLike = Math.min(...xs) > -2 && Math.max(...xs) < 250 && /nmr|1h|13c|ppm/i.test(name)
-  const irLike = Math.min(...xs) >= 350 && Math.max(...xs) <= 4500 && /ir|ftir/i.test(name)
+  const [xmin, xmax] = extent(xs) // no spread: a million-point file would overflow the call stack
+  const ppmLike = xmin > -2 && xmax < 250 && /nmr|1h|13c|ppm/i.test(name)
+  const irLike = xmin >= 350 && xmax <= 4500 && /ir|ftir/i.test(name)
   return finish({
     title: name, xLabel: ppmLike ? 'δ (ppm)' : irLike ? 'Wavenumber (cm⁻¹)' : 'x', yLabel: 'Intensity',
     kind: ppmLike ? 'nmr' : irLike ? 'ir' : 'other', reversed: ppmLike || irLike, dips: false, isStick: false,
@@ -177,6 +180,13 @@ export function parseSpectrumFile(raw: string, filename: string): Spectrum {
 }
 
 // ---------------------------------------------------------------- analysis
+
+/** Min and max without spreading the array into arguments. */
+export function extent(a: ArrayLike<number>): [number, number] {
+  let lo = Infinity, hi = -Infinity
+  for (let i = 0; i < a.length; i++) { const v = a[i]; if (v < lo) lo = v; if (v > hi) hi = v }
+  return [lo, hi]
+}
 
 export function lowerBound(a: Float64Array, v: number) {
   let lo = 0, hi = a.length
@@ -389,6 +399,7 @@ export async function parseBrukerZip(buf: ArrayBuffer, filename: string): Promis
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength)
   const width = dtype === 2 ? 8 : 4
   const n = Math.min(si || Infinity, Math.floor(raw.byteLength / width))
+  if (si && n < si * 0.99) throw new Error(`The 1r file holds ${n.toLocaleString()} of the ${si.toLocaleString()} points its procs file promises, so it looks incomplete. Re-export or re-copy the experiment folder.`)
   const scale = 2 ** nc
   const ys: number[] = new Array(n)
   for (let i = 0; i < n; i++) ys[i] = (dtype === 2 ? view.getFloat64(i * 8, !big) : view.getInt32(i * 4, !big)) * scale

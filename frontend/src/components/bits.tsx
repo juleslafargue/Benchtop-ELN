@@ -39,7 +39,9 @@ export function NumInput({ value, onCommit, disabled, className, label, nd = 4, 
   value: number | null | undefined; onCommit: (v: number | null) => void
   disabled?: boolean; className?: string; label: string; nd?: number; unit?: keyof typeof UNITS
 }) {
-  const shown = value === null || value === undefined ? '' : String(Number(Number(value).toFixed(nd)))
+  // tiny amounts (after a big scale-down) keep 3 significant figures instead of rounding to 0.00
+  const shown = value === null || value === undefined ? ''
+    : value !== 0 && Math.abs(value) < 10 ** (1 - nd) ? String(Number(Number(value).toPrecision(3))) : String(Number(Number(value).toFixed(nd)))
   const [text, setText] = useState(shown)
   const focused = useRef(false)
   useEffect(() => { if (!focused.current) setText(shown) }, [shown])

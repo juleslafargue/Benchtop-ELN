@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import threading
 import hashlib
 import html
 from typing import Any
@@ -351,18 +352,19 @@ def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
         content["snapshot"] = snap if isinstance(snap, dict) and len(json.dumps(snap)) < 200_000 else None
     elif kind == EntryKind.screen:
         def levels(v):
-            return [str(x)[:40] for x in (v or [])][:12]
+            return [str(x)[:40] for x in v if x is not None and not isinstance(x, (dict, list))][:12] if isinstance(v, list) else []
         content["x_name"], content["y_name"] = str(content.get("x_name") or "")[:80], str(content.get("y_name") or "")[:80]
         content["x_levels"], content["y_levels"] = levels(content.get("x_levels")), levels(content.get("y_levels")) or [""]
         content["response"] = str(content.get("response") or "Yield (%)")[:60]
         content["higher_is_better"] = bool(content.get("higher_is_better", True))
         cells = {}
-        for k, c in (content.get("cells") or {}).items():
+        raw = content.get("cells")
+        for k, c in (raw.items() if isinstance(raw, dict) else []):
             try:
                 i, j = (int(x) for x in str(k).split(","))
             except ValueError:
                 continue
-            if i < len(content["y_levels"]) and j < len(content["x_levels"]) and isinstance(c, dict):
+            if 0 <= i < len(content["y_levels"]) and 0 <= j < len(content["x_levels"]) and isinstance(c, dict):
                 cell = {"value": _num(c.get("value")), "note": str(c.get("note") or "")[:200]}
                 if isinstance(c.get("experiment_id"), int):
                     cell["experiment_id"] = c["experiment_id"]
@@ -379,8 +381,23 @@ def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
     return content
 
 
+_entry_lock = threading.Lock()  # positions are read-then-written; serialise adds and reorders
+
+
+def _clean_filename(name: str | None) -> str:
+    """Just the file's own name: no folders, no control characters."""
+    base = re.split(r"[\\/]", name or "")[-1]
+    base = re.sub(r"[\x00-\x1f\x7f]", "", base).strip().lstrip(".") or "file"
+    return base[:200]
+
+
 @router.post("/experiments/{exp_id}/entries", status_code=201)
 def add_entry(exp_id: int, body: EntryIn, user: Writer, session: DB):
+    with _entry_lock:
+        return _add_entry(exp_id, body, user, session)
+
+
+def _add_entry(exp_id: int, body: EntryIn, user, session) -> dict[str, Any]:
     exp = get_or_404(session, Experiment, exp_id)
     require_editable(exp, user)
     existing = live_entries(session, exp.id)
@@ -496,7 +513,7 @@ async def upload_attachment(exp_id: int, user: Writer, session: DB, file: Upload
     if not path.exists():  # content-addressed, deduplicated, write-once
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    a = Attachment(experiment_id=exp.id, filename=file.filename or "file",
+    a = Attachment(experiment_id=exp.id, filename=_clean_filename(file.filename),
                    content_type=file.content_type or "application/octet-stream",
                    size=len(data), sha256=sha, uploaded_by=user.id)
     session.add(a)

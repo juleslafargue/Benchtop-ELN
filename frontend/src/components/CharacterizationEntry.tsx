@@ -25,13 +25,14 @@ export default function CharacterizationEntry({ content, onChange, readOnly, exp
     return i >= 0 ? i : null
   })
   const [uploading, setUploading] = useState<number | null>(null)
+  const [uploadErr, setUploadErr] = useState('')
   const set = (next: Item[]) => onChange({ ...content, items: next })
   const patch = (i: number, p: Partial<Item>) => set(items.map((it, j) => (j === i ? { ...it, ...p } : it)))
   const add = (t: string, c: string) => set([...items, { technique: t, conditions: c, data: '', attachment_id: null }])
 
   const upload = async (i: number, f: File | undefined) => {
     if (!f) return
-    setUploading(i)
+    setUploading(i); setUploadErr('')
     const fd = new FormData()
     fd.append('file', f)
     try {
@@ -39,7 +40,7 @@ export default function CharacterizationEntry({ content, onChange, readOnly, exp
       onAttachmentsChanged()
       patch(i, { attachment_id: a.id })
       if (SPECTRUM_EXT.test(a.filename)) setOpen(i)
-    } finally { setUploading(null) }
+    } catch (e: any) { setUploadErr(`${f.name}: ${e.message}`) } finally { setUploading(null) }
   }
 
   const rowsFor = (t: string) => Math.min(8, Math.max(2, t.split('\n').reduce((n, l) => n + Math.ceil((l.length || 1) / 80), 0)))
@@ -97,6 +98,7 @@ export default function CharacterizationEntry({ content, onChange, readOnly, exp
           </div>
         )
       })}
+      {uploadErr && <p className="error" role="alert" style={{ margin: 0 }}>Upload failed: {uploadErr}</p>}
       <datalist id="char-techniques">{TECHNIQUES.map(([t]) => <option key={t} value={t} />)}</datalist>
       {!readOnly && (
         <div className="chips char-add">

@@ -224,7 +224,7 @@ def assess(rows: list[dict[str, Any]], records: list[Optional[ChemSafety]]) -> d
     wr = has("water_reactive")
     protic = [c["name"] for c in chems if c["ik"] in AQUEOUS_PROTIC]
     if wr and protic:
-        warn("danger", "Water-reactive reagent alongside water or an alcohol. Add them only as a controlled quench: inert atmosphere, cooling, slow addition.", wr + protic)
+        warn("danger", "Water-reactive reagent together with water or an alcohol: expect gas (often hydrogen) to evolve. Add portionwise with cooling, keep the flask vented and away from ignition sources, and quench slowly.", wr + protic)
     elif wr:
         warn("warning", "Water-reactive: dry glassware and solvents, inert atmosphere, and plan a slow, cooled quench.", wr)
     ox, fl = has("oxidiser"), has("flammable")
