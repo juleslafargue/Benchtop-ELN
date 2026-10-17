@@ -112,8 +112,8 @@ export const api = {
   raw: (p: string) => request<Response>('GET', p, undefined, true),
 }
 
-export const depictUrl = (smiles: string, w = 260, h = 160, rxn = false) =>
-  `/api/chem/depict?smiles=${encodeURIComponent(smiles)}&w=${w}&h=${h}${rxn ? '&rxn=true' : ''}`
+export const depictUrl = (smiles: string, w = 260, h = 160, rxn = false, highlight = '') =>
+  `/api/chem/depict?smiles=${encodeURIComponent(smiles)}&w=${w}&h=${h}${rxn ? '&rxn=true' : ''}${highlight ? `&highlight=${encodeURIComponent(highlight)}` : ''}`
 
 export async function downloadAuthed(path: string, filename: string, open = false) {
   const res = await api.raw(path)

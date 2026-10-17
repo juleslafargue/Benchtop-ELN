@@ -64,9 +64,9 @@ export function NumInput({ value, onCommit, disabled, className, label, nd = 4, 
   )
 }
 
-export function Mol({ smiles, w = 220, h = 130, className, rxn }: { smiles: string; w?: number; h?: number; className?: string; rxn?: boolean }) {
+export function Mol({ smiles, w = 220, h = 130, className, rxn, highlight }: { smiles: string; w?: number; h?: number; className?: string; rxn?: boolean; highlight?: string }) {
   if (!smiles) return null
-  return <img className={className} src={depictUrl(smiles, w, h, rxn)} alt={`Structure ${smiles}`} loading="lazy" />
+  return <img className={className} src={depictUrl(smiles, w, h, rxn, highlight)} alt={`Structure ${smiles}`} loading="lazy" />
 }
 
 export function useDebounced<T>(value: T, ms: number): T {

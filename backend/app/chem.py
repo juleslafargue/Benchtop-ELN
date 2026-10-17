@@ -80,14 +80,30 @@ def druglike(mol: Chem.Mol) -> dict[str, Any]:
     }
 
 
-def depict_svg(text: str, width: int = 300, height: int = 200) -> str:
+def depict_svg(text: str, width: int = 300, height: int = 200, highlight: str = "") -> str:
     mol = mol_from_any(text)
     AllChem.Compute2DCoords(mol)
     d = rdMolDraw2D.MolDraw2DSVG(width, height)
     opts = d.drawOptions()
     opts.clearBackground = False
     opts.bondLineWidth = 1.5
-    d.DrawMolecule(mol)
+    atoms: list[int] = []
+    bonds: list[int] = []
+    if highlight:  # colour the part of the molecule that matches a substructure query
+        patt = Chem.MolFromSmarts(highlight) or Chem.MolFromSmiles(highlight)
+        if patt is not None:
+            for match in mol.GetSubstructMatches(patt)[:4]:
+                atoms.extend(match)
+                for bnd in patt.GetBonds():
+                    b2 = mol.GetBondBetweenAtoms(match[bnd.GetBeginAtomIdx()], match[bnd.GetEndAtomIdx()])
+                    if b2 is not None:
+                        bonds.append(b2.GetIdx())
+    if atoms:
+        colour = (0.42, 0.75, 0.98)
+        d.DrawMolecule(mol, highlightAtoms=atoms, highlightBonds=bonds,
+                       highlightAtomColors={i: colour for i in atoms}, highlightBondColors={i: colour for i in bonds})
+    else:
+        d.DrawMolecule(mol)
     d.FinishDrawing()
     return d.GetDrawingText()
 

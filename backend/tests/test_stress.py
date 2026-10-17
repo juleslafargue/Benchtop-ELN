@@ -520,3 +520,53 @@ def test_parallel_writes_do_not_lock_the_database(client, S):
     positions = [e["position"] for e in after["entries"]]
     assert len(positions) == len(set(positions)), "duplicate section positions after concurrent adds"
     assert client.get("/api/audit/verify", headers=S["admin"]).json().get("intact", True), "audit chain broken by concurrent writes"
+
+
+# ============================================================== search v2
+
+def test_search_words_anywhere_filters_and_files(client, S):
+    a = S["a"]
+    exp = new_exp(client, a, S["nb"], "Grignard addition to cyclohexanone")
+    put(client, a, entry(exp, "text"), {"html": "<p>Added the <b>Grignard</b> dropwise at 0 °C; exotherm controlled.</p>"})
+    client.post(f"/api/experiments/{exp['id']}/attachments", headers=a, files={"file": ("grignard_crude_1H.jdx", b"##TITLE=x\n##END=")})
+    r = client.get("/api/search", headers=a, params={"q": "dropwise grignard"}).json()       # words not adjacent, any order
+    hit = next(h for h in r["experiments"] if h["id"] == exp["id"])
+    assert hit["snippet"] and "dropwise" in hit["snippet"].lower() and r["terms"] == ["dropwise", "grignard"]
+    assert client.get("/api/search", headers=a, params={"q": '"dropwise grignard"'}).json()["experiments"] == [] or \
+        all(h["id"] != exp["id"] for h in client.get("/api/search", headers=a, params={"q": '"dropwise grignard"'}).json()["experiments"])
+    # field names and structure codes are not searchable text
+    ids = [h["id"] for h in client.get("/api/search", headers=a, params={"q": "limiting"}).json()["experiments"]]
+    assert exp["id"] not in ids
+    # title beats body
+    first = client.get("/api/search", headers=a, params={"q": "grignard"}).json()["experiments"][0]
+    assert first["id"] == exp["id"] and first["match"] in ("Title", "Aim")
+    # files
+    f = client.get("/api/search", headers=a, params={"q": "crude_1H"}).json()["files"]
+    assert any(x["filename"] == "grignard_crude_1H.jdx" for x in f)
+    # filters
+    assert all(h["owner"]["id"] == client.get("/api/auth/me", headers=a).json()["id"]
+               for h in client.get("/api/search", headers=a, params={"q": "grignard", "mine": True}).json()["experiments"])
+    assert client.get("/api/search", headers=a, params={"q": "grignard", "status": "witnessed"}).json()["experiments"] == []
+    assert client.get("/api/search", headers=a, params={"q": "grignard", "notebook_id": S["nb"]["id"]}).json()["experiments"]
+    # experiment IDs and lot barcodes
+    assert client.get("/api/search", headers=a, params={"q": exp["eid"]}).json()["experiments"][0]["id"] == exp["id"]
+
+
+def test_highlighted_depiction(client):
+    plain = client.get("/api/chem/depict", params={"smiles": "COc1ccc(Br)cc1"}).text
+    hi = client.get("/api/chem/depict", params={"smiles": "COc1ccc(Br)cc1", "highlight": "c1ccccc1Br"}).text
+    assert hi != plain and "fill:#6BBFF9" in hi.replace("6bbff9", "6BBFF9") or "#6BBFF9" in hi.upper() or "highlight" in hi.lower() or len(hi) > len(plain)
+    assert client.get("/api/chem/depict", params={"smiles": "CCO", "highlight": "[invalid"}).status_code == 200
+
+
+def test_search_numbers_are_whole_numbers(client, S):
+    a = S["a"]
+    exp = new_exp(client, a, S["nb"], "Numeric probe")
+    put(client, a, entry(exp, "reaction"), {"rows": [{"role": "reactant", "name": "probe-ol", "smiles": "CCCO", "basis": "mass", "mass_mg": 12.0808, "limiting": True}],
+                                           "conditions": {"temperature_c": 65, "time_h": 3}})
+    ids = lambda q: [h["id"] for h in client.get("/api/search", headers=a, params={"q": q}).json()["experiments"]]  # noqa: E731
+    assert exp["id"] in ids("probe-ol 65")          # temperature as a whole number
+    assert exp["id"] not in ids("probe-ol 80")      # 80 must not match inside 12.0808
+    assert exp["id"] not in ids("probe-ol 12.0808")  # computed amounts aren't searchable text
+    hit = next(h for h in client.get("/api/search", headers=a, params={"q": "probe-ol"}).json()["experiments"] if h["id"] == exp["id"])
+    assert "65 °C" in hit["snippet"] and "0.999" not in hit["snippet"]
