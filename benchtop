@@ -133,6 +133,10 @@ case "$cmd" in
     ensure_python_env; py -m app.backup restore "$2"
     ;;
   seed)     ensure_python_env; py -m app.seed ;;
+  update-nmr-data)
+    ensure_python_env
+    say "Downloading the latest NMRShiftDB2 data and building the NMR prediction table (a few minutes)…"
+    if [ -n "${2:-}" ]; then py -m app.nmrdata --file "$2"; else py -m app.nmrdata --force; fi ;;
   export-obsidian)
     [ $# -ge 2 ] || fail "Usage: ./benchtop export-obsidian /path/to/YourVault/Benchtop"
     ensure_python_env; py -m app.export_md "$2" ;;
@@ -150,6 +154,7 @@ Data
   ./benchtop backups      list backups
   ./benchtop restore F    restore backup file F (your current data is moved aside, not deleted)
   ./benchtop seed         load demo data
+  ./benchtop update-nmr-data [FILE]   download NMRShiftDB2 and build the NMR prediction table (or build from a downloaded FILE)
   ./benchtop export-obsidian DIR   write every experiment as a Markdown note into DIR
 
 Settings (environment variables)

@@ -80,14 +80,22 @@ def druglike(mol: Chem.Mol) -> dict[str, Any]:
     }
 
 
-def depict_svg(text: str, width: int = 300, height: int = 200, highlight: str = "") -> str:
+def depict_svg(text: str, width: int = 300, height: int = 200, highlight: str = "", atom_ids: list[int] | None = None,
+               numbers: bool = False) -> str:
     mol = mol_from_any(text)
+    if atom_ids or numbers:  # atom indices refer to the main fragment, as in predictions
+        frags = Chem.GetMolFrags(mol, asMols=True)
+        mol = max(frags, key=lambda f: f.GetNumHeavyAtoms())
     AllChem.Compute2DCoords(mol)
     d = rdMolDraw2D.MolDraw2DSVG(width, height)
     opts = d.drawOptions()
     opts.clearBackground = False
     opts.bondLineWidth = 1.5
-    atoms: list[int] = []
+    if numbers:
+        for a in mol.GetAtoms():
+            a.SetProp("atomNote", str(a.GetIdx() + 1))
+        opts.annotationFontScale = 0.6
+    atoms: list[int] = [i for i in (atom_ids or []) if 0 <= i < mol.GetNumAtoms()]
     bonds: list[int] = []
     if highlight:  # colour the part of the molecule that matches a substructure query
         patt = Chem.MolFromSmarts(highlight) or Chem.MolFromSmiles(highlight)

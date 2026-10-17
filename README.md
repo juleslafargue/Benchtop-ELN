@@ -17,7 +17,9 @@ no code, assets or data formats from any proprietary product and is not affiliat
 | **Conditions** | Temperature (or rt/reflux), time, atmosphere and target concentration as real fields. Tick *fill to target M* on a solvent and its volume is calculated for you. |
 | **Stoichiometry** | Enter mass, volume, mmol or equivalents in any row; the rest is calculated from the limiting reagent, accounting for purity, density (neat liquids) and molarity (solutions). Products get theoretical mass and % yield. The cell you typed is highlighted so you always know what's input vs. calculated. |
 | **Work-up & characterisation** | Purification sections (method, stationary phase, eluent, Rf, isolated mass, appearance) and characterisation sections (¹H/¹³C NMR, HRMS, IR, mp, Rf, HPLC…), each item linkable to its data file. |
-| **Spectra** | Drag spectrum files onto an experiment: JCAMP-DX (incl. compressed SQZ/DIF/DUP), zipped Bruker experiments (processed `pdata/*/1r`) and two-column CSV become characterisation items with technique, frequency and solvent filled in, and open already analysed. ¹H auto-analysis finds the signals, cuts out solvent/water/TMS lines (where they actually are), and scales integrals to the product formula's proton count; ¹³C gets a signal-to-noise peak list without the solvent. A note offers one-click referencing when the solvent residual is off. Viewing is inline or full-screen. Scroll to zoom at the cursor, shift-scroll to pan, live δ/Hz readout. Integrate by dragging: running integral curves are drawn over the peaks with values under the axis. Each ¹H signal is classified (s, d, t, q, p, dd, dt, td, m) with J in Hz, and you can override any multiplicity or J in the signals table. Type a proton count in any row to make it the reference. Click a peak to reference the axis (solvent residuals for CDCl₃, DMSO-d₆, CD₃OD, C₆D₆, D₂O, CD₂Cl₂, acetone-d₆, CD₃CN are marked and offered as one-click references). Integrated ¹H signals are labelled above the spectrum ("7.42 t, 2H") with leader lines to each multiplet, and integral values below the axis never overlap. Export a clean PNG for SI or slides. Everything is saved with the record. |
+| **Spectra** | Drag spectrum files onto an experiment: JCAMP-DX (incl. compressed SQZ/DIF/DUP), zipped Bruker experiments (processed `pdata/*/1r`, or just the raw `fid`) and two-column CSV become characterisation items with technique, frequency and solvent filled in, and open already analysed. ¹H auto-analysis finds the signals, cuts out solvent/water/TMS lines (where they actually are), and scales integrals to the product formula's proton count; ¹³C gets a signal-to-noise peak list without the solvent. A note offers one-click referencing when the solvent residual is off. Viewing is inline or full-screen. Scroll to zoom at the cursor, shift-scroll to pan, live δ/Hz readout. Integrate by dragging: running integral curves are drawn over the peaks with values under the axis. Each ¹H signal is classified (s, d, t, q, p, dd, dt, td, m) with J in Hz, and you can override any multiplicity or J in the signals table. Type a proton count in any row to make it the reference. Click a peak to reference the axis (solvent residuals for CDCl₃, DMSO-d₆, CD₃OD, C₆D₆, D₂O, CD₂Cl₂, acetone-d₆, CD₃CN are marked and offered as one-click references). Integrated ¹H signals are labelled above the spectrum ("7.42 t, 2H") with leader lines to each multiplet, and integral values below the axis never overlap. Export a clean PNG for SI or slides. Everything is saved with the record. |
+| **Raw FID processing** | Zip a Bruker experiment folder straight off the spectrometer, without processing it in TopSpin, and drop it in: Benchtop does the Fourier transform in your browser (exponential line broadening, zero filling, digital-filter group-delay removal, automatic phasing by entropy minimisation and polynomial baseline correction). Phase 0/1 sliders, an *Auto phase* button and a line-broadening choice are there if you want to adjust it; your settings are saved with the record. Checked against TopSpin on ibuprofen (¹H spectra correlate at 0.99; ¹³C peaks agree within 0.01 ppm). 1D only. |
+| **Predicted NMR shifts** | When an experiment has a drawn product, its ¹H and ¹³C spectra show predicted shifts from [NMRShiftDB2](https://nmrshiftdb.nmr.uni-koeln.de), an open database of assigned spectra, as a purple lane above the spectrum. Each observed signal gets an *Assigned to* column (atom numbers match a numbered structure), and a panel lists every predicted group with its confidence and the observed shift it matched, flagging groups with no signal and signals no group explains. Prediction looks up each atom's surroundings out to four bonds (HOSE-style) in a table of 43,213 assigned structures (359,155 ¹³C and 125,904 ¹H shifts) that ships with Benchtop, and falls back to smaller spheres when a surrounding hasn't been seen. On structures held out of the table: median error 1.1 ppm for ¹³C and 0.12 ppm for ¹H; for "high" confidence atoms (about 45 %) 0.5 ppm and 0.07 ppm. Auto-analysis also uses the prediction so a product's own signals aren't mistaken for residual solvent. Benchtop checks for a newer NMRShiftDB2 export every 30 days and rebuilds the table on your computer when there is one (Admin → *Update now*, or `./benchtop update-nmr-data`). Diastereotopic protons and second-order effects aren't modelled; it's a check, not a substitute for assigning. |
 | **Spectrum checks** | Auto-analysis flags residual lab solvents (EtOAc, hexane, acetone, DCM, Et₂O, THF, MeOH, toluene, DMF, Et₃N, silicone grease and more, from the Fulmer 2010 tables for CDCl₃, DMSO-d₆ and CD₃OD) only when every one of their signals is present, and reports each as mol% and wt% with an overall purity estimate. A checks panel compares the spectrum with the drawn product: total ¹H integral vs. the formula (allowing for exchangeable OH/NH), number of signals vs. symmetry-distinct H environments, ¹³C peaks vs. unique carbons, and warns when a minor set of signals looks like a second compound. *Compare* overlays up to four other spectra (starting material, crude, a reference), stacked or overlaid, and the overlay is saved with the record. |
 | **HRMS helper** | On HRMS/MS items, pick the adduct ([M+H]⁺, [M+Na]⁺, [M+K]⁺, [M+NH₄]⁺, M⁺, [M−H]⁻), get the calculated m/z from the product structure (monoisotopic, electron mass corrected), type the found value and see the error in ppm; *Use* writes the standard `calcd for … ; found …` line. |
 | **Dashboard** | The home page is a grid of widgets you arrange yourself: work lists (waiting for my witness signature, returned to me with the reason, my open experiments, recently edited, pinned), quick actions, sticky notes and section headings, a yield-over-time chart (click a point to open the experiment), this month's activity, recent spectra, and inventory alerts (lots below 20 % of what was received, or expiring within 30 days). *Customise* lets you drag, resize, add and remove widgets; the layout is saved to your account. Pin any experiment from its page. On a phone the widgets stack in one column. |
@@ -57,6 +59,8 @@ Needs Python 3.11+ (python.org); Node is only needed if the bundled interface ha
 ./benchtop backup | backups | restore FILE
 ./benchtop seed                 # demo data
 ./benchtop export-obsidian ~/Documents/Vault/Benchtop
+./benchtop update-nmr-data      # rebuild the NMR shift table from the latest NMRShiftDB2 export
+./benchtop update-nmr-data FILE.sd   # …or from a nmrshiftdb2withsignals.sd you downloaded
 ```
 
 Backups are automatic: one on start-up if the newest is more than a day old, then daily while running,
@@ -116,6 +120,7 @@ To serve the built app from the API (what the Docker image does):
 | `BENCHTOP_OBSIDIAN_DIR` | unset | Vault folder to sync Markdown notes into every hour |
 | `BENCHTOP_PUBCHEM` | `on` | `off` stops all PubChem lookups (works fully offline with whatever was fetched before) |
 | `BENCHTOP_SAFETY_REFRESH_DAYS` | `30` | Safety data older than this is re-checked by the hourly housekeeping |
+| `BENCHTOP_NMR_AUTO_UPDATE` | `on` | `off` stops the monthly check for a newer NMRShiftDB2 export (the bundled table is still used) |
 
 ## Architecture
 
@@ -125,7 +130,8 @@ frontend/  React 18 + TypeScript + Vite
   components/       EntryCard (autosave + optimistic concurrency), ReactionEntry (stoichiometry grid),
                     ConditionsBar, PurificationEntry, CharacterizationEntry, SpectrumViewer (canvas),
                     TextEntry (TipTap), StructureEditor (Ketcher, lazy-loaded), SignDialog, …
-  spectra.ts        JCAMP-DX / CSV reader, peak picking, integration
+  spectra.ts        JCAMP-DX / CSV / Bruker reader, peak picking, integration, auto-analysis
+  fid.ts            raw FID processing: apodisation, FFT, group delay, auto-phase, baseline
 backend/   FastAPI + SQLModel + RDKit
   app/models.py     Notebook, Experiment, Entry, EntryVersion, Attachment, Signature,
                     Material, Lot, LotTransaction, AuditEvent, User
@@ -134,6 +140,9 @@ backend/   FastAPI + SQLModel + RDKit
   app/backup.py     snapshot/zip backups, pruning, restore (also a CLI)
   app/writeup.py    SI-style experimental paragraph composer
   app/export_md.py  Markdown/Obsidian export and vault sync (also a CLI)
+  app/nmrpredict.py NMR shift prediction: atom environments, table builder, lookup
+  app/nmrdata.py    NMRShiftDB2 download and rebuild (also a CLI)
+  app/data/         bundled NMR shift table and its licence
   app/routers/      auth, experiments (+signing, export), materials, chemistry, search, reactions, admin
   tests/            API tests incl. signature tamper detection and audit-chain tamper detection
 ```
@@ -170,10 +179,10 @@ that work.
 
 ## Roadmap ideas
 
-- In progress: raw FID processing, HPLC/LC-MS traces, TLC photos (v0.8); PDF export, supervisor review and notifications, DOI references, bench timeline (v0.9)
+- Next: HPLC/LC-MS traces, TLC photos; PDF export, supervisor review and notifications, DOI references, bench timeline (v0.9)
 
 - Plate/sample-set entities and a sample-tracking view
-- Bruker/Varian raw FID processing (FT, phasing) and mzML for MS
+- Varian/JEOL raw FIDs, 2D NMR, and mzML for MS
 - Instrument file drop-folders that auto-attach to experiments
 - SSO (OIDC), per-notebook sharing, project-level permissions
 - Witness assignment and email notifications
@@ -182,3 +191,9 @@ that work.
 ## Licence
 
 Apache-2.0. Bundles Ketcher (Apache-2.0, EPAM) and uses RDKit (BSD-3-Clause).
+
+The NMR shift table in `backend/app/data/` is derived from NMRShiftDB2 and is distributed under the
+nmrshiftdb2 data licence (attribution, share-alike; see `backend/app/data/NMRSHIFTDB2_LICENSE.md`).
+Please cite S. Kuhn and N. E. Schlörer, *Magn. Reson. Chem.* 2015, 53, 582–589 if you use the
+predictions in published work. The ibuprofen raw FIDs in `samples/` come from
+cheminfo/bruker-data-test (MIT).

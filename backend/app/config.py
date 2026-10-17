@@ -37,6 +37,8 @@ class Settings:
         # Safety data from PubChem (public GHS classifications); set BENCHTOP_PUBCHEM=off to work fully offline
         self.pubchem_enabled = os.environ.get("BENCHTOP_PUBCHEM", "on").lower() not in ("0", "off", "false", "no")
         self.safety_refresh_days = float(os.environ.get("BENCHTOP_SAFETY_REFRESH_DAYS", "30"))
+        # NMR shift table: re-check NMRShiftDB2 monthly and rebuild when it publishes a newer export
+        self.nmr_auto_update = os.environ.get("BENCHTOP_NMR_AUTO_UPDATE", "on").lower() not in ("0", "off", "false", "no")
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.attachments_dir.mkdir(parents=True, exist_ok=True)
 

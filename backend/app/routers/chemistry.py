@@ -24,11 +24,13 @@ def properties(body: StructureIn, _: CurrentUser):
 
 
 @router.get("/depict")
-def depict(smiles: str, w: int = 300, h: int = 200, rxn: bool = False, highlight: str = ""):
-    """Unauthenticated so it can be used directly in <img src>; it only renders the input."""
+def depict(smiles: str, w: int = 300, h: int = 200, rxn: bool = False, highlight: str = "", atoms: str = "", numbers: bool = False):
+    """Unauthenticated so it can be used directly in <img src>; it only renders the input.
+    highlight = SMARTS to colour; atoms = comma-separated 0-based atom indices to colour; numbers = label atoms 1..n."""
     w, h = max(40, min(w, 1600)), max(40, min(h, 1200))
+    ids = [int(x) for x in atoms.split(",") if x.strip().lstrip("-").isdigit()][:200]
     try:
-        svg = chem.depict_reaction_svg(smiles, w, h) if rxn else chem.depict_svg(smiles, w, h, highlight[:500])
+        svg = chem.depict_reaction_svg(smiles, w, h) if rxn else chem.depict_svg(smiles, w, h, highlight[:500], ids, numbers)
     except chem.ChemError as exc:
         raise HTTPException(422, str(exc))
     return Response(svg, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})

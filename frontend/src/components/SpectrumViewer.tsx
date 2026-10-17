@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../App'
+import { assign, groupLabel, predMult, PredictionPanel, usePrediction, type ObservedSignal, type Prediction } from './Prediction'
+import { baselineCorrect, phased } from '../fid'
 import Modal from './Modal'
 import { api } from '../api'
 import {
@@ -13,9 +15,11 @@ export interface SavedAnalysis {
   labels?: { mult: string; j: string }[]; offset?: number
   impurities?: Pick<ImpurityResult, 'short' | 'name' | 'molPct' | 'wtPct' | 'signals'>[]
   overlays?: number[]; overlay_mode?: 'stack' | 'overlay'
+  fid?: { ph0: number; ph1: number; lb: number | null }
 }
 interface Overlay { id: number; label: string; spec: Spectrum }
 interface SpectrumListing { id: number; filename: string; eid: string; title: string; same_experiment: boolean; created_at: string }
+const PRED_COLOR = '#8c62d9'
 const OVERLAY_COLORS = ['#3a7ae6', '#c27a00', '#8c62d9', '#2a9d4b'] // validated for colour-blind separation and contrast on both themes
 interface StructureInfo { formula: string; total_h: number; exchangeable_h: number; h_environments: { count: number }[]; unique_carbons: number; total_carbons: number }
 interface Region { a: number; b: number }
@@ -112,6 +116,8 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
   const [overlayMode, setOverlayMode] = useState<'stack' | 'overlay'>(saved?.overlay_mode || 'stack')
   const [picking, setPicking] = useState(false)
   const [overlayErr, setOverlayErr] = useState('')
+  const [showPred, setShowPred] = useState(true)
+  const bufRef = useRef<ArrayBuffer | null>(null)
   const addOverlay = async (id: number, label: string) => {
     if (overlays.some(o => o.id === id) || overlays.length >= 4) return
     try {
@@ -129,9 +135,17 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
   }, [productSmiles])
   const [residual, setResidual] = useState<{ label: string; expected: number; found: number } | null>(null)
 
-  const runAuto = (s: Spectrum, announce = true, solventShift = 0) => {
+  // predicted product 1H shifts (confident, non-exchangeable groups) so auto-analysis doesn't call them solvent
+  const productShifts = async (): Promise<number[]> => {
+    if (!productSmiles) return []
+    try {
+      const p = await api.get<Prediction>(`/api/nmr/predict?smiles=${encodeURIComponent(productSmiles)}&nucleus=1H`)
+      return p.groups.filter(g => g.shift != null && !g.exchangeable && (g.confidence === 'high' || g.confidence === 'medium')).map(g => g.shift!)
+    } catch { return [] }
+  }
+  const runAuto = async (s: Spectrum, announce = true, solventShift = 0) => {
     if (s.kind === 'nmr' && !is13C(s)) {
-      const r = autoAnalyse1H(s, expectedH ?? null, solventShift, productMW ?? null)
+      const r = autoAnalyse1H(s, expectedH ?? null, solventShift, productMW ?? null, await productShifts())
       // impurity positions are found in the unreferenced spectrum; store them on the current axis
       setImpurities(r.impurities.map(i => ({ short: i.short, name: i.name, molPct: i.molPct, wtPct: i.wtPct, signals: i.signals.map(p => +p.toFixed(4)) })))
       setRegions(r.regions); setLabels(r.regions.map(() => ({ mult: '', j: '' })))
@@ -150,7 +164,8 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
     api.raw(`/api/attachments/${attachmentId}?inline=true`).then(r => r.arrayBuffer()).then(async buf => {
       if (!alive) return
       try {
-        const s = await parseSpectrumBuffer(buf, filename)
+        bufRef.current = buf
+        const s = await parseSpectrumBuffer(buf, filename, saved?.fid ? { ph0: saved.fid.ph0, ph1: saved.fid.ph1, lb: saved.fid.lb ?? undefined } : {})
         if (!alive) return
         const off = saved?.offset || 0
         setRaw(s); setOffset(off)
@@ -191,6 +206,15 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
     return pickPeaks(spec, view[0], view[1], threshold, 50)
   }, [spec, view, showPeaks, threshold])
   const markers = useMemo(() => (spec ? solventMarkers(spec) : []), [spec])
+  const observed: ObservedSignal[] = useMemo(() => {
+    if (!spec || spec.kind !== 'nmr') return []
+    if (is13C(spec)) return peaks.map(p => ({ lo: p.x, hi: p.x, center: p.x, h: null }))
+    const ref = withArea[refIdx]?.area
+    return withArea.map(r => {
+      const m = isProton(spec) ? analyzeMultiplet(spec, r.a, r.b) : null
+      return { lo: Math.min(r.a, r.b), hi: Math.max(r.a, r.b), center: m ? m.shift : (r.a + r.b) / 2, h: ref ? r.area / ref * refH : null }
+    })
+  }, [spec, withArea, peaks, refIdx, refH])
   // one label per integrated 1H signal: "7.42 t, 2H", drawn above the multiplet
   const signalTags = useMemo(() => {
     if (!spec || !isProton(spec) || !showSignals) return []
@@ -199,7 +223,7 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
       const m = applyLabel(analyzeMultiplet(spec, r.a, r.b), labels[i])
       const h = ref ? r.area / ref * refH : 0
       const shift = m.mult === 'm' ? `${m.hi.toFixed(2)}–${m.lo.toFixed(2)}` : m.shift.toFixed(2)
-      return { a: r.a, b: r.b, text: `${shift} ${m.mult}${h ? `, ${Math.round(h)}H` : ''}` }
+      return { a: r.a, b: r.b, text: `${shift} ${m.mult}${h ? `, ${h < 0.95 ? h.toFixed(1) : Math.round(h)}H` : ''}` }
     })
   }, [spec, withArea, labels, refIdx, refH, showSignals])
 
@@ -209,8 +233,22 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
       integrals: regions.map(r => [+r.a.toFixed(5), +r.b.toFixed(5)]), labels, ref_idx: refIdx, ref_value: refH,
       threshold, offset: +offset.toFixed(5), impurities,
       ...(overlays.length ? { overlays: overlays.map(o => o.id), overlay_mode: overlayMode } : {}),
+      ...(raw?.fid ? { fid: { ph0: +raw.fid.ph0.toFixed(2), ph1: +raw.fid.ph1.toFixed(2), lb: raw.fid.lb } } : {}),
     })
-  }, [regions, labels, refIdx, refH, threshold, offset, impurities, overlays, overlayMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [regions, labels, refIdx, refH, threshold, offset, impurities, overlays, overlayMode, raw?.fid?.ph0, raw?.fid?.ph1, raw?.fid?.lb]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---------------------------------------------------------------- raw FID: phase and line broadening
+  const setPhase = (ph0: number, ph1: number) => setRaw(r => (r?.fid ? { ...r, y: baselineCorrect(phased(r.fid, ph0, ph1)), fid: { ...r.fid, ph0, ph1 } } : r))
+  const setLB = async (lb: number) => {
+    if (!raw?.fid || !bufRef.current) return
+    const s = await parseSpectrumBuffer(bufRef.current, filename, { lb, ph0: raw.fid.ph0, ph1: raw.fid.ph1 })
+    setRaw(s)
+  }
+
+  // ---------------------------------------------------------------- prediction (NMRShiftDB2) and assignment
+  const nucleus: '1H' | '13C' | null = raw?.kind === 'nmr' ? (is13C(raw) ? '13C' : isProton(raw) ? '1H' : null) : null
+  const { pred, status: predStatus, err: predErr, startUpdate } = usePrediction(productSmiles, nucleus)
+  const assignment = useMemo(() => (pred && observed.length ? assign(pred.groups, observed, pred.nucleus) : null), [pred, observed])
 
   // ---------------------------------------------------------------- geometry
   const geom = useCallback((w: number) => {
@@ -240,7 +278,9 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
     // stacked: this spectrum takes the bottom band and each comparison a band above it
     // a strip along the top holds the signal labels, so they never sit on the trace
     const tagStrip = signalTags.length ? 30 : 0
-    const plotTop = (stacked ? plotBottom - (plotBottom - fullTop) / bands : fullTop) + tagStrip
+    const predGroups = showPred && pred ? pred.groups.filter(g => g.shift !== null) : []
+    const predStrip = predGroups.length && !forExport ? 30 : 0
+    const plotTop = (stacked ? plotBottom - (plotBottom - fullTop) / bands : fullTop) + tagStrip + predStrip
     const plotH = plotBottom - plotTop
     const toPy = (y: number) => plotTop + (1 - (y - bottom) / (top - bottom || 1)) * plotH
     const font = (px: number, weight = 400, italic = false) => `${italic ? 'italic ' : ''}${weight} ${px}px "Instrument Sans", system-ui, sans-serif`
@@ -410,13 +450,36 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
       if (tags.length && tags[0].lx < M.l + tags[0].w / 2) { // too many to fit in one row: fall back to their own positions
         tags.forEach(t => { t.lx = Math.min(right - t.w / 2, Math.max(M.l + t.w / 2, t.px)) })
       }
-      const textY = plotTop - tagStrip + 12
+      const textY = plotTop - predStrip - tagStrip + 12
       g.strokeStyle = pal.ink3; g.lineWidth = 0.8
       for (const t of tags) {
         g.beginPath(); g.moveTo(t.lx, textY + 4); g.lineTo(t.lx, textY + 9); g.lineTo(t.px, plotTop - 1); g.lineTo(t.px, Math.max(plotTop - 1, t.peakY - 4)); g.stroke()
       }
       g.fillStyle = pal.ink
       for (const t of tags) g.fillText(t.text, t.lx, textY)
+    }
+
+    // predicted shifts (NMRShiftDB2): a lane of sticks just above the spectrum, height ~ number of nuclei, bar = typical spread
+    if (predStrip) {
+      const laneBottom = plotTop - 3, laneTop = plotTop - predStrip + 4
+      const maxN = Math.max(...predGroups.map(g => (pred!.nucleus === '1H' ? g.nH : g.atoms.length)), 1)
+      g.fillStyle = PRED_COLOR; g.strokeStyle = PRED_COLOR
+      g.font = font(10, 400, true); g.textAlign = 'left'
+      g.globalAlpha = 0.85; g.fillText('predicted', M.l + 2, laneTop + 8); g.globalAlpha = 1
+      for (const gr of predGroups) {
+        const v = gr.shift!
+        if (v < Math.min(x0, x1) || v > Math.max(x0, x1)) continue
+        const px = toPx(v)
+        const hgt = 5 + (laneBottom - laneTop - 5) * ((pred!.nucleus === '1H' ? gr.nH : gr.atoms.length) / maxN)
+        if (gr.sd) {
+          const a = toPx(v - gr.sd), b2 = toPx(v + gr.sd)
+          g.globalAlpha = 0.22; g.fillRect(Math.min(a, b2), laneBottom - 3, Math.max(1, Math.abs(b2 - a)), 3); g.globalAlpha = 1
+        }
+        g.lineWidth = gr.confidence === 'low' ? 1 : 2
+        g.setLineDash(gr.confidence === 'low' ? [2, 2] : [])
+        g.beginPath(); g.moveTo(px, laneBottom); g.lineTo(px, laneBottom - hgt); g.stroke()
+        g.setLineDash([])
+      }
     }
 
     // peak labels
@@ -440,7 +503,7 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
       const px = toPx(hover)
       g.strokeStyle = pal.ink3; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(px + 0.5, plotTop); g.lineTo(px + 0.5, plotBottom); g.stroke(); g.setLineDash([])
     }
-  }, [spec, view, yScale, withArea, refIdx, refH, peaks, showPeaks, tool, markers, hover, geom, impurities, overlays, overlayMode, signalTags])
+  }, [spec, view, yScale, withArea, refIdx, refH, peaks, showPeaks, tool, markers, hover, geom, impurities, overlays, overlayMode, signalTags, pred, showPred])
 
   const draw = useCallback(() => {
     const c = canvas.current
@@ -565,6 +628,7 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
   const summary = summarise(spec, withArea, labels, refIdx, refH, peaks)
   const freq = spec.frequency
   const order = withArea.map((r, i) => ({ r, i })).sort((p, q) => (spec.reversed ? (q.r.a + q.r.b) - (p.r.a + p.r.b) : (p.r.a + p.r.b) - (q.r.a + q.r.b)))
+  const fid = raw?.fid
   const hints: Record<Tool, string> = {
     zoom: 'Drag to zoom · scroll to zoom at the cursor · shift-scroll to pan · double-click to fit',
     integrate: 'Drag across a signal to integrate it',
@@ -611,6 +675,8 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
           {spec.kind === 'nmr' && <button className="btn sm" onClick={() => runAuto(spec, true, residual ? residual.found - residual.expected : 0)} title="Find signals, integrate and pick peaks automatically">Auto-analyse</button>}
           {isProton(spec) && <label className="row sp-peaks" style={{ gap: 6 }} title="Label each integrated signal with its shift, multiplicity and proton count">
             <input type="checkbox" checked={showSignals} onChange={e => setShowSignals(e.target.checked)} /> Signal labels</label>}
+          {pred && <label className="row sp-peaks" style={{ gap: 6 }} title="Show shifts predicted for your product from NMRShiftDB2">
+            <input type="checkbox" checked={showPred} onChange={e => setShowPred(e.target.checked)} /> <span className="swatch" style={{ background: PRED_COLOR }} />Predicted</label>}
           <label className="row sp-peaks" style={{ gap: 6 }} title="Label individual peak tops with their position">
             <input type="checkbox" checked={showPeaks} onChange={e => setShowPeaks(e.target.checked)} /> Peak positions
             {showPeaks && (is13C(spec) && spec.kind === 'nmr'
@@ -628,6 +694,22 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
           </span>
         </div>
 
+        {fid && (
+          <div className="sp-fid">
+            <span className="fld-cap" title={`Processed here from the raw FID: ${fid.points.toLocaleString()} complex points, zero-filled to ${fid.zeroFilled.toLocaleString()}, digital-filter delay ${fid.groupDelay.toFixed(1)} points removed, polynomial baseline.`}>Raw FID</span>
+            <label className="row" style={{ gap: 4 }}>LB
+              <select className="select" value={fid.lb} onChange={e => setLB(Number(e.target.value))} aria-label="Line broadening (Hz)">
+                {[0, 0.1, 0.3, 0.5, 1, 2, 5].map(v => <option key={v} value={v}>{v} Hz</option>)}
+              </select></label>
+            <label className="row sp-phase" style={{ gap: 4 }}>Phase 0
+              <input type="range" min={0} max={360} step={0.5} value={fid.ph0} onChange={e => setPhase(Number(e.target.value), fid.ph1)} aria-label="Zero-order phase (degrees)" />
+              <span className="num">{fid.ph0.toFixed(0)}°</span></label>
+            <label className="row sp-phase" style={{ gap: 4 }}>1
+              <input type="range" min={-720} max={720} step={1} value={fid.ph1} onChange={e => setPhase(fid.ph0, Number(e.target.value))} aria-label="First-order phase (degrees)" />
+              <span className="num">{fid.ph1.toFixed(0)}°</span></label>
+            <button className="btn ghost sm" onClick={() => setPhase(fid.auto.ph0, fid.auto.ph1)} title="Back to the automatic phase">Auto phase</button>
+          </div>
+        )}
         {(overlays.length > 0 || overlayErr) && (
           <div className="sp-legend">
             <span className="swatch" style={{ background: 'var(--ink)' }} />This spectrum
@@ -677,11 +759,13 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
         <div className="sp-side">
           <h4 className="sp-h4">Signals{withArea.length ? <span className="faint"> · {withArea.length}</span> : null}</h4>
           {withArea.length > 0 ? (
-            <table className="sp-table">
+            <div className="sp-table-wrap"><table className="sp-table">
               <thead><tr>
                 <th>{isProton(spec) ? 'δ (ppm)' : 'Range'}</th>
                 {isProton(spec) && <><th>Mult.</th><th>J (Hz)</th></>}
-                <th title="Type a value to make that signal the reference">{isProton(spec) ? 'H' : 'Integral'}</th><th />
+                <th title="Type a value to make that signal the reference">{isProton(spec) ? 'H' : 'Integral'}</th>
+                {pred && nucleus === '1H' && <th title="Atoms (numbered as in the structure below) whose predicted shift falls in this signal">Assigned to</th>}
+                <th />
               </tr></thead>
               <tbody>
                 {order.map(({ r, i }) => {
@@ -694,19 +778,32 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
                       {auto && <>
                         <td><select className="select" value={labels[i]?.mult || ''} onChange={e => setLabel(i, { mult: e.target.value })} aria-label="Multiplicity">
                           <option value="">{auto.mult} (auto)</option>{MULTIPLICITIES.map(m => <option key={m} value={m}>{m}</option>)}</select></td>
-                        <td><input className="input" style={{ width: 84 }} placeholder={auto.j.map(j => j.toFixed(1)).join(', ') || '—'} value={labels[i]?.j || ''}
+                        <td><input className="input sp-j" placeholder={auto.j.map(j => j.toFixed(1)).join(', ') || '—'} value={labels[i]?.j || ''}
                           onChange={e => setLabel(i, { j: e.target.value })} aria-label="Coupling constants in Hz" /></td>
                       </>}
                       <td><RefInput value={val} onCommit={v => { setRefIdx(i); setRefH(v) }} /></td>
+                      {pred && nucleus === '1H' && (() => {
+                        const a = assignment?.bySignal[i]
+                        if (!a || !a.groups.length) return <td className="warn-text" title="No predicted proton falls here: an impurity, solvent or a different compound?">none</td>
+                        const off = Math.abs(a.predH - val) > Math.max(0.6, 0.15 * a.predH)
+                        return <td title={a.groups.map(gi => `${groupLabel(pred.groups[gi])}: predicted ${pred.groups[gi].shift!.toFixed(2)} ${predMult(pred.groups[gi])}, ${pred.groups[gi].nH}H`).join('\n')}>
+                          {a.groups.map(gi => groupLabel(pred.groups[gi])).join(' + ')}
+                          <span className={off ? ' warn-text' : ' faint'}> ({a.predH}H)</span></td>
+                      })()}
                       <td><button className="btn ghost sm" onClick={() => removeRegion(i)} aria-label="Remove integral">×</button></td>
                     </tr>
                   )
                 })}
               </tbody>
-            </table>
+            </table></div>
           ) : <p className="faint" style={{ margin: '4px 0 0' }}>{spec.kind === 'nmr'
             ? 'Switch to Integrate and drag across each signal. Multiplicity and J are worked out automatically; type a proton count in any row to set the reference.'
             : 'Peaks above the threshold are listed below. Use Integrate to measure areas.'}</p>}
+          {nucleus && <PredictionPanel pred={pred} assignment={assignment} nucleus={nucleus} status={predStatus} err={productSmiles ? predErr : ''}
+            onStartUpdate={startUpdate} observedLabel={k => {
+              const o = observed[k]; if (!o) return ''
+              return nucleus === '1H' ? (o.hi - o.lo > 0.05 && o.center === (o.lo + o.hi) / 2 ? `${o.hi.toFixed(2)}–${o.lo.toFixed(2)}` : o.center.toFixed(2)) : o.center.toFixed(1)
+            }} />}
           <Checks spec={spec} structure={structure} regions={withArea} refIdx={refIdx} refH={refH} peaks={peaks}
             impurities={impurities} onRemoveImpurity={k => setImpurities(is => is.filter((_, j) => j !== k))} />
           <h4 className="sp-h4">Text for the record</h4>

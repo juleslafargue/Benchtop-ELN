@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import re
 import threading
 import hashlib
@@ -152,6 +153,12 @@ def _clean_analysis(a) -> dict | None:
                      "signals": [v for v in (_num(x) for x in (imp.get("signals") or [])[:6]) if v is not None]})
     if imps:
         out["impurities"] = imps
+    fid = a.get("fid")
+    if isinstance(fid, dict):  # phase/line-broadening chosen for a raw FID processed in the browser
+        ph0, ph1, lb = _num(fid.get("ph0")), _num(fid.get("ph1")), _num(fid.get("lb"))
+        if ph0 is not None and ph1 is not None:
+            out["fid"] = {"ph0": round(ph0 % 360, 2), "ph1": round(max(-1440.0, min(1440.0, ph1)), 2),
+                          "lb": round(max(0.0, min(50.0, lb)), 2) if lb is not None else None}
     overlays = [int(v) for v in (a.get("overlays") or [])[:4] if isinstance(v, (int, float))]
     if overlays:
         out["overlays"] = overlays
@@ -163,9 +170,10 @@ def _num(v):
     if v in (None, ""):
         return None
     try:
-        return float(v)
+        x = float(v)
     except (TypeError, ValueError):
         return None
+    return x if math.isfinite(x) else None
 
 
 @router.get("/experiments")

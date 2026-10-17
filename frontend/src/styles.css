@@ -311,7 +311,7 @@ table.plain td.num { text-align: right; }
 .spectrum.expanded { position: fixed; inset: 16px; z-index: 70; overflow: auto; box-shadow: 0 24px 70px rgba(10, 20, 30, .35);
   grid-template-columns: minmax(0, 1fr) minmax(340px, 440px); grid-auto-rows: auto; align-content: start; }
 .spectrum.expanded .sp-head, .spectrum.expanded .sp-toolbar { grid-column: 1 / -1; }
-.spectrum.expanded .sp-plot canvas { height: calc(100vh - 190px); min-height: 360px; }
+.spectrum.expanded .sp-plot canvas { height: calc(100vh - 330px); min-height: 360px; }
 .spectrum.expanded .sp-side { border-left: 1px solid var(--rule); padding-left: 16px; overflow: auto; max-height: calc(100vh - 190px); }
 .spectrum-backdrop { position: fixed; inset: 0; background: rgba(14, 22, 30, .5); z-index: 69; }
 .sp-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
@@ -329,6 +329,13 @@ table.plain td.num { text-align: right; }
 .sp-table td { padding: 3px 6px; border-bottom: 1px solid var(--rule); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sp-table .select, .sp-table .input { padding: 2px 6px; font-size: 13px; }
 .sp-table .select { width: 96px; }
+.sp-table .sp-j { width: 84px; }
+.sp-table-wrap { overflow-x: auto; max-width: 100%; }
+@media (max-width: 640px) {
+  .sp-table .select { width: 74px; } .sp-table .sp-j { width: 58px; }
+  .sp-table td, .sp-table th { padding-left: 4px; padding-right: 4px; }
+  .sp-table td:nth-last-child(2) { white-space: normal; min-width: 60px; }
+}
 .sp-table td:last-child { width: 28px; padding-right: 0; }
 .sp-table tr.is-ref td { background: color-mix(in srgb, var(--witnessed) 10%, transparent); }
 .sp-table tr.is-ref .sp-h { border-color: var(--witnessed); font-weight: 600; }
@@ -549,3 +556,21 @@ kbd { font: 11px var(--sans); border: 1px solid var(--rule-strong); border-botto
   .search-hit { gap: 10px; padding: 10px 12px; }
   .search-busy { display: none; }
 }
+
+/* ---------- NMR prediction & raw FID */
+.sp-fid { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 13px; padding: 6px 10px; background: var(--paper-2); border-radius: 8px; }
+.sp-fid .select { padding: 2px 6px; font-size: 13px; }
+.sp-phase input[type=range] { width: 140px; }
+.sp-fid .num { min-width: 36px; font-variant-numeric: tabular-nums; }
+.pred-panel { display: flex; flex-direction: column; gap: 8px; }
+.pred-grid { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.pred-struct { width: 100%; height: auto; background: var(--paper-2); border-radius: 8px; }
+.pred-table { font-size: 13px; }
+.pred-table td, .pred-table th { padding: 4px 6px; }
+.pred-table tr:hover, .pred-table tr:focus { background: var(--paper-2); outline: none; }
+.conf { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; padding: 0 5px; border-radius: 4px; margin-left: 2px; }
+.conf.high { background: color-mix(in srgb, var(--witnessed) 20%, transparent); }
+.conf.medium { background: color-mix(in srgb, var(--signed) 22%, transparent); }
+.conf.low { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.warn-text { color: color-mix(in srgb, var(--danger) 80%, var(--ink)); }
+@media (max-width: 700px) { .pred-grid { grid-template-columns: 1fr; } .pred-struct { max-width: 260px; } }

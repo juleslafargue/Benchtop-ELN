@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../App'
+import type { NmrStatus } from '../components/Prediction'
 import { api, when, type AuditEvent, type Role, type User } from '../api'
 import Modal from '../components/Modal'
 
@@ -47,6 +48,33 @@ function UserForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => vo
 }
 
 interface BackupInfo { directory: string; keep: number; interval_hours: number; backups: { name: string; size: number; created_at: string }[] }
+
+function NmrData() {
+  const [st, setSt] = useState<NmrStatus | null>(null)
+  const [err, setErr] = useState('')
+  const load = () => api.get<NmrStatus>('/api/nmr/status').then(setSt).catch(e => setErr(e.message))
+  useEffect(() => { load() }, [])
+  useEffect(() => { if (!st?.updating) return; const t = setInterval(load, 2500); return () => clearInterval(t) }, [st?.updating])
+  const start = async () => { setErr(''); try { setSt(await api.post<NmrStatus>('/api/nmr/update', {})) } catch (e: any) { setErr(e.message) } }
+  const m = st?.meta
+  return (
+    <section className="stack" style={{ gap: 8 }}>
+      <div className="spread"><h2 style={{ fontSize: 17 }}>NMR prediction data</h2>
+        <button className="btn sm" disabled={!st || st.updating} onClick={start}>{st?.updating ? 'Updating…' : st?.available ? 'Update now' : 'Download'}</button></div>
+      <p className="faint" style={{ margin: 0 }}>Predicted ¹H and ¹³C shifts come from NMRShiftDB2, an open database of assigned spectra (nmrshiftdb2 data licence: attribution, share-alike).
+        Benchtop ships with a table built from a 2023 extract; it checks every {st?.refresh_days ?? 30} days while running and rebuilds when NMRShiftDB2 publishes a newer export (or now, with Update now or <code>./benchtop update-nmr-data</code>). Downloading and building takes a few minutes.</p>
+      {st?.updating && <p style={{ margin: 0 }}><b>Working:</b> {st.progress}</p>}
+      {st?.last_error && <p className="error" style={{ margin: 0 }}>Last update failed: {st.last_error}</p>}
+      {err && <p className="error" style={{ margin: 0 }}>{err}</p>}
+      {m ? <dl className="kv"><dt>Source</dt><dd>{m.source}</dd><dt>Table</dt><dd>{m.table}</dd>
+        <dt>Built</dt><dd>{when(m.built_at)}{st?.age_days != null ? ` · ${Math.round(st.age_days)} days ago` : ''}</dd>
+        <dt>Structures</dt><dd>{Number(m.molecules).toLocaleString()}</dd>
+        <dt>Assigned shifts</dt><dd>{Number(m.assignments_13C).toLocaleString()} ¹³C · {Number(m.assignments_1H).toLocaleString()} ¹H</dd>
+        <dt>Checks for updates</dt><dd>{(st as any)?.auto_update ? `monthly${(st as any)?.last_check ? `, last ${when((st as any).last_check)}` : ''}` : 'off (BENCHTOP_NMR_AUTO_UPDATE=off)'}</dd></dl>
+        : st && !st.updating && <p className="faint" style={{ margin: 0 }}>No prediction table found.</p>}
+    </section>
+  )
+}
 
 function Backups() {
   const { toast } = useApp()
@@ -112,6 +140,7 @@ export default function Admin() {
             ))}</tbody></table>
         </div>
       </section>
+      <NmrData />
       <Backups />
       <section className="stack" style={{ gap: 8 }}>
         <div className="spread"><h2 style={{ fontSize: 17 }}>Audit trail</h2>

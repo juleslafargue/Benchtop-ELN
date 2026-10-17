@@ -15,7 +15,7 @@ from . import __version__, backup
 from .config import settings
 from .db import engine, init_db
 from .models import Role, User
-from .routers import admin, auth, chemistry, dashboard, experiments, materials, reactions, safety as safety_router, search
+from .routers import admin, auth, chemistry, dashboard, experiments, materials, reactions, safety as safety_router, search, nmr as nmr_router
 from .security import hash_password
 
 
@@ -63,6 +63,13 @@ async def _housekeeping_loop() -> None:
         except Exception:
             log.exception("Obsidian sync failed")
         try:
+            from . import nmrdata
+            r = await asyncio.to_thread(nmrdata.maybe_update)
+            if r and r.get("updated"):
+                log.info("NMR shift table rebuilt from NMRShiftDB2: %s structures", r["molecules"])
+        except Exception:
+            log.exception("NMR data update failed")
+        try:
             res = await asyncio.to_thread(_refresh_safety)
             if res and res["checked"]:
                 log.info("Safety data: %s checked, %s changed", res["checked"], res["changed"])
@@ -87,7 +94,7 @@ app = FastAPI(title="Benchtop ELN", version=__version__, lifespan=lifespan,
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
-for r in (auth, experiments, materials, chemistry, search, reactions, admin, dashboard, safety_router):
+for r in (auth, experiments, materials, chemistry, search, reactions, admin, dashboard, safety_router, nmr_router):
     app.include_router(r.router)
 
 

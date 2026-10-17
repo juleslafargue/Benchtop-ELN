@@ -15,3 +15,12 @@ typical literature shifts for 4-methoxybiphenyl and 4-bromoanisole in CDCl₃.
 Drag them onto the demo experiment "Suzuki coupling of 4-bromoanisole with phenylboronic acid", whose product
 formula (C₁₃H₁₂O) is used to scale integrals and check the structure. To compare, open the crude spectrum and
 click **Compare…**, then pick the starting material.
+
+## Raw FIDs (real data)
+
+`ibuprofen_1H_rawFID.zip` and `ibuprofen_13C_rawFID.zip` are unprocessed Bruker experiments (just
+`fid` and `acqus`, no `pdata`) of ibuprofen in CDCl3. Drop one onto an experiment and Benchtop
+does the Fourier transform, phasing and baseline correction itself; draw ibuprofen
+(`CC(C)Cc1ccc(cc1)C(C)C(=O)O`) as the product to see the predicted shifts and the assignment.
+From cheminfo/bruker-data-test (https://github.com/cheminfo/bruker-data-test), MIT licence,
+© 2022 cheminfo.

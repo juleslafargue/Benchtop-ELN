@@ -14,7 +14,9 @@ export interface Spectrum {
   frequency?: number
   solvent?: string
   isStick: boolean  // peak table / MS: draw as sticks
+  fid?: import('./fid').FidData // present when Benchtop processed a raw FID itself (phase can be adjusted)
 }
+export interface FidOptions { lb?: number; ph0?: number; ph1?: number }
 
 const SQZ: Record<string, number> = { '@': 0, A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, I: 9, a: -1, b: -2, c: -3, d: -4, e: -5, f: -6, g: -7, h: -8, i: -9 }
 const DIF: Record<string, number> = { '%': 0, J: 1, K: 2, L: 3, M: 4, N: 5, O: 6, P: 7, Q: 8, R: 9, j: -1, k: -2, l: -3, m: -4, n: -5, o: -6, p: -7, q: -8, r: -9 }
@@ -374,16 +376,28 @@ function brukerParams(text: string): Record<string, string> {
 }
 
 /** Read pdata/N/1r + procs (+ acqus for nucleus/solvent) from a zipped Bruker experiment. */
-export async function parseBrukerZip(buf: ArrayBuffer, filename: string): Promise<Spectrum> {
+export async function parseBrukerZip(buf: ArrayBuffer, filename: string, fidOpts: FidOptions = {}): Promise<Spectrum> {
   const { unzipSync, strFromU8 } = await import('fflate')
   const files = unzipSync(new Uint8Array(buf))
-  const names = Object.keys(files)
+  const names = Object.keys(files).filter(n => !/(^|\/)__MACOSX\//.test(n) && !/(^|\/)\._/.test(n)) // macOS zip junk
   const real = names.filter(n => /(^|\/)pdata\/\d+\/1r$/.test(n)).sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b, undefined, { numeric: true }))
   if (!real.length) {
     const jdx = names.find(n => /\.(jdx|dx|jcamp)$/i.test(n))
     if (jdx) return parseJcamp(strFromU8(files[jdx]))
-    if (names.some(n => /(^|\/)fid$/.test(n))) {
-      throw new Error('This Bruker folder only has the raw FID. Process it once in TopSpin or MestReNova (so a pdata/1/1r file exists), or export a JCAMP-DX file, then add it again.')
+    const fids = names.filter(n => /(^|\/)fid$/.test(n)).sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b, undefined, { numeric: true }))
+    if (fids.length) {
+      const dir = fids[0].slice(0, -3)
+      if (!files[dir + 'acqus']) throw new Error('Found a raw FID but not its acqus file, so it can\'t be processed. Zip the whole experiment folder.')
+      const acqus = brukerParams(strFromU8(files[dir + 'acqus']))
+      if (Number(acqus.PARMODE || 0) > 0 || names.some(n => n === dir + 'ser')) throw new Error('This is a 2D experiment; only 1D FIDs can be processed here.')
+      const { processFid } = await import('./fid')
+      const f = processFid(files[fids[0]], acqus, fidOpts)
+      const nucleus = acqus.NUC1 || '1H'
+      return {
+        title: `${filename.replace(/\.zip$/i, '')} (${dir.replace(/\/$/, '') || 'experiment'})`, xLabel: 'δ (ppm)', yLabel: 'Intensity',
+        kind: 'nmr', reversed: true, dips: false, nucleus, frequency: Number(acqus.SFO1) || Number(acqus.BF1), solvent: acqus.SOLVENT || '',
+        isStick: false, x: f.x, y: f.y, fid: f,
+      }
     }
     throw new Error('No processed Bruker spectrum (pdata/…/1r) or JCAMP-DX file found in this zip.')
   }
@@ -421,9 +435,9 @@ function finishPublic(meta: Omit<Spectrum, 'x' | 'y'>, xs: number[], ys: number[
 }
 
 /** Any supported file, from raw bytes. */
-export async function parseSpectrumBuffer(buf: ArrayBuffer, filename: string): Promise<Spectrum> {
+export async function parseSpectrumBuffer(buf: ArrayBuffer, filename: string, fidOpts: FidOptions = {}): Promise<Spectrum> {
   const head = new Uint8Array(buf, 0, Math.min(4, buf.byteLength))
-  if (head[0] === 0x50 && head[1] === 0x4b) return parseBrukerZip(buf, filename) // "PK" = zip
+  if (head[0] === 0x50 && head[1] === 0x4b) return parseBrukerZip(buf, filename, fidOpts) // "PK" = zip
   return parseSpectrumFile(new TextDecoder().decode(buf), filename)
 }
 
@@ -512,13 +526,19 @@ function segment(s: Spectrum, cuts: { lo: number; hi: number }[]) {
  *  - Residual lab solvents (EtOAc, Et₂O, hexane…) are recognised, kept out of the integrals and quantified,
  *    but only when every one of their signals is present and they are small next to the product, so a
  *    product's own ethyl ester or methyl singlet is never mistaken for a solvent.
- *  - With `expectedH` (protons in the product formula) the integrals are scaled to add up to it. */
-export function autoAnalyse1H(s: Spectrum, expectedH: number | null, solventShift = 0, productMW: number | null = null): AutoResult {
+ *  - With `expectedH` (protons in the product formula) the integrals are scaled to add up to it.
+ *  - With `productShifts` (predicted 1H shifts of the product), a solvent signal sitting where the product
+ *    is expected to have one isn't evidence for the solvent: ibuprofen's 3.70 q and 1.85 m look exactly
+ *    like THF, and its aromatic doublets like toluene. A solvent then needs two signals the product
+ *    can't explain. */
+export function autoAnalyse1H(s: Spectrum, expectedH: number | null, solventShift = 0, productMW: number | null = null, productShifts: number[] = []): AutoResult {
   const freq = s.frequency || 400
   const point = (p: number) => ({ lo: p - 3.5 / freq, hi: p + 3.5 / freq })
   const fixed = [...solventMarkers(s).map(m => m.ppm), 0].map(p => point(p + solventShift))
+  const explained = (w: { lo: number; hi: number }) => productShifts.some(p => p + solventShift > w.lo - 0.12 && p + solventShift < w.hi + 0.12)
   const cands = findImpurityCandidates(s, solventShift)
     .filter(c => c.def.signals.filter(g => g.mult !== 'm').length <= c.windows.length || c.windows.length === c.def.signals.length)
+    .filter(c => !productShifts.length || c.windows.filter(w => !explained(w)).length >= Math.min(2, c.def.signals.length))
 
   const scale = (areas: number[]) => {
     const total = areas.reduce((p, q) => p + q, 0)
