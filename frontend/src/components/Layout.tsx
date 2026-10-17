@@ -39,6 +39,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         <nav className="nav">
           <NavLink to="/" end>Dashboard</NavLink>
           <NavLink to="/reactions">Reactions</NavLink>
+          <NavLink to="/compounds">Compounds</NavLink>
           <NavLink to="/search">Search</NavLink>
           <NavLink to="/materials">Materials</NavLink>
           <NavLink to="/inventory">Inventory</NavLink>

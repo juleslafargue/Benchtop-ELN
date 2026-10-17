@@ -240,7 +240,7 @@ dialog.modal.wide { max-width: min(1100px, 96vw); }
 .login-card h1 { font-family: var(--serif); font-weight: 500; font-size: 34px; margin: 14px 0 4px; }
 
 /* materials */
-.mat-row { grid-template-columns: 96px 1.4fr 1fr 110px 90px 90px; }
+.mat-row { grid-template-columns: 96px 1.4fr 1fr 110px minmax(0, 130px) 90px 90px; }
 .mat-thumb { width: 96px; height: 58px; background: var(--paper-2); border-radius: 6px; display: grid; place-items: center; overflow: hidden; }
 .mat-thumb img { max-width: 100%; max-height: 100%; }
 .kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; font-size: 14px; margin: 0; }
@@ -451,3 +451,40 @@ kbd { font: 11px var(--sans); border: 1px solid var(--rule-strong); border-botto
 .sp-cap { font-size: 12px; color: var(--ink-3); }
 .sp-toolbar kbd { font-size: 10.5px; padding: 0 4px; margin-left: 3px; opacity: .65; border: 1px solid currentColor; border-radius: 4px; background: transparent; color: inherit; }
 .sp-h4 { margin: 4px 0 0; font-size: 12.5px; font-weight: 600; color: var(--ink-2); text-transform: none; }
+
+/* ---------- safety */
+.ghs { display: inline-block; flex: none; }
+.ghs-fallback { flex: none; }
+.safety-badge { display: inline-flex; gap: 2px; align-items: center; flex-wrap: wrap; }
+.signal { font-weight: 700; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; }
+.signal.danger { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--ink); }
+.signal.warning { background: color-mix(in srgb, var(--signed) 22%, transparent); color: var(--ink); }
+.flag-chip { font-size: 12px; font-weight: 600; border: 1px solid var(--rule-strong); border-radius: 99px; padding: 1px 9px; background: var(--paper-2); }
+.ghs-block { display: flex; flex-direction: column; gap: 8px; }
+.hlist { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.5; }
+.hlist li.minor { color: var(--ink-3); }
+.hlist b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.others summary { cursor: pointer; font-size: 13px; color: var(--ink-2); }
+.pcodes { font-size: 13px; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.provenance { font-size: 12.5px; color: var(--ink-3); margin: 0; }
+.lookup-card { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border: 1px solid var(--rule); border-radius: 10px; background: var(--paper-2); }
+.risk { display: flex; flex-direction: column; gap: 12px; }
+.risk-warn { display: flex; gap: 10px; align-items: flex-start; padding: 8px 12px; border-radius: 8px; font-size: 14px; border-left: 4px solid; }
+.risk-warn.danger { background: color-mix(in srgb, var(--danger) 10%, var(--paper)); border-color: var(--danger); }
+.risk-warn.warning { background: color-mix(in srgb, var(--signed) 12%, var(--paper)); border-color: var(--signed); }
+.risk-warn.info { background: var(--paper-2); border-color: var(--rule-strong); }
+.risk-warn .lvl { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; flex: none; width: 62px; padding-top: 2px; }
+.risk-table td { vertical-align: top; }
+.risk-table .codes { font-size: 12.5px; color: var(--ink-2); }
+.metrics { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; padding: 8px 0 0; color: var(--ink-2); }
+.metrics b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.heat { border-collapse: separate; border-spacing: 3px; }
+.heat th { font-size: 12.5px; font-weight: 600; color: var(--ink-2); padding: 2px 6px; text-align: center; white-space: nowrap; }
+.heat td { padding: 0; }
+.heat .cell { width: 100%; min-width: 64px; height: 46px; border-radius: 6px; border: 2px solid transparent; font: 600 15px/1 var(--sans); font-variant-numeric: tabular-nums; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.heat .cell.best { border-color: var(--ink); }
+.heat .cell small { font-size: 10.5px; font-weight: 500; opacity: .85; }
+.heat .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.heat-scale { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.heat-scale .ramp { width: 120px; height: 10px; border-radius: 3px; }
+.chip.on { background: var(--accent-soft); border-color: var(--accent); }

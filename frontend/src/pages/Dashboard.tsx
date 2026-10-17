@@ -20,7 +20,7 @@ interface DashData {
   lists: Record<ListKind, (ExperimentSummary & { reason?: string; returned_by?: string })[]>
   stats: { this_month: number; last_month: number; witnessed_this_month: number; yields: YieldPoint[] }
   spectra: { id: number; filename: string; experiment_id: number; eid: string; title: string; created_at: string }[]
-  inventory: { low: InvRow[]; expiring: (InvRow & { expires_at: string; expired: boolean })[]; low_fraction: number; expiry_days: number }
+  inventory: { low: InvRow[]; expiring: (InvRow & { expires_at: string; expired: boolean })[]; safety_changes?: { material_id: number | null; material: string; changed_at: string; change: { added: string[]; removed: string[] } | null }[]; low_fraction: number; expiry_days: number }
 }
 interface InvRow { lot_id: number; barcode: string; material_id: number; material: string; amount: number; unit: string; location: string; fraction?: number }
 
@@ -151,9 +151,14 @@ export default function Dashboard() {
       ) : <p className="w-empty">Drop spectra onto an experiment and they'll be listed here.</p>
       case 'inventory': {
         const { low, expiring } = data.inventory
-        if (!low.length && !expiring.length) return <p className="w-empty">Nothing running low or expiring in the next {data.inventory.expiry_days} days.</p>
+        const changes = data.inventory.safety_changes || []
+        if (!low.length && !expiring.length && !changes.length) return <p className="w-empty">Nothing running low or expiring in the next {data.inventory.expiry_days} days.</p>
         return (
           <ul className="w-list">
+            {changes.map((c, k) => <li key={`s${k}`}><Link to={c.material_id ? `/materials/${c.material_id}` : '/materials'}>
+              <span className="w-flag bad">Safety</span>
+              <span className="w-main"><span className="w-title">{c.material}: classification changed</span>
+                <span className="faint">{[c.change?.added?.length ? `now ${c.change.added.join(', ')}` : '', c.change?.removed?.length ? `dropped ${c.change.removed.join(', ')}` : ''].filter(Boolean).join(' · ') || 'signal word or pictograms changed'} · {new Date(c.changed_at).toLocaleDateString()}</span></span></Link></li>)}
             {low.map(r => <li key={`l${r.lot_id}`}><Link to={`/materials/${r.material_id}`}>
               <span className="w-flag warn">Low</span>
               <span className="w-main"><span className="w-title">{r.material}</span><span className="faint">{r.barcode} · {fmt(r.amount, 3)} {r.unit} left ({Math.round((r.fraction || 0) * 100)}%)</span></span></Link></li>)}

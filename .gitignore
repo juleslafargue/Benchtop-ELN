@@ -7,4 +7,5 @@ data/
 *.db
 .env
 .venv/
+backend/.venv/
 .DS_Store

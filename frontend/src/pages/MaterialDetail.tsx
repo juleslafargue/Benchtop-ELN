@@ -6,6 +6,7 @@ import { StatusDot } from '../components/ExperimentList'
 import { Mol, NumInput } from '../components/bits'
 import Modal from '../components/Modal'
 import { MaterialForm } from './Materials'
+import { GhsDetails, type SafetySummary } from '../components/Safety'
 
 const UNITS = ['mg', 'g', 'kg', 'uL', 'mL', 'L']
 
@@ -47,7 +48,8 @@ export function LotHistory({ lot, onClose }: { lot: Lot; onClose: () => void }) 
 
 export default function MaterialDetail() {
   const { id } = useParams()
-  const { canWrite } = useApp()
+  const { canWrite, toast } = useApp()
+  const [refreshing, setRefreshing] = useState(false)
   const [m, setM] = useState<Material | null>(null)
   const [editing, setEditing] = useState(false)
   const [addingLot, setAddingLot] = useState(false)
@@ -76,10 +78,31 @@ export default function MaterialDetail() {
           <dt>InChIKey</dt><dd className="hash">{m.inchikey || '—'}</dd>
           <dt>SMILES</dt><dd className="hash">{m.smiles || '—'}</dd>
           <dt>Synonyms</dt><dd>{m.synonyms || '—'}</dd>
-          <dt>Hazards</dt><dd>{m.hazards || '—'}</dd>
+          {m.hazards && <><dt>Hazard notes</dt><dd>{m.hazards}</dd></>}
           {m.notes && <><dt>Notes</dt><dd>{m.notes}</dd></>}
         </dl>
       </div>
+
+      <section className="stack" style={{ gap: 8 }}>
+        <div className="spread"><h2 style={{ fontSize: 17 }}>Safety (GHS)</h2>
+          <button className="btn sm" disabled={refreshing} onClick={async () => {
+            setRefreshing(true)
+            try { await api.post(`/api/materials/${m.id}/safety/refresh`, {}); await load(); toast('Safety data refreshed from PubChem') }
+            catch (e: any) { toast(e.message) } finally { setRefreshing(false) }
+          }}>{refreshing ? 'Checking PubChem…' : 'Refresh now'}</button></div>
+        {(m.safety as SafetySummary | null)?.change_unacknowledged && (() => {
+          const s = m.safety as SafetySummary
+          return <div className="sp-note warn" role="status"><span><b>The classification changed</b> at the last check{s.change?.added?.length ? `: now includes ${s.change.added.join(', ')}` : ''}
+            {s.change?.removed?.length ? `${s.change?.added?.length ? ';' : ':'} no longer lists ${s.change.removed.join(', ')}` : ''}
+            {s.change?.signal_before !== s.change?.signal_after ? ` (signal word ${s.change?.signal_before || 'none'} → ${s.change?.signal_after || 'none'})` : ''}.
+            Review your risk assessments that use it.</span>
+            <button className="btn sm" onClick={async () => { await api.post(`/api/materials/${m.id}/safety/acknowledge`, {}); load() }}>Mark as reviewed</button></div>
+        })()}
+        <div className="panel panel-pad">
+          {m.safety ? <GhsDetails s={m.safety as SafetySummary} /> : <p className="faint">No safety data yet. Click Refresh now to fetch it from PubChem.</p>}
+          <p className="faint" style={{ margin: '8px 0 0', fontSize: 12.5 }}>Public classifications for the pure substance. The supplier's SDS for your actual container (grade, solution, stabiliser) takes precedence.</p>
+        </div>
+      </section>
 
       <section className="stack" style={{ gap: 8 }}>
         <div className="spread"><h2 style={{ fontSize: 17 }}>Lots</h2>{canWrite && <button className="btn sm" onClick={() => setAddingLot(true)}>Receive lot</button>}</div>

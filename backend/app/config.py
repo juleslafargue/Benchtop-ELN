@@ -34,6 +34,9 @@ class Settings:
         obs = os.environ.get("BENCHTOP_OBSIDIAN_DIR")
         self.obsidian_dir = Path(obs).expanduser().resolve() if obs else None  # hourly Markdown sync target
         self.port = int(os.environ.get("BENCHTOP_PORT", "8000"))
+        # Safety data from PubChem (public GHS classifications); set BENCHTOP_PUBCHEM=off to work fully offline
+        self.pubchem_enabled = os.environ.get("BENCHTOP_PUBCHEM", "on").lower() not in ("0", "off", "false", "no")
+        self.safety_refresh_days = float(os.environ.get("BENCHTOP_SAFETY_REFRESH_DAYS", "30"))
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.attachments_dir.mkdir(parents=True, exist_ok=True)
 

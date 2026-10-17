@@ -43,6 +43,8 @@ class EntryKind(str, Enum):
     file = "file"
     purification = "purification"
     characterization = "characterization"
+    safety = "safety"
+    screen = "screen"
 
 
 class User(SQLModel, table=True):
@@ -146,6 +148,7 @@ class Material(SQLModel, table=True):
     density: Optional[float] = None  # g/mL
     synonyms: str = ""
     hazards: str = ""
+    pubchem_cid: Optional[int] = None
     notes: str = Field(default="", sa_column=Column(Text))
     source_experiment_id: Optional[int] = Field(default=None, foreign_key="experiment.id")
     created_by: int = Field(foreign_key="user.id")
@@ -194,3 +197,20 @@ class AuditEvent(SQLModel, table=True):
     details: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     prev_hash: str = ""
     hash: str = ""
+
+
+class ChemSafety(SQLModel, table=True):
+    """GHS data for one chemical as last fetched from PubChem, with provenance and change tracking.
+    Keyed by InChIKey when there is a structure, otherwise 'cas:<CAS>' or 'name:<lowercase name>'."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    key: str = Field(index=True, unique=True)
+    cid: Optional[int] = None
+    title: str = ""
+    data: Optional[dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+    status: str = "pending"  # ok | unclassified | not_found | error | pending
+    error: str = ""
+    fetched_at: Optional[NaiveDatetime] = None  # last successful fetch
+    checked_at: Optional[NaiveDatetime] = None  # last attempt (successful or not)
+    changed_at: Optional[NaiveDatetime] = None  # last time the classification changed between fetches
+    change: Optional[dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+    acknowledged_at: Optional[NaiveDatetime] = None

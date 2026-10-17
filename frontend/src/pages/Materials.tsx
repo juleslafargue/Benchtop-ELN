@@ -4,12 +4,20 @@ import { useApp } from '../App'
 import { api, fmt, type Material } from '../api'
 import { Mol, NumInput, StructureEditor, useDebounced } from '../components/bits'
 import Modal from '../components/Modal'
+import { LookupBox, LookupCard, SafetyBadge, type LookupResult } from '../components/Safety'
 
 export function MaterialForm({ initial, onSaved, onClose }: { initial?: Material; onSaved: (m: Material) => void; onClose: () => void }) {
   const [f, setF] = useState({
     name: initial?.name || '', kind: initial?.kind || 'reagent', smiles: initial?.smiles || '', cas: initial?.cas || '',
     density: initial?.density ?? null as number | null, synonyms: initial?.synonyms || '', hazards: initial?.hazards || '', notes: initial?.notes || '',
+    pubchem_cid: initial?.pubchem_cid ?? null as number | null,
   })
+  const [found, setFound] = useState<LookupResult | null>(null)
+  const useFound = (r: LookupResult) => {
+    setFound(r)
+    setF(prev => ({ ...prev, name: prev.name || r.name, cas: r.cas || prev.cas, smiles: r.smiles || prev.smiles,
+      density: prev.density ?? r.density, pubchem_cid: r.cid }))
+  }
   const [drawing, setDrawing] = useState(false)
   const [err, setErr] = useState('')
   const [props, setProps] = useState<{ formula: string; mw: number } | null>(null)
@@ -33,8 +41,12 @@ export function MaterialForm({ initial, onSaved, onClose }: { initial?: Material
       <button className="btn primary" disabled={!f.name.trim()} onClick={save}>{initial ? 'Save changes' : 'Register'}</button>
     </>}>
       <div className="stack">
+        {!initial && <div className="stack" style={{ gap: 8 }}>
+          <LookupBox onResult={useFound} autoFocus label="Fill from PubChem" />
+          {found && <LookupCard r={found}><span className="faint">Filled in below: check the name, and the density if it's a solution or a solid.</span></LookupCard>}
+        </div>}
         <div className="form-grid">
-          <label className="field">Name<input className="input" autoFocus value={f.name} onChange={set('name')} /></label>
+          <label className="field">Name<input className="input" value={f.name} onChange={set('name')} /></label>
           <label className="field">Type<select className="select" value={f.kind} onChange={set('kind')}>
             {['reagent', 'solvent', 'sample', 'product', 'other'].map(k => <option key={k}>{k}</option>)}</select></label>
           <label className="field">CAS number<input className="input" value={f.cas} onChange={set('cas')} placeholder="e.g. 64-17-5" /></label>
@@ -49,7 +61,7 @@ export function MaterialForm({ initial, onSaved, onClose }: { initial?: Material
         {f.smiles && <div className="row"><div className="mat-thumb" style={{ width: 160, height: 100 }}><Mol smiles={f.smiles} w={320} h={200} /></div>
           <span className="muted">{props ? `${props.formula} · ${fmt(props.mw, 3)} g/mol` : 'Unrecognised structure'}</span></div>}
         <label className="field">Synonyms<input className="input" value={f.synonyms} onChange={set('synonyms')} /></label>
-        <label className="field">Hazards<input className="input" value={f.hazards} onChange={set('hazards')} placeholder="e.g. H225, H319" /></label>
+        <label className="field">Hazard notes<input className="input" value={f.hazards} onChange={set('hazards')} placeholder="Anything extra from the supplier's SDS, e.g. stabilised with BHT" /></label>
         <label className="field">Notes<textarea className="input" rows={2} value={f.notes} onChange={set('notes')} /></label>
         {err && <p className="error">{err}</p>}
       </div>
@@ -90,6 +102,7 @@ export default function Materials() {
                 <span><b style={{ fontWeight: 600 }}>{m.name}</b><span className="faint" style={{ display: 'block' }}>{m.mid} · {m.kind}</span></span>
                 <span className="hide-sm muted">{m.formula}</span>
                 <span className="hide-sm muted">{m.cas}</span>
+                <span className="hide-sm"><SafetyBadge s={m.safety} /></span>
                 <span className="muted">{fmt(m.mw, 2)}</span>
                 <span className="faint">{m.available_lots} lot{m.available_lots === 1 ? '' : 's'}</span>
               </Link>

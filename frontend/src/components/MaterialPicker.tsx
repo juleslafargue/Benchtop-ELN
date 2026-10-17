@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { api, fmt, type Material, type StoichRow } from '../api'
 import { Mol, useDebounced } from './bits'
 import Modal from './Modal'
+import { LookupBox, LookupCard, type LookupResult } from './Safety'
 
-export default function MaterialPicker({ onPick, onClose }: {
-  onPick: (m: Material, role: StoichRow['role']) => void; onClose: () => void
+export default function MaterialPicker({ onPick, onLookup, onClose }: {
+  onPick: (m: Material, role: StoichRow['role']) => void; onLookup?: (r: LookupResult, role: StoichRow['role']) => void; onClose: () => void
 }) {
+  const [found, setFound] = useState<LookupResult | null>(null)
+  const [regErr, setRegErr] = useState('')
   const [q, setQ] = useState('')
   const [role, setRole] = useState<StoichRow['role']>('reagent')
   const [items, setItems] = useState<Material[]>([])
@@ -33,8 +36,30 @@ export default function MaterialPicker({ onPick, onClose }: {
             </button>
           </li>
         ))}
-        {!items.length && <li className="empty">No matching materials. Register new ones on the Materials page.</li>}
+        {!items.length && <li className="empty">Nothing in your registry matches{q ? ` “${q}”` : ''}.</li>}
       </ul>
+      {onLookup && <div className="stack" style={{ gap: 8, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--rule)' }}>
+        <span className="fld-cap">Not registered? Find it on PubChem</span>
+        <LookupBox key={dq} initial={q} onResult={setFound} label="Search PubChem" />
+        {found && <LookupCard r={found}>
+          <div className="row" style={{ gap: 6 }}>
+            {found.registered
+              ? <button className="btn sm primary" onClick={async () => onPick(await api.get<Material>(`/api/materials/${found.registered!.id}`), role)}>Add {found.registered.mid}</button>
+              : <>
+                <button className="btn sm primary" onClick={async () => {
+                  setRegErr('')
+                  try {
+                    const m = await api.post<Material>('/api/materials', { name: found.name, smiles: found.smiles, cas: found.cas, kind: role === 'solvent' ? 'solvent' : 'reagent',
+                      density: role === 'solvent' ? found.density : null, pubchem_cid: found.cid })
+                    onPick(m, role)
+                  } catch (e: any) { setRegErr(e.message) }
+                }}>Register and add</button>
+                <button className="btn sm" onClick={() => onLookup(found, role)}>Add without registering</button>
+              </>}
+          </div>
+          {regErr && <p className="error" style={{ margin: 0 }}>{regErr}</p>}
+        </LookupCard>}
+      </div>}
     </Modal>
   )
 }

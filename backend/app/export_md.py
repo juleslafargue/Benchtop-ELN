@@ -210,6 +210,25 @@ def experiment_markdown(session: Session, exp: Experiment, asset_dir: str = "_as
                         _fmt(r.get("actual_mass_mg") if r.get("role") == "product" else r.get("mass_mg"), 2),
                         _fmt(r.get("volume_ml"), 3), f"{_fmt(r.get('yield_pct'), 1)}%" if r.get("yield_pct") is not None else ""]) + " |")
                 out.append("")
+        elif e.kind == EntryKind.safety:
+            snap = c.get("snapshot") or {}
+            for ch in snap.get("chemicals") or []:
+                out.append(f"- **{ch.get('name', '')}**" + (f" ({ch['signal']})" if ch.get("signal") else "") + ": " + "; ".join(ch.get("hazards") or []))
+            for w in snap.get("warnings") or []:
+                out.append(f"> [!warning] {w.get('text', '')}")
+            for k, label in (("controls", "Controls"), ("waste", "Waste"), ("emergency", "Emergency")):
+                if c.get(k):
+                    out.append(f"- **{label}:** {c[k]}")
+            notes = html_to_md(c.get("notes_html", ""))
+            out += ([notes] if notes else []) + [""]
+        elif e.kind == EntryKind.screen:
+            xs, ys, cells = c.get("x_levels") or [], c.get("y_levels") or [], c.get("cells") or {}
+            if xs and ys:
+                out += [f"{c.get('response', '')}: {c.get('y_name', '')} (rows) × {c.get('x_name', '')} (columns)", "",
+                        "| | " + " | ".join(xs) + " |", "|---|" + "---|" * len(xs)]
+                out += ["| " + yv + " | " + " | ".join(_fmt((cells.get(f"{i},{j}") or {}).get("value"), 1) for j in range(len(xs))) + " |"
+                        for i, yv in enumerate(ys)]
+                out.append("")
         elif e.kind == EntryKind.purification:
             items = [("Method", PURIF.get(c.get("method"), c.get("method"))), ("Stationary phase", c.get("stationary_phase")),
                      ("Eluent", c.get("eluent")), ("Rf", (c.get("rf") or "") + (f" ({c['rf_eluent']})" if c.get("rf_eluent") else "")),

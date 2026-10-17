@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import re
 import hashlib
 import html
@@ -101,16 +102,23 @@ DEFAULT_CONTENT: dict[EntryKind, dict] = {
     EntryKind.purification: {"method": "column", "stationary_phase": "", "eluent": "", "rf": "",
                              "rf_eluent": "", "isolated_mg": None, "appearance": "", "notes_html": ""},
     EntryKind.characterization: {"items": [{"technique": "1H NMR", "conditions": "", "data": "", "attachment_id": None}]},
+    EntryKind.safety: {"controls": "", "waste": "", "emergency": "", "notes_html": "", "snapshot": None},
+    EntryKind.screen: {"x_name": "Temperature (°C)", "y_name": "Catalyst loading (mol%)", "x_levels": ["25", "50", "80"],
+                       "y_levels": ["1", "2.5", "5"], "response": "Yield (%)", "higher_is_better": True, "cells": {}},
 }
 
 DEFAULT_SECTIONS = [
     (EntryKind.text, "Aim", DEFAULT_CONTENT[EntryKind.text]),
     (EntryKind.reaction, "Reaction", DEFAULT_CONTENT[EntryKind.reaction]),
+    (EntryKind.safety, "Safety & risk assessment", DEFAULT_CONTENT[EntryKind.safety]),
     (EntryKind.text, "Procedure", DEFAULT_CONTENT[EntryKind.text]),
     (EntryKind.purification, "Work-up & purification", DEFAULT_CONTENT[EntryKind.purification]),
     (EntryKind.characterization, "Characterisation", DEFAULT_CONTENT[EntryKind.characterization]),
     (EntryKind.text, "Observations & results", DEFAULT_CONTENT[EntryKind.text]),
 ]
+
+METRIC_LABELS = (("atom_economy_pct", "atom economy", "%"), ("rme_pct", "RME", "%"), ("e_factor", "E-factor", ""),
+                 ("pmi", "PMI", ""), ("solvent_l_per_kg", "solvent", " L/kg"))
 
 CONDITION_FIELDS = ("temperature_c", "temperature_label", "time_h", "atmosphere", "target_conc_m", "notes")
 
@@ -244,10 +252,13 @@ def update_experiment(exp_id: int, body: ExperimentPatch, user: Writer, session:
 
 
 @router.post("/experiments/{exp_id}/clone", status_code=201)
-def clone_experiment(exp_id: int, user: Writer, session: DB, as_template: bool = False):
+def clone_experiment(exp_id: int, user: Writer, session: DB, as_template: bool = False, scale: float | None = None):
     src = get_or_404(session, Experiment, exp_id)
+    if scale is not None and not (0.001 <= scale <= 1000):
+        raise HTTPException(400, "Scale factor must be between 0.001 and 1000")
+    prefix = "Template: " if as_template else (f"×{scale:g} scale: " if scale else "Copy of ")
     exp = Experiment(
-        title=("Template: " if as_template else "Copy of ") + src.title,
+        title=prefix + src.title,
         notebook_id=None if as_template else src.notebook_id, description=src.description,
         owner_id=user.id, is_template=as_template, tags=list(src.tags or []),
     )
@@ -257,10 +268,42 @@ def clone_experiment(exp_id: int, user: Writer, session: DB, as_template: bool =
         content = copy.deepcopy(e.content)
         if e.kind == EntryKind.file:
             content = {"attachment_ids": [], "caption": content.get("caption", "")}
+        if scale:
+            content = _scaled(e.kind, content, scale)
         _new_entry(session, exp.id, e.kind, e.title, content, e.position, user)
-    audit.record(session, user, "clone", "experiment", exp.id, source=src.eid, as_template=as_template)
+    audit.record(session, user, "clone", "experiment", exp.id, source=src.eid, as_template=as_template, scale=scale)
     session.commit()
     return experiment_summary(session, exp)
+
+
+def _scaled(kind: EntryKind, content: dict[str, Any], f: float) -> dict[str, Any]:
+    """Content for a repeat at f× scale: typed amounts scale, equivalents and concentrations don't,
+    fill-to-concentration solvents recalculate, and results (masses, spectra) start empty."""
+    if kind == EntryKind.reaction:
+        rows = []
+        for r in content.get("rows") or []:
+            r = dict(r)
+            if r.get("role") == "product":
+                r["actual_mass_mg"] = r["yield_pct"] = None
+            else:
+                b = r.get("basis")
+                key = {"mass": "mass_mg", "volume": "volume_ml", "mmol": "mmol"}.get(b)
+                if r.get("role") == "solvent" and b != "fill":
+                    key = "volume_ml"
+                if key and _num(r.get(key)) is not None:
+                    r[key] = round(_num(r[key]) * f, 6)
+            r["lot_id"] = None  # pick lots again for the new batch
+            rows.append(r)
+        content = {**content, "rows": rows}
+        return _clean_content(kind, content)
+    if kind == EntryKind.purification:
+        return {**content, "isolated_mg": None}
+    if kind == EntryKind.characterization:
+        return {"items": [{"technique": it.get("technique", ""), "conditions": it.get("conditions", ""), "data": "", "attachment_id": None}
+                          for it in content.get("items") or []]}
+    if kind == EntryKind.safety:
+        return {**content, "snapshot": None}  # amounts changed: reassess
+    return content
 
 
 # ====================================================================== entries
@@ -300,6 +343,32 @@ def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
                 item["analysis"] = analysis
             items.append(item)
         content["items"] = items
+    elif kind == EntryKind.safety:
+        for k in ("controls", "waste", "emergency"):
+            content[k] = str(content.get(k) or "")[:4000]
+        content["notes_html"] = nh3.clean(content.get("notes_html", "") or "")
+        snap = content.get("snapshot")
+        content["snapshot"] = snap if isinstance(snap, dict) and len(json.dumps(snap)) < 200_000 else None
+    elif kind == EntryKind.screen:
+        def levels(v):
+            return [str(x)[:40] for x in (v or [])][:12]
+        content["x_name"], content["y_name"] = str(content.get("x_name") or "")[:80], str(content.get("y_name") or "")[:80]
+        content["x_levels"], content["y_levels"] = levels(content.get("x_levels")), levels(content.get("y_levels")) or [""]
+        content["response"] = str(content.get("response") or "Yield (%)")[:60]
+        content["higher_is_better"] = bool(content.get("higher_is_better", True))
+        cells = {}
+        for k, c in (content.get("cells") or {}).items():
+            try:
+                i, j = (int(x) for x in str(k).split(","))
+            except ValueError:
+                continue
+            if i < len(content["y_levels"]) and j < len(content["x_levels"]) and isinstance(c, dict):
+                cell = {"value": _num(c.get("value")), "note": str(c.get("note") or "")[:200]}
+                if isinstance(c.get("experiment_id"), int):
+                    cell["experiment_id"] = c["experiment_id"]
+                if cell["value"] is not None or cell["note"] or "experiment_id" in cell:
+                    cells[f"{i},{j}"] = cell
+        content["cells"] = cells
     elif kind == EntryKind.table:
         content.setdefault("columns", [])
         content.setdefault("rows", [])
@@ -664,6 +733,33 @@ def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
             h += "<tr>" + "".join(
                 f"<td>{_fmt(r.get(k))}{' ★' if k == 'role' and r.get('limiting') else ''}</td>"
                 for k, _ in cols) + "</tr>"
+        h += "</table>"
+        m = chem.green_metrics([chem.new_row(**r) for r in c.get("rows", [])]) if c.get("rows") else {}
+        parts = [f"{label} {_fmt(m[k])}{unit}" for k, label, unit in METRIC_LABELS if m.get(k) is not None]
+        if parts:
+            h += f"<p><strong>Green metrics</strong> ({html.escape(m['scope'])}): {' · '.join(parts)}</p>"
+    elif e.kind == EntryKind.safety:
+        snap = c.get("snapshot") or {}
+        if snap.get("chemicals"):
+            h += f"<p>Hazard data recorded {html.escape(str(snap.get('taken_at', ''))[:10])} from PubChem.</p>"
+            h += "<table><tr><th>Chemical</th><th>Signal</th><th>Hazard statements</th><th>Source</th></tr>"
+            for ch in snap["chemicals"]:
+                h += (f"<tr><td>{html.escape(ch.get('name', ''))}</td><td>{html.escape(ch.get('signal', ''))}</td>"
+                      f"<td>{html.escape('; '.join(ch.get('hazards') or []))}</td><td>{html.escape(ch.get('source', ''))}</td></tr>")
+            h += "</table>"
+            if snap.get("warnings"):
+                h += "<ul>" + "".join(f"<li>{html.escape(w.get('text', ''))}</li>" for w in snap["warnings"]) + "</ul>"
+        for k, label in (("controls", "Controls"), ("waste", "Waste"), ("emergency", "Emergency")):
+            if c.get(k):
+                h += f"<p><strong>{label}:</strong> {html.escape(c[k])}</p>"
+        h += f"<div class='rich'>{nh3.clean(c.get('notes_html', ''))}</div>"
+    elif e.kind == EntryKind.screen:
+        xs, ys, cells = c.get("x_levels") or [], c.get("y_levels") or [], c.get("cells") or {}
+        h += f"<p>{html.escape(c.get('response', ''))} by {html.escape(c.get('y_name', ''))} (rows) and {html.escape(c.get('x_name', ''))} (columns)</p>"
+        h += "<table><tr><th></th>" + "".join(f"<th>{html.escape(x)}</th>" for x in xs) + "</tr>"
+        for i, yv in enumerate(ys):
+            h += f"<tr><th>{html.escape(yv)}</th>" + "".join(
+                f"<td>{_fmt((cells.get(f'{i},{j}') or {}).get('value'))}</td>" for j in range(len(xs))) + "</tr>"
         h += "</table>"
     elif e.kind == EntryKind.table:
         cols = c.get("columns", [])

@@ -4,11 +4,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
-from sqlmodel import col, or_, select
+from sqlmodel import Session, col, or_, select
 
-from .. import audit, chem
+from .. import audit, chem, safety
+from ..db import engine
 from ..models import Entry, EntryKind, Experiment, Lot, LotTransaction, Material
 from ..security import DB, CurrentUser, Writer
 from ..services import get_or_404, user_brief
@@ -41,6 +42,8 @@ def material_out(session, m: Material, with_lots: bool = False) -> dict[str, Any
     lots = session.exec(select(Lot).where(Lot.material_id == m.id).order_by(Lot.id)).all()
     d["lot_count"] = len(lots)
     d["available_lots"] = sum(1 for lot in lots if lot.status == "available")
+    rec = safety.get_record(session, safety.material_key(m))
+    d["safety"] = safety.summary(rec) if with_lots else safety.brief(rec)
     if with_lots:
         d["lots"] = [lot_out(lot) for lot in lots]
         d["created_by_user"] = user_brief(session, m.created_by)
@@ -60,6 +63,7 @@ class MaterialIn(BaseModel):
     hazards: str = ""
     notes: str = ""
     mw: float | None = None  # only used if no structure
+    pubchem_cid: int | None = None
 
 
 def _apply_structure(m: Material) -> None:
@@ -83,8 +87,16 @@ def list_materials(_: CurrentUser, session: DB, q: str = "", kind: str | None = 
     return [material_out(session, m) for m in session.exec(stmt)]
 
 
+def _fetch_safety_later(mat_id: int) -> None:
+    with Session(engine, expire_on_commit=False) as s:
+        m = s.get(Material, mat_id)
+        if m:
+            safety.for_material(s, m, fetch=True)
+            s.commit()
+
+
 @router.post("/materials", status_code=201)
-def create_material(body: MaterialIn, user: Writer, session: DB):
+def create_material(body: MaterialIn, user: Writer, session: DB, background: BackgroundTasks):
     m = Material(**body.model_dump(), created_by=user.id)
     _apply_structure(m)
     if m.inchikey:
@@ -95,7 +107,33 @@ def create_material(body: MaterialIn, user: Writer, session: DB):
     session.flush()
     audit.record(session, user, "create", "material", m.id, mid=m.mid, name=m.name, inchikey=m.inchikey)
     session.commit()
+    background.add_task(_fetch_safety_later, m.id)
     return material_out(session, m, with_lots=True)
+
+
+@router.post("/materials/{mat_id}/safety/refresh")
+def refresh_material_safety(mat_id: int, _: CurrentUser, session: DB):
+    m = get_or_404(session, Material, mat_id)
+    if not safety.pubchem.enabled():
+        raise HTTPException(503, "PubChem lookups are turned off on this server")
+    cs = safety.for_material(session, m, fetch=True, force=True)
+    session.commit()
+    if cs and cs.error and cs.status == "error":
+        raise HTTPException(502, cs.error)
+    return safety.summary(cs)
+
+
+@router.post("/materials/{mat_id}/safety/acknowledge")
+def acknowledge_material_safety(mat_id: int, user: CurrentUser, session: DB):
+    m = get_or_404(session, Material, mat_id)
+    cs = safety.get_record(session, safety.material_key(m))
+    if cs is None:
+        raise HTTPException(404, "No safety data for this material yet")
+    cs.acknowledged_at = safety.utcnow()
+    session.add(cs)
+    audit.record(session, user, "safety_acknowledged", "chemical", cs.id, key=cs.key, material=m.mid, change=cs.change)
+    session.commit()
+    return safety.summary(cs)
 
 
 @router.get("/materials/{mat_id}")

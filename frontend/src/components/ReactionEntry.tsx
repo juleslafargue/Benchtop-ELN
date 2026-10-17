@@ -1,9 +1,10 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link } from 'react-router-dom'
 import { useApp } from '../App'
 import { api, fmt, type Material, type StoichRow } from '../api'
 import { Mol, NumInput, StructureEditor } from './bits'
 import MaterialPicker from './MaterialPicker'
+import type { LookupResult } from './Safety'
 import Modal from './Modal'
 import type { EntryEditorProps } from './EntryCard'
 import ConditionsBar, { type Conditions } from './ConditionsBar'
@@ -61,6 +62,14 @@ export default function ReactionEntry({ content, onChange, readOnly, experimentI
       material_id: m.id, lot_id: lot?.id ?? null, density: m.density, purity: lot?.purity ?? 100,
     }
     if (row.role === 'reactant' && !rows.some(r => r.limiting)) { row.limiting = true; row.basis = 'mass' }
+    recompute([...rows, row])
+    setPicking(false)
+  }
+
+  const fromLookup = (r: LookupResult, role: StoichRow['role']) => {
+    const row: StoichRow = { ...blank(role), name: r.name, smiles: r.smiles, mw: r.mw, formula: r.formula,
+      density: role === 'solvent' ? r.density : null }  // a solid's density would turn masses into meaningless volumes
+    if (row.role === 'reactant' && !rows.some(x => x.limiting)) { row.limiting = true; row.basis = 'mass' }
     recompute([...rows, row])
     setPicking(false)
   }
@@ -148,6 +157,13 @@ export default function ReactionEntry({ content, onChange, readOnly, experimentI
   const grouped = ROLE_ORDER.map(role => ({ role, items: rows.map((r, i) => ({ r, i })).filter(x => x.r.role === role) }))
     .filter(g => g.items.length)
   const totals = content.totals || {}
+  // older records were saved before metrics existed: work them out for display without touching the record
+  const [lateMetrics, setLateMetrics] = useState<any>(null)
+  useEffect(() => {
+    if (totals.metrics || !rows.length || lateMetrics) return
+    api.post<{ totals: any }>('/api/chem/stoichiometry', { rows, target_conc_m: conditions.target_conc_m ?? null })
+      .then(r => setLateMetrics(r.totals?.metrics || {})).catch(() => {})
+  }, [totals.metrics, rows.length]) // eslint-disable-line react-hooks/exhaustive-deps
   const nonProduct = grouped.filter(g => g.role !== 'product')
   const products = grouped.find(g => g.role === 'product')?.items || []
 
@@ -270,6 +286,23 @@ export default function ReactionEntry({ content, onChange, readOnly, experimentI
           {!readOnly && <button className="btn sm" onClick={deduct}>Deduct amounts from inventory</button>}
         </div>
       )}
+      {(() => {
+        const m = totals.metrics || lateMetrics || {}
+        const items: [string, string, string][] = [
+          ['Atom economy', m.atom_economy_pct != null ? `${fmt(m.atom_economy_pct, 1)}%` : '', 'Product MW ÷ sum of reactant MWs (one of each reactant). Independent of yield.'],
+          ['RME', m.rme_pct != null ? `${fmt(m.rme_pct, 1)}%` : '', 'Reaction mass efficiency: isolated product ÷ mass of reactants used.'],
+          ['E-factor', m.e_factor != null ? fmt(m.e_factor, 1) : '', 'kg of waste per kg of product: everything in the table except the product.'],
+          ['PMI', m.pmi != null ? fmt(m.pmi, 1) : '', 'Process mass intensity: total mass in ÷ mass of product (= E-factor + 1).'],
+          ['Solvent', m.solvent_l_per_kg != null ? `${fmt(m.solvent_l_per_kg, 0)} L/kg` : '', 'Reaction solvent volume per kg of product.'],
+        ]
+        const shown = items.filter(i => i[1])
+        if (!shown.length) return null
+        return <div className="metrics" aria-label="Green chemistry metrics">
+          <span className="fld-cap" style={{ alignSelf: 'center' }}>Green metrics</span>
+          {shown.map(([k, v, t]) => <span key={k} title={t}>{k} <b>{v}</b></span>)}
+          <span className="faint" title={m.scope}>reaction only{m.missing_mass?.length ? ` · E-factor/PMI need a mass for ${m.missing_mass.join(', ')}` : ''}</span>
+        </div>
+      })()}
       {(content.warnings || []).map((w: string) => <p className="warn" key={w}>{w}</p>)}
       {!readOnly && rows.length > 0 && <p className="faint">The highlighted cell in each row is the value you entered; the rest are calculated from it.</p>}
 
@@ -303,7 +336,7 @@ export default function ReactionEntry({ content, onChange, readOnly, experimentI
           <textarea className="input" rows={3} autoFocus value={pasteText} onChange={e => setPasteText(e.target.value)} style={{ fontFamily: 'var(--mono)', fontSize: 13 }} /></label>
         {pasteText.includes('>') && <div className="rxn-scheme" style={{ marginTop: 10, minHeight: 80 }}><Mol rxn smiles={pasteText.trim()} w={520} h={130} /></div>}
       </Modal>}
-      {picking && <MaterialPicker onClose={() => setPicking(false)} onPick={(m, role) => fromMaterial(m, role)} />}
+      {picking && <MaterialPicker onClose={() => setPicking(false)} onPick={(m, role) => fromMaterial(m, role)} onLookup={fromLookup} />}
       {zoom && <Modal title="Structure" onClose={() => setZoom(null)} footer={<button className="btn" onClick={() => setZoom(null)}>Close</button>}>
         <div style={{ textAlign: 'center' }}><Mol smiles={zoom} w={480} h={320} /></div>
         <p className="hash" style={{ textAlign: 'center' }}>{zoom}</p>

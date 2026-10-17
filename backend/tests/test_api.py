@@ -27,7 +27,7 @@ def test_viewer_is_read_only(client, users, notebook):
 def test_default_sections_and_versioning(client, users, notebook):
     h = users["alice"]
     exp = new_exp(client, h, notebook)
-    assert [e["kind"] for e in exp["entries"]] == ["text", "reaction", "text", "purification", "characterization", "text"]
+    assert [e["kind"] for e in exp["entries"]] == ["text", "reaction", "safety", "text", "purification", "characterization", "text"]
     eid = exp["entries"][0]["id"]
     r = client.put(f"/api/entries/{eid}", headers=h, json={"content": {"html": "<p>hi<script>x</script></p>"},
                                                             "expected_version": 1})

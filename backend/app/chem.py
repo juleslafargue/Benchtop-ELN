@@ -53,6 +53,28 @@ def properties(text: str) -> dict[str, Any]:
         "tpsa": round(rdMolDescriptors.CalcTPSA(mol), 2),
         "rotatable_bonds": rdMolDescriptors.CalcNumRotatableBonds(mol),
         "molblock": Chem.MolToMolBlock(mol),
+        **druglike(mol),
+    }
+
+
+def druglike(mol: Chem.Mol) -> dict[str, Any]:
+    """Medicinal-chemistry descriptors on the largest fragment (so salts and solvates don't skew them)."""
+    frags = Chem.GetMolFrags(mol, asMols=True)
+    m = max(frags, key=lambda f: f.GetNumHeavyAtoms()) if frags else mol
+    mw, logp = Descriptors.MolWt(m), Descriptors.MolLogP(m)
+    hbd, hba = rdMolDescriptors.CalcNumHBD(m), rdMolDescriptors.CalcNumHBA(m)
+    tpsa, rotb = rdMolDescriptors.CalcTPSA(m), rdMolDescriptors.CalcNumRotatableBonds(m)
+    lip = [name for name, bad in (("MW > 500", mw > 500), ("cLogP > 5", logp > 5), ("HBD > 5", hbd > 5), ("HBA > 10", hba > 10)) if bad]
+    veber = [name for name, bad in (("TPSA > 140", tpsa > 140), ("rotatable bonds > 10", rotb > 10)) if bad]
+    try:
+        from rdkit.Chem import QED
+        qed = round(QED.qed(m), 2)
+    except Exception:  # noqa: BLE001 - QED fails on some exotic species
+        qed = None
+    return {
+        "heavy_atoms": m.GetNumHeavyAtoms(), "aromatic_rings": rdMolDescriptors.CalcNumAromaticRings(m),
+        "fsp3": round(rdMolDescriptors.CalcFractionCSP3(m), 2), "qed": qed,
+        "lipinski_violations": lip, "veber_violations": veber,
     }
 
 
@@ -332,7 +354,35 @@ def compute_stoichiometry(rows_in: list[dict[str, Any]], target_conc_m: Any = No
     }
     if lim_mmol and totals["total_volume_ml"]:
         totals["concentration_m"] = _r(lim_mmol / totals["total_volume_ml"], 4)
+    totals["metrics"] = green_metrics(rows)
     return {"rows": rows, "totals": totals, "warnings": warnings}
+
+
+def green_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Atom economy, reaction mass efficiency, E-factor, PMI and volume efficiency for the reaction
+    as written (work-up and purification solvents are not in the table, so they're not counted)."""
+    prod = next((r for r in rows if r["role"] == "product" and _f(r["mw"])), None)
+    reactants = [r for r in rows if r["role"] == "reactant"]
+    inputs = [r for r in rows if r["role"] != "product"]
+    out: dict[str, Any] = {"scope": "reaction only (work-up and purification not included)"}
+    if prod and reactants and all(_f(r["mw"]) for r in reactants):
+        # one of each reactant, as in the balanced equation for most couplings and condensations
+        out["atom_economy_pct"] = _r(100.0 * _f(prod["mw"]) / sum(_f(r["mw"]) for r in reactants), 1)
+    missing = [r["name"] or r["smiles"] or r["role"] for r in inputs if _f(r["mass_mg"]) is None]
+    out["missing_mass"] = missing
+    actual = _f(prod["actual_mass_mg"]) if prod else None
+    if actual:
+        inputs_mg = sum(_f(r["mass_mg"]) or 0 for r in inputs)
+        if inputs_mg and not missing:
+            out["pmi"] = _r(inputs_mg / actual, 1)
+            out["e_factor"] = _r((inputs_mg - actual) / actual, 1)
+        rmass = [_f(r["mass_mg"]) for r in reactants]
+        if rmass and all(rmass):
+            out["rme_pct"] = _r(100.0 * actual / sum(rmass), 1)
+        solvent_ml = sum(_f(r["volume_ml"]) or 0 for r in rows if r["role"] == "solvent")
+        if solvent_ml:
+            out["solvent_l_per_kg"] = _r(solvent_ml / (actual / 1000.0), 0)  # mL/g == L/kg
+    return out
 
 
 # ---------------------------------------------------------------- searching

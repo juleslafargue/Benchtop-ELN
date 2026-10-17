@@ -14,7 +14,7 @@ def new_exp(client, h, nb, **kw):
 
 def test_default_sections_include_workup_and_characterisation(client, users, notebook):
     exp = new_exp(client, users["alice"], notebook)
-    assert [e["kind"] for e in exp["entries"]] == ["text", "reaction", "text", "purification", "characterization", "text"]
+    assert [e["kind"] for e in exp["entries"]] == ["text", "reaction", "safety", "text", "purification", "characterization", "text"]
 
 
 def test_conditions_and_solvent_fill(client, users, notebook):

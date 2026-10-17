@@ -9,6 +9,7 @@ _tmp = tempfile.mkdtemp(prefix="benchtop-test-")
 os.environ["BENCHTOP_DATA_DIR"] = _tmp
 os.environ["BENCHTOP_ADMIN_PASSWORD"] = "adminpass"
 os.environ["BENCHTOP_BACKUP_INTERVAL_HOURS"] = "0"  # tests trigger backups explicitly
+os.environ["BENCHTOP_PUBCHEM"] = "off"  # tests inject a mock PubChem
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402

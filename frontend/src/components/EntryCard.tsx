@@ -7,9 +7,11 @@ import FileEntry from './FileEntry'
 import PurificationEntry from './PurificationEntry'
 import CharacterizationEntry from './CharacterizationEntry'
 import VersionsDialog from './VersionsDialog'
+import SafetyEntry from './SafetyEntry'
+import ScreenEntry from './ScreenEntry'
 
 type SaveState = 'saved' | 'dirty' | 'saving' | 'error'
-const KIND_LABEL = { text: 'Text', reaction: 'Reaction & stoichiometry', table: 'Data table', file: 'Files', purification: 'Work-up & purification', characterization: 'Characterisation' }
+const KIND_LABEL = { text: 'Text', reaction: 'Reaction & stoichiometry', table: 'Data table', file: 'Files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening grid' }
 
 export interface EntryEditorProps {
   content: any
@@ -52,6 +54,7 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
       if (edits.current === mark) {
         setContent(r.content) // adopt server-normalised content (sanitised HTML, recomputed stoichiometry)
         setState('saved')
+        if (entry.kind === 'reaction') window.dispatchEvent(new CustomEvent('benchtop:reaction-saved', { detail: { experimentId: entry.experiment_id } }))
       } else setState('dirty')
       setError('')
     } catch (e: any) {
@@ -106,6 +109,8 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
         {entry.kind === 'file' && <FileEntry {...props} />}
         {entry.kind === 'purification' && <PurificationEntry {...props} />}
         {entry.kind === 'characterization' && <CharacterizationEntry {...props} />}
+        {entry.kind === 'safety' && <SafetyEntry {...props} />}
+        {entry.kind === 'screen' && <ScreenEntry {...props} />}
       </div>
       {showVersions && <VersionsDialog entryId={entry.id} kind={entry.kind} onClose={() => setShowVersions(false)} />}
     </section>

@@ -45,6 +45,7 @@ export default function CommandPalette({ onClose, onNewExperiment, onNewNotebook
       { key: 'a-reg', group: 'Actions', label: 'Register a material', run: go('/materials?new=1') },
     ] : []),
     { key: 'p-home', group: 'Go to', label: 'Dashboard', run: go('/') },
+    { key: 'p-compounds', group: 'Go to', label: 'Compounds', run: go('/compounds') },
     { key: 'p-rx', group: 'Go to', label: 'Reactions', run: go('/reactions') },
     { key: 'p-search', group: 'Go to', label: 'Structure search', run: go('/search') },
     { key: 'p-mat', group: 'Go to', label: 'Materials', run: go('/materials') },

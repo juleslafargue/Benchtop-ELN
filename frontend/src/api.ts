@@ -2,7 +2,7 @@
 
 export type Role = 'admin' | 'scientist' | 'viewer'
 export type Status = 'open' | 'signed' | 'witnessed' | 'voided'
-export type EntryKind = 'text' | 'reaction' | 'table' | 'file' | 'purification' | 'characterization'
+export type EntryKind = 'text' | 'reaction' | 'table' | 'file' | 'purification' | 'characterization' | 'safety' | 'screen'
 
 export interface Preferences { theme?: 'system' | 'light' | 'dark'; default_notebook_id?: number | null; spectrum_expanded?: boolean; pinned?: number[]; dashboard?: { widgets: unknown[] } }
 export interface User { id: number; username: string; full_name: string; email: string; role: Role; active: boolean; preferences: Preferences }
@@ -48,7 +48,7 @@ export interface Lot {
 export interface Material {
   id: number; mid: string; name: string; kind: string; smiles: string; cas: string; formula: string
   mw: number | null; inchikey: string; density: number | null; synonyms: string; hazards: string; notes: string
-  lot_count: number; available_lots: number; lots?: Lot[]; source_experiment?: { id: number; eid: string; title: string } | null
+  lot_count: number; available_lots: number; lots?: Lot[]; safety?: any; pubchem_cid?: number | null; source_experiment?: { id: number; eid: string; title: string } | null
   used_in?: { id: number; eid: string; title: string; status: Status }[]; created_by_user?: UserBrief; created_at: string
   score?: number
 }
@@ -58,7 +58,9 @@ export interface ReactionSummary {
   time_h: number | null; atmosphere: string | null; concentration_m: number | null; limiting: string | null
   scale_mmol: number | null; reagents: string[]; solvents: string[]; product: string | null; yield_pct: number | null
   purification: string | null; characterised: string[]
+  metrics?: GreenMetrics
 }
+export interface GreenMetrics { scope?: string; atom_economy_pct?: number; rme_pct?: number; e_factor?: number; pmi?: number; solvent_l_per_kg?: number; missing_mass?: string[] }
 export const PURIFICATION_LABELS: Record<string, string> = {
   column: 'Flash column', prep_tlc: 'Prep TLC', prep_hplc: 'Prep HPLC', recrystallization: 'Recrystallisation',
   trituration: 'Trituration', distillation: 'Distillation', extraction: 'Extraction only', none: 'Used crude',

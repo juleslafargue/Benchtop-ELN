@@ -11,6 +11,7 @@ import MaterialDetail from './pages/MaterialDetail'
 import Inventory from './pages/Inventory'
 import Search from './pages/Search'
 import Reactions from './pages/Reactions'
+import Compounds from './pages/Compounds'
 import Templates from './pages/Templates'
 import Admin from './pages/Admin'
 import Account from './pages/Account'
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="/inventory" element={<Inventory />} />
           <Route path="/search" element={<Search />} />
           <Route path="/reactions" element={<Reactions />} />
+          <Route path="/compounds" element={<Compounds />} />
           <Route path="/account" element={<Account />} />
           <Route path="/admin" element={user.role === 'admin' ? <Admin /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />

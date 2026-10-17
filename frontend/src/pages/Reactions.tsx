@@ -102,6 +102,9 @@ export default function Reactions() {
                     ? <><b>{fmt(r.yield_pct, 1)}%</b><span className="yield-bar" style={{ width: Math.max(2, Math.min(100, r.yield_pct)) * 0.6 }} /></>
                     : <span className="faint">—</span>}
                   <div className="faint">{r.product}</div>
+                  {(r.metrics?.atom_economy_pct != null || r.metrics?.pmi != null) && <div className="faint" style={{ fontSize: 12 }}
+                    title="Atom economy and process mass intensity, reaction only">
+                    {[r.metrics?.atom_economy_pct != null ? `AE ${fmt(r.metrics.atom_economy_pct, 0)}%` : '', r.metrics?.pmi != null ? `PMI ${fmt(r.metrics.pmi, 0)}` : ''].filter(Boolean).join(' · ')}</div>}
                 </td>
                 <td style={{ fontSize: 13 }}>{r.purification ? PURIFICATION_LABELS[r.purification] || r.purification : <span className="faint">—</span>}
                   <div className="faint">{r.characterised.join(', ')}</div></td>

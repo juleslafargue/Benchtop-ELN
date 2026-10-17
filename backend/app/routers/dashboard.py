@@ -8,7 +8,8 @@ from typing import Any
 from fastapi import APIRouter
 from sqlmodel import select
 
-from ..models import Attachment, Experiment, ExperimentStatus, Lot, LotTransaction, Material, Signature, utcnow
+from .. import safety
+from ..models import Attachment, ChemSafety, Experiment, ExperimentStatus, Lot, LotTransaction, Material, Signature, utcnow
 from ..security import DB, CurrentUser
 from ..services import experiment_summary
 from .reactions import _collect
@@ -74,6 +75,15 @@ def dashboard(user: CurrentUser, session: DB):
             low.append({**row, "fraction": round(lot.amount / initial, 3)})
         if lot.expires_at and lot.expires_at <= now + timedelta(days=EXPIRY_DAYS):
             expiring.append({**row, "expires_at": lot.expires_at.isoformat() + "Z", "expired": lot.expires_at <= now})
+    # safety classifications that changed since they were last looked at
+    by_key = {safety.material_key(m): m for m in session.exec(select(Material)).all()}
+    safety_changes = []
+    for cs in session.exec(select(ChemSafety).where(ChemSafety.changed_at != None)).all():  # noqa: E711
+        if cs.acknowledged_at and cs.acknowledged_at >= cs.changed_at:
+            continue
+        m = by_key.get(cs.key)
+        safety_changes.append({"material_id": m.id if m else None, "material": m.name if m else cs.title,
+                               "changed_at": cs.changed_at.isoformat() + "Z", "change": cs.change})
     low.sort(key=lambda r: r["fraction"])
     expiring.sort(key=lambda r: r["expires_at"])
 
@@ -88,5 +98,5 @@ def dashboard(user: CurrentUser, session: DB):
         "stats": {"this_month": this_month, "last_month": last_month, "witnessed_this_month": witnessed_month,
                   "yields": yields[:200]},
         "spectra": spectra,
-        "inventory": {"low": low[:10], "expiring": expiring[:10], "low_fraction": LOW_STOCK_FRACTION, "expiry_days": EXPIRY_DAYS},
+        "inventory": {"low": low[:10], "expiring": expiring[:10], "safety_changes": safety_changes[:10], "low_fraction": LOW_STOCK_FRACTION, "expiry_days": EXPIRY_DAYS},
     }

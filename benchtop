@@ -118,8 +118,8 @@ case "$cmd" in
     if [ -x "$VENV/bin/python" ] && [ -f "$BENCHTOP_DATA_DIR/benchtop.db" ]; then
       say "Backing up your data first…"; py -m app.backup create || fail "Backup failed, so nothing was changed."
     fi
-    # replace program files; keep data, the Python environment and node_modules
-    rsync -a --delete --exclude '/backend/data/' --exclude '/backend/.venv/' --exclude '/frontend/node_modules/' "$NEW/" "$ROOT/"
+    # replace program files; keep data, the Python environment, node_modules and any Git repository
+    rsync -a --delete --exclude '/.git/' --exclude '/.github/' --exclude '/backend/data/' --exclude '/backend/.venv/' --exclude '/frontend/node_modules/' "$NEW/" "$ROOT/"
     chmod +x "$ROOT/benchtop" "$ROOT/Benchtop.command" 2>/dev/null || true
     remove_old_login_item
     say "Upgraded to $NEWV. Start it with ./benchtop"

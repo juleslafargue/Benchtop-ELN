@@ -5,6 +5,7 @@ import { api, displayName, downloadAuthed, when, type AuditEvent, type EntryKind
 import EntryCard from '../components/EntryCard'
 import SignDialog, { type SignAction } from '../components/SignDialog'
 import WriteupDialog from '../components/WriteupDialog'
+import ScaleDialog from '../components/ScaleDialog'
 import { parseSpectrumBuffer, techniqueFor } from '../spectra'
 import type { Attachment, Entry, User } from '../api'
 
@@ -76,6 +77,7 @@ export default function ExperimentPage() {
   const [importing, setImporting] = useState(false)
   const [justAdded, setJustAdded] = useState<number | null>(null)
   const [importNotes, setImportNotes] = useState<string[]>([])
+  const [scaling, setScaling] = useState(false)
   const dragDepth = useRef(0)
 
   const load = useCallback(async () => {
@@ -146,7 +148,7 @@ export default function ExperimentPage() {
     catch (e: any) { toast(e.message) }
   }
   const addSection = async (kind: EntryKind) => {
-    const titles = { text: 'Notes', reaction: 'Reaction', table: 'Data', file: 'Spectra & files', purification: 'Work-up & purification', characterization: 'Characterisation' }
+    const titles = { text: 'Notes', reaction: 'Reaction', table: 'Data', file: 'Spectra & files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening' }
     await api.post(`/api/experiments/${exp.id}/entries`, { kind, title: titles[kind] })
     await load()
   }
@@ -156,6 +158,14 @@ export default function ExperimentPage() {
     await api.post(`/api/experiments/${exp.id}/reorder`, { entry_ids: ids })
     await load()
     setReloadKey(k => k + 1)
+  }
+  const scaleUp = async (factor: number) => {
+    try {
+      const r = await api.post<ExperimentSummary>(`/api/experiments/${exp.id}/clone?scale=${factor}`)
+      await refreshNotebooks(); setScaling(false)
+      toast(`New experiment at ×${factor} scale`)
+      nav(`/experiments/${r.id}`)
+    } catch (e: any) { toast(e.message) }
   }
   const clone = async (asTemplate: boolean) => {
     const r = await api.post<ExperimentSummary>(`/api/experiments/${exp.id}/clone?as_template=${asTemplate}`)
@@ -233,6 +243,8 @@ export default function ExperimentPage() {
                 <button className="btn sm" onClick={() => addSection('reaction')}>Reaction</button>
                 <button className="btn sm" onClick={() => addSection('purification')}>Work-up</button>
                 <button className="btn sm" onClick={() => addSection('characterization')}>Characterisation</button>
+                <button className="btn sm" onClick={() => addSection('safety')}>Risk assessment</button>
+                <button className="btn sm" onClick={() => addSection('screen')}>Screening grid</button>
                 <button className="btn sm" onClick={() => addSection('table')}>Data table</button>
                 <button className="btn sm" onClick={() => addSection('file')}>Files</button>
               </div>
@@ -273,6 +285,7 @@ export default function ExperimentPage() {
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export?format=md`, `${exp.eid} ${exp.title.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').slice(0, 80)}.md`)}>Download Markdown</button>
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export?format=json`, `${exp.eid}.json`)}>Download JSON</button>
               {canWrite && <button className="btn sm" onClick={() => clone(false)}>Duplicate</button>}
+              {canWrite && !exp.is_template && <button className="btn sm" onClick={() => setScaling(true)}>Repeat at another scale…</button>}
               {canWrite && !exp.is_template && <button className="btn sm" onClick={() => clone(true)}>Save as template</button>}
               {canWrite && (isOwner || user.role === 'admin') && exp.status !== 'voided' && !exp.is_template &&
                 <button className="btn ghost sm danger" onClick={() => setDialog('void')}>Void…</button>}
@@ -281,6 +294,11 @@ export default function ExperimentPage() {
         </div>
       )}
 
+      {scaling && (() => {
+        const rx = exp.entries.find(e => e.kind === 'reaction')?.content
+        const lim = (rx?.rows || []).find((r: any) => r.limiting)
+        return <ScaleDialog limitingMmol={rx?.totals?.limiting_mmol ?? null} limitingName={lim?.name || null} onScale={scaleUp} onClose={() => setScaling(false)} />
+      })()}
       {writeup && <WriteupDialog experimentId={exp.id} canInsert={editable} onClose={() => setWriteup(false)}
         onInserted={async () => { await load(); toast('Write-up added as a section') }} />}
       {dialog && <SignDialog exp={exp} action={dialog} onClose={() => setDialog(null)} onDone={r => {

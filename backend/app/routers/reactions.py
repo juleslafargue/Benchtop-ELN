@@ -58,6 +58,9 @@ def _collect(session) -> list[dict[str, Any]]:
                 "purification": purif.get("method") if purif.get("isolated_mg") is not None or purif.get("eluent") else None,
                 "characterised": chars,
                 "smiles_all": [r.get("smiles") for r in rows if r.get("smiles")],
+                "metrics": chem.green_metrics([chem.new_row(**r) for r in rows]) if rows else {},
+                "products_detail": [{"name": p.get("name") or p.get("formula"), "smiles": p.get("smiles"), "yield_pct": p.get("yield_pct"),
+                                     "actual_mass_mg": p.get("actual_mass_mg")} for p in products if p.get("smiles")],
             })
     out.sort(key=lambda r: r["date"], reverse=True)
     return out
@@ -114,3 +117,46 @@ def list_reactions(_: CurrentUser, session: DB, q: str = "", min_yield: float | 
         w.writerow(["; ".join(r[c]) if isinstance(r[c], list) else ("" if r[c] is None else r[c]) for c in cols])
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
                              headers={"Content-Disposition": 'attachment; filename="reactions.csv"'})
+
+
+@router.get("/compounds")
+def compounds(_: CurrentUser, session: DB):
+    """Every product made (from reaction tables) and every registered product/sample, one row per
+    structure, with medicinal-chemistry descriptors."""
+    from ..models import Material
+
+    seen: dict[str, dict[str, Any]] = {}
+
+    def add(smiles: str, name: str, **extra: Any) -> dict[str, Any] | None:
+        try:
+            p = chem.properties(smiles)
+        except chem.ChemError:
+            return None
+        key = p["inchikey"] or p["smiles"]
+        row = seen.get(key)
+        if row is None:
+            row = seen[key] = {"name": name, "smiles": p["smiles"], "formula": p["formula"], "mw": p["mw"],
+                               "logp": p["logp"], "tpsa": p["tpsa"], "hbd": p["hbd"], "hba": p["hba"],
+                               "rotatable_bonds": p["rotatable_bonds"], "heavy_atoms": p["heavy_atoms"],
+                               "aromatic_rings": p["aromatic_rings"], "fsp3": p["fsp3"], "qed": p["qed"],
+                               "lipinski_violations": p["lipinski_violations"], "veber_violations": p["veber_violations"],
+                               "experiments": [], "best_yield": None, "material": None}
+        if not row["name"] and name:
+            row["name"] = name
+        return row
+
+    for r in _collect(session):
+        for pd in r["products_detail"]:
+            row = add(pd["smiles"], pd["name"] or "")
+            if row is None:
+                continue
+            if r["experiment_id"] not in [e["id"] for e in row["experiments"]]:
+                row["experiments"].append({"id": r["experiment_id"], "eid": r["eid"]})
+            if pd["yield_pct"] is not None:
+                row["best_yield"] = max(row["best_yield"] or 0, pd["yield_pct"])
+    for m in session.exec(select(Material).where(Material.kind.in_(["product", "sample"]))).all():
+        if m.smiles:
+            row = add(m.smiles, m.name)
+            if row is not None:
+                row["material"] = {"id": m.id, "mid": m.mid}
+    return sorted(seen.values(), key=lambda r: r["name"].lower())
