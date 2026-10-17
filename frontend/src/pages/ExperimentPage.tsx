@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../App'
 import { api, displayName, downloadAuthed, when, type AuditEvent, type EntryKind, type Experiment, type ExperimentSummary, type Signature } from '../api'
 import EntryCard from '../components/EntryCard'
+import { AddSection } from '../components/AddSection'
 import SignDialog, { type SignAction } from '../components/SignDialog'
 import WriteupDialog from '../components/WriteupDialog'
 import ScaleDialog from '../components/ScaleDialog'
@@ -150,11 +151,22 @@ export default function ExperimentPage() {
     try { const r = await api.patch<ExperimentSummary>(`/api/experiments/${exp.id}`, body); setExp({ ...exp, ...r }) }
     catch (e: any) { toast(e.message) }
   }
-  const addSection = async (kind: EntryKind) => {
+  // insert before section `before` (an index into exp.entries), or at the end; then bring it into view
+  const addSection = async (kind: EntryKind, before?: number) => {
     const titles = { text: 'Notes', reaction: 'Reaction', table: 'Data', file: 'Spectra & files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening' }
-    await api.post(`/api/experiments/${exp.id}/entries`, { kind, title: titles[kind] })
-    await load()
+    try {
+      const position = before != null && exp.entries[before] ? exp.entries[before].position : undefined
+      const e = await api.post<Entry>(`/api/experiments/${exp.id}/entries`, { kind, title: titles[kind], ...(position != null ? { position } : {}) })
+      await load()
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`entry-${e.id}`)
+        if (!el) return
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        el.classList.add('just-added'); setTimeout(() => el.classList.remove('just-added'), 1600)
+      })
+    } catch (err: any) { toast(err.message) }
   }
+  const kindsPresent = exp.entries.map(e => e.kind)
   const move = async (idx: number, dir: -1 | 1) => {
     const ids = exp.entries.map(e => e.id)
     ;[ids[idx], ids[idx + dir]] = [ids[idx + dir], ids[idx]]
@@ -222,6 +234,7 @@ export default function ExperimentPage() {
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'record'} onClick={() => setTab('record')}>Record</button>
         <button role="tab" aria-selected={tab === 'history'} onClick={() => setTab('history')}>Audit trail</button>
+        {tab === 'record' && editable && <div className="tabs-end"><AddSection variant="button" existing={kindsPresent} onAdd={k => addSection(k)} /></div>}
       </div>
 
       {tab === 'history' ? <AuditTab expId={exp.id} /> : (
@@ -234,24 +247,17 @@ export default function ExperimentPage() {
             {exp.status === 'voided' && <p className="notice">This record has been voided. It is kept for reference.</p>}
             <div style={{ marginTop: exp.status === 'open' ? 0 : 14 }}>
               {exp.entries.map((e, i) => (
-                <EntryCard key={`${e.id}-${reloadKey}`} entry={e} readOnly={!editable} experimentId={exp.id} context={context}
-                  attachments={exp.attachments} onAttachmentsChanged={attachmentsChanged}
-                  onDeleted={load} onMove={d => move(i, d)} isFirst={i === 0} isLast={i === exp.entries.length - 1} />
+                <Fragment key={`${e.id}-${reloadKey}`}>
+                  {i > 0 && (editable
+                    ? <AddSection variant="between" existing={kindsPresent} onAdd={k => addSection(k, i)} label="Add section here" />
+                    : <div className="entry-gap" />)}
+                  <EntryCard entry={e} readOnly={!editable} experimentId={exp.id} context={context}
+                    attachments={exp.attachments} onAttachmentsChanged={attachmentsChanged}
+                    onDeleted={load} onMove={d => move(i, d)} isFirst={i === 0} isLast={i === exp.entries.length - 1} />
+                </Fragment>
               ))}
             </div>
-            {editable && (
-              <div className="add-bar">
-                <span>Add a section:</span>
-                <button className="btn sm" onClick={() => addSection('text')}>Text</button>
-                <button className="btn sm" onClick={() => addSection('reaction')}>Reaction</button>
-                <button className="btn sm" onClick={() => addSection('purification')}>Work-up</button>
-                <button className="btn sm" onClick={() => addSection('characterization')}>Characterisation</button>
-                <button className="btn sm" onClick={() => addSection('safety')}>Risk assessment</button>
-                <button className="btn sm" onClick={() => addSection('screen')}>Screening grid</button>
-                <button className="btn sm" onClick={() => addSection('table')}>Data table</button>
-                <button className="btn sm" onClick={() => addSection('file')}>Files</button>
-              </div>
-            )}
+            {editable && <AddSection variant="end" existing={kindsPresent} onAdd={k => addSection(k)} label={exp.entries.length ? 'Add a section' : 'Add the first section'} />}
           </div>
 
           <aside className="rail">

@@ -12,7 +12,7 @@ no code, assets or data formats from any proprietary product and is not affiliat
 
 | Area | Features |
 |---|---|
-| **Notebooks & experiments** | Notebooks hold experiments (`EXP-00042`). Each experiment is a stack of sections: rich text (sub/superscript, tables, chemistry symbols), reaction, data table, files. Tags, templates, duplicate, printable report and JSON export. |
+| **Notebooks & experiments** | Notebooks hold experiments (`EXP-00042`). Each experiment is a stack of sections (add one from the *Add section* menu at the top, between any two sections, or at the end): rich text (sub/superscript, tables, chemistry symbols), reaction, data table, files. Tags, templates, duplicate, printable report and JSON export. |
 | **Chemistry** | Draw structures and reactions in [Ketcher](https://github.com/epam/ketcher) (runs fully in the browser via WebAssembly). Drawing a reaction fills the stoichiometry table automatically, keeping counter-ions together (NaBH₄ stays one row). RDKit computes MW, formula, InChIKey and depictions server-side. |
 | **Conditions** | Temperature (or rt/reflux), time, atmosphere and target concentration as real fields. Tick *fill to target M* on a solvent and its volume is calculated for you. |
 | **Stoichiometry** | Enter mass, volume, mmol or equivalents in any row; the rest is calculated from the limiting reagent, accounting for purity, density (neat liquids) and molarity (solutions). Products get theoretical mass and % yield. The cell you typed is highlighted so you always know what's input vs. calculated. |

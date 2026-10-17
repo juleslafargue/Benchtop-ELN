@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { KindIcon } from './AddSection'
 import { api, type Attachment, type Entry } from '../api'
 import TextEntry from './TextEntry'
 import ReactionEntry from './ReactionEntry'
@@ -88,11 +89,11 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
   const stateText = { saved: `v${version}`, dirty: 'Unsaved', saving: 'Saving…', error: 'Not saved' }[state]
 
   return (
-    <section className="entry" aria-label={title}>
+    <section className="entry" id={`entry-${entry.id}`} aria-label={title}>
       <header className="entry-head">
         <input className="entry-title" value={title} disabled={readOnly} aria-label="Section title"
           onChange={e => { edits.current++; setTitle(e.target.value); setState('dirty') }} />
-        <span className="entry-kind">{KIND_LABEL[entry.kind]}</span>
+        <span className="entry-kind"><KindIcon kind={entry.kind} />{KIND_LABEL[entry.kind]}</span>
         <span className={`save-state${state === 'dirty' || state === 'saving' ? ' dirty' : ''}${state === 'error' ? ' err' : ''}`} title={error}>{stateText}</span>
         <button className="btn ghost sm" onClick={() => setShowVersions(true)}>History</button>
         {!readOnly && <>

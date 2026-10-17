@@ -152,16 +152,60 @@ a.list-row:hover { background: var(--paper-2); }
 .tabs button[aria-selected='true'] { color: var(--ink); border-bottom-color: var(--accent); }
 .layout-2 { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 28px; align-items: start; }
 
-.entry { background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; margin-bottom: 18px; }
+.entry { background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; scroll-margin-top: 16px; transition: box-shadow .4s, border-color .4s; }
+.entry.just-added { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.entry-gap { height: 18px; }
 .entry-head { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--rule); }
 .entry-title { font-weight: 600; font-size: 16px; border: 0; background: transparent; padding: 2px 0; flex: 1; min-width: 0; }
 .entry-title:focus { outline: none; box-shadow: 0 1px 0 var(--accent); }
-.entry-kind { font-size: 12px; color: var(--ink-3); }
+.entry-kind { font-size: 12px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 5px; }
+.kind-icon { flex: none; }
 .entry-body { padding: 14px 16px 16px; }
 .save-state { font-size: 12px; color: var(--ink-3); min-width: 64px; text-align: right; }
 .save-state.dirty { color: var(--signed); }
 .save-state.err { color: var(--danger); }
-.add-bar { display: flex; gap: 8px; align-items: center; padding: 6px 0 20px; color: var(--ink-3); font-size: 14px; flex-wrap: wrap; }
+/* ---- add section: toolbar button, between-sections inserter, end tile, menu */
+.tabs { align-items: center; }
+.tabs-end { margin-left: auto; padding-bottom: 4px; }
+.add-btn .plus { font-size: 16px; line-height: 1; margin-top: -1px; }
+.add-btn .caret { font-size: 10px; opacity: .8; margin-left: 2px; }
+.add-wrap { position: relative; }
+.add-between { height: 18px; display: flex; align-items: center; justify-content: center; }
+.insert-line { position: absolute; left: 12px; right: 12px; top: 50%; border-top: 1.5px dashed var(--accent); opacity: 0; transition: opacity .12s; }
+.insert-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--accent); background: var(--paper);
+  color: var(--accent); border-radius: 999px; padding: 1px 10px 1px 6px; font-size: 12.5px; font-weight: 500; cursor: pointer; opacity: 0;
+  transform: scale(.92); transition: opacity .12s, transform .12s; }
+.insert-btn .plus { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 13px; line-height: 1; }
+.add-between:hover .insert-line, .add-between:focus-within .insert-line, .add-between.open .insert-line,
+.add-between:hover .insert-btn, .add-between:focus-within .insert-btn, .add-between.open .insert-btn { opacity: 1; transform: none; }
+@media (hover: none) { .add-between .insert-btn { opacity: .55; transform: none; } .add-between .insert-label { display: none; } .insert-btn { padding: 1px; } }
+.add-end { margin: 18px 0 24px; }
+.add-tile { width: 100%; display: flex; align-items: center; gap: 10px; padding: 14px 16px; border: 1.5px dashed var(--rule-strong); border-radius: 10px;
+  background: transparent; color: var(--ink-2); font-size: 15px; font-weight: 500; cursor: pointer; transition: border-color .12s, color .12s, background .12s; }
+.add-tile .plus { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid currentColor; font-size: 15px; line-height: 1; }
+.add-tile:hover, .add-end.open .add-tile { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.add-tile-kinds { margin-left: auto; display: flex; gap: 8px; color: var(--ink-3); }
+@media (max-width: 640px) { .add-tile-kinds { display: none; } }
+.add-menu { position: fixed; z-index: 80; width: min(350px, calc(100vw - 16px)); background: var(--paper); border: 1px solid var(--rule-strong);
+  border-radius: 12px; box-shadow: 0 14px 40px rgba(10, 20, 30, .18), 0 2px 6px rgba(10, 20, 30, .08); overflow: hidden; animation: add-pop .12s ease-out; }
+.add-menu.up { animation-name: add-pop-up; }
+@keyframes add-pop { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes add-pop-up { from { opacity: 0; transform: translateY(4px); } }
+.add-menu-filter { width: 100%; border: 0; border-bottom: 1px solid var(--rule); background: transparent; padding: 11px 14px; font-size: 14px; color: var(--ink); }
+.add-menu-filter:focus { outline: none; }
+.add-menu ul { list-style: none; margin: 0; padding: 4px; max-height: min(420px, 60vh); overflow-y: auto; }
+.add-menu-group { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 8px 10px 3px; }
+.add-menu li[role=option] { display: flex; align-items: center; gap: 11px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.add-menu li[role=option] .kind-icon { width: 18px; height: 18px; color: var(--ink-2); }
+.add-menu li.on { background: var(--accent-soft); }
+.add-menu li.on .kind-icon { color: var(--accent); }
+.add-menu-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.add-menu-text b { font-weight: 600; font-size: 14px; color: var(--ink); }
+.add-menu-text span { font-size: 12.5px; color: var(--ink-3); }
+.add-menu-has { margin-left: auto; font-size: 11px; color: var(--ink-3); border: 1px solid var(--rule); border-radius: 999px; padding: 0 7px; flex: none; }
+.add-menu-empty { padding: 12px 10px; color: var(--ink-3); font-size: 13px; }
+.add-menu-foot { border-top: 1px solid var(--rule); padding: 6px 14px; font-size: 11.5px; color: var(--ink-3); }
+@media (hover: none) { .add-menu-foot { display: none; } }
 
 /* rich text */
 .rt-toolbar { display: flex; gap: 2px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -272,7 +316,7 @@ table.plain td.num { text-align: right; }
   .timeline li { grid-template-columns: 1fr; gap: 2px; }
 }
 @media print {
-  .side, .tabs, .add-bar, .rail, .btn, .rt-toolbar { display: none !important; }
+  .side, .tabs, .add-wrap, .rail, .btn, .rt-toolbar { display: none !important; }
   .shell { display: block; } .layout-2 { display: block; } body { background: #fff; }
 }
 
