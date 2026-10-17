@@ -27,7 +27,20 @@ def require_editable(exp: Experiment, user: User) -> None:
             f"{exp.eid} is {exp.status.value}; signed records are locked",
         )
     if exp.owner_id != user.id and user.role != Role.admin and not exp.is_template:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the experiment owner can edit it")
+        from sqlalchemy.orm import object_session
+
+        from .access import access_for
+        sess = object_session(exp)
+        if sess is None or not access_for(sess, user).can_edit(exp):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the experiment owner, or someone it was shared with for editing, can edit it")
+
+
+def read_experiment(session: Session, user: User, exp_id: int) -> Experiment:
+    """The experiment, if this user may read it (404 otherwise, so hidden records stay hidden)."""
+    from .access import require_read
+    exp = get_or_404(session, Experiment, exp_id)
+    require_read(session, user, exp)
+    return exp
 
 
 def user_brief(session: Session, uid: int | None) -> dict[str, Any] | None:

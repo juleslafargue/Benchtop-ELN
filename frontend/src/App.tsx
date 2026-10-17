@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { api, getToken, setToken, setUnauthorizedHandler, type Notebook, type User } from './api'
+import { api, getToken, setToken, setUnauthorizedHandler, type Group, type Notebook, type User } from './api'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -15,11 +15,14 @@ import Compounds from './pages/Compounds'
 import Templates from './pages/Templates'
 import Admin from './pages/Admin'
 import Account from './pages/Account'
+import Groups from './pages/Groups'
 
 interface Ctx {
   user: User
   notebooks: Notebook[]
   refreshNotebooks: () => Promise<void>
+  groups: Group[]
+  refreshGroups: () => Promise<void>
   toast: (msg: string) => void
   logout: () => void
   canWrite: boolean
@@ -32,12 +35,21 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [booting, setBooting] = useState(!!getToken())
   const [notebooks, setNotebooks] = useState<Notebook[]>([])
+  const [groups, setGroups] = useState<Group[]>([])
   const [toastMsg, setToastMsg] = useState<string | null>(null)
 
   const logout = useCallback(() => { setToken(null); setUser(null) }, [])
   useEffect(() => setUnauthorizedHandler(logout), [logout])
 
   useEffect(() => {
+    // coming back from single sign-on: the token arrives in the URL fragment (never sent to a server)
+    const m = /[#&]sso=([^&]+)/.exec(location.hash)
+    if (m) {
+      setToken(decodeURIComponent(m[1]))
+      if (/welcome=1/.test(location.hash)) sessionStorage.setItem('benchtop.welcome', '1')
+      history.replaceState(null, '', location.pathname + location.search)
+      setBooting(true)
+    }
     if (!getToken()) return
     api.get<User>('/api/auth/me').then(setUser).catch(() => setToken(null)).finally(() => setBooting(false))
   }, [])
@@ -45,7 +57,10 @@ export default function App() {
   const refreshNotebooks = useCallback(async () => {
     setNotebooks(await api.get<Notebook[]>('/api/notebooks'))
   }, [])
-  useEffect(() => { if (user) refreshNotebooks() }, [user, refreshNotebooks])
+  const refreshGroups = useCallback(async () => {
+    try { setGroups(await api.get<Group[]>('/api/groups')) } catch { /* older server */ }
+  }, [])
+  useEffect(() => { if (user) { refreshNotebooks(); refreshGroups() } }, [user?.id, refreshNotebooks, refreshGroups]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toast = useCallback((msg: string) => {
     setToastMsg(msg)
@@ -62,7 +77,7 @@ export default function App() {
   if (!user) return <Login onLogin={(t, u) => { setToken(t); setUser(u) }} />
 
   return (
-    <AppCtx.Provider value={{ user, notebooks, refreshNotebooks, toast, logout, canWrite: user.role !== 'viewer', setUser }}>
+    <AppCtx.Provider value={{ user, notebooks, refreshNotebooks, groups, refreshGroups, toast, logout, canWrite: user.role !== 'viewer', setUser }}>
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -76,6 +91,7 @@ export default function App() {
           <Route path="/reactions" element={<Reactions />} />
           <Route path="/compounds" element={<Compounds />} />
           <Route path="/account" element={<Account />} />
+          <Route path="/groups" element={<Groups />} />
           <Route path="/admin" element={user.role === 'admin' ? <Admin /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

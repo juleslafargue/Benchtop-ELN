@@ -14,7 +14,7 @@ from sqlmodel import Session, select
 from . import audit
 from .db import engine
 from .main import app
-from .models import User
+from .models import GroupMember, LabGroup, User
 from .security import hash_password
 
 PW = "benchtop123"
@@ -24,11 +24,21 @@ def _create_demo_users() -> bool:
     with Session(engine) as s:
         if s.exec(select(User).where(User.username == "alice")).first():
             return False
+        ids = {}
         for u, n in (("alice", "Alice Chen"), ("bob", "Bob Okafor")):
             user = User(username=u, full_name=n, email=f"{u}@example.org", password_hash=hash_password(PW))
             s.add(user)
             s.flush()
+            ids[u] = user.id
             audit.record(s, None, "create", "user", user.id, username=u, role="scientist", demo=True)
+        # a demo research group: Alice leads it, Bob is a member
+        if not s.exec(select(LabGroup).where(LabGroup.name == "Chen group")).first():
+            g = LabGroup(name="Chen group", description="Demo research group: methodology and cross-coupling")
+            s.add(g)
+            s.flush()
+            s.add(GroupMember(group_id=g.id, user_id=ids["alice"], role="lead"))
+            s.add(GroupMember(group_id=g.id, user_id=ids["bob"], role="member"))
+            audit.record(s, None, "create", "group", g.id, name=g.name, demo=True)
         s.commit()
     return True
 
@@ -63,8 +73,10 @@ def load_demo(c) -> bool:
             lot = c.post(f"/api/materials/{m['id']}/lots", headers=H, json=body).json()
             m.setdefault("lot_ids", []).append(lot["id"])
 
+    grp = next((g for g in c.get("/api/groups", headers=H).json() if g["name"] == "Chen group"), None)
     nb = c.post("/api/notebooks", headers=H, json={"name": "Cross-coupling methods",
-                                                   "description": "Pd-catalysed C–C bond formation"}).json()
+                                                   "description": "Pd-catalysed C–C bond formation",
+                                                   **({"group_id": grp["id"], "visibility": "group"} if grp else {})}).json()
 
     tpl = c.post("/api/experiments", headers=H, json={"title": "General synthesis", "is_template": True,
                                                       "description": "Standard layout for a single-step synthesis"}).json()

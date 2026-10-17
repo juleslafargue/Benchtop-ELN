@@ -15,7 +15,7 @@ from . import __version__, backup
 from .config import settings
 from .db import engine, init_db
 from .models import Role, User
-from .routers import admin, auth, chemistry, dashboard, experiments, materials, reactions, safety as safety_router, search, nmr as nmr_router
+from .routers import admin, auth, chemistry, dashboard, experiments, materials, reactions, safety as safety_router, search, nmr as nmr_router, groups, comments, sso
 from .security import hash_password
 
 
@@ -94,7 +94,7 @@ app = FastAPI(title="Benchtop ELN", version=__version__, lifespan=lifespan,
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
-for r in (auth, experiments, materials, chemistry, search, reactions, admin, dashboard, safety_router, nmr_router):
+for r in (auth, experiments, materials, chemistry, search, reactions, admin, dashboard, safety_router, nmr_router, groups, comments, sso):
     app.include_router(r.router)
 
 

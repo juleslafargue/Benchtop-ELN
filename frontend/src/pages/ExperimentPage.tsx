@@ -4,12 +4,15 @@ import { useApp } from '../App'
 import { api, displayName, downloadAuthed, when, type AuditEvent, type EntryKind, type Experiment, type ExperimentSummary, type Signature } from '../api'
 import EntryCard from '../components/EntryCard'
 import { AddSection } from '../components/AddSection'
+import Discussion from '../components/Discussion'
+import ShareDialog from '../components/ShareDialog'
+import { AudienceBadge } from '../components/Audience'
 import SignDialog, { type SignAction } from '../components/SignDialog'
 import WriteupDialog from '../components/WriteupDialog'
 import ScaleDialog from '../components/ScaleDialog'
 import { useBackTarget } from '../components/BackButton'
 import { parseSpectrumBuffer, techniqueFor } from '../spectra'
-import type { Attachment, Entry, User } from '../api'
+import type { Attachment, Entry, User, UserBrief } from '../api'
 
 const STAMP_WORD = { open: 'Draft', signed: 'Signed', witnessed: 'Witnessed', voided: 'Void' }
 
@@ -80,12 +83,17 @@ export default function ExperimentPage() {
   const [justAdded, setJustAdded] = useState<number | null>(null)
   const [importNotes, setImportNotes] = useState<string[]>([])
   const [scaling, setScaling] = useState(false)
+  const [sharing, setSharing] = useState<UserBrief[] | null>(null)
+  const [focusEntry, setFocusEntry] = useState<number | null>(null)
+  const [commentCounts, setCommentCounts] = useState<Record<number, number>>({})
   const dragDepth = useRef(0)
 
   const load = useCallback(async () => {
     try { setExp(await api.get<Experiment>(`/api/experiments/${id}`)); setErr('') } catch (e: any) { setErr(e.message) }
   }, [id])
   useEffect(() => { load(); setVerify(null); setTab('record') }, [load])
+  // opening an experiment clears its notifications
+  useEffect(() => { if (id) api.post('/api/notifications/read', { experiment_id: Number(id) }).catch(() => {}) }, [id])
 
   useBackTarget(exp?.notebook_id ? `/notebooks/${exp.notebook_id}` : exp?.is_template ? '/templates' : null,
     exp?.notebook_name || (exp?.is_template ? 'Templates' : 'Dashboard'))
@@ -145,7 +153,7 @@ export default function ExperimentPage() {
   }
 
   const isOwner = exp.owner.id === user.id
-  const editable = canWrite && exp.status === 'open' && (isOwner || user.role === 'admin' || exp.is_template)
+  const editable = canWrite && exp.status === 'open' && (exp.can_edit ?? (isOwner || user.role === 'admin' || exp.is_template))
 
   const patch = async (body: Partial<Experiment>) => {
     try { const r = await api.patch<ExperimentSummary>(`/api/experiments/${exp.id}`, body); setExp({ ...exp, ...r }) }
@@ -222,6 +230,11 @@ export default function ExperimentPage() {
             <span>Created {when(exp.created_at)}</span>
             <span>Modified {when(exp.updated_at)}</span>
           </div>
+          {exp.audience && !exp.is_template && <div className="exp-access">
+            <AudienceBadge audience={exp.audience} />
+            {exp.shared_with_me && <span className="tag">Shared with you · {exp.shared_with_me === 'edit' ? 'can edit' : 'can view'}</span>}
+            <button className="btn ghost sm" onClick={() => setSharing([])}>Share…</button>
+          </div>}
           <div className="row" style={{ marginTop: 8, gap: 6 }}>
             {exp.tags.map(t => <span className="tag" key={t}>{t}{editable && <button className="btn ghost sm" style={{ padding: '0 0 0 4px' }} aria-label={`Remove tag ${t}`} onClick={() => patch({ tags: exp.tags.filter(x => x !== t) })}>×</button>}</span>)}
             {editable && <input className="input" style={{ width: 110, padding: '1px 8px', fontSize: 13 }} placeholder="Add tag" aria-label="Add tag"
@@ -253,7 +266,8 @@ export default function ExperimentPage() {
                     : <div className="entry-gap" />)}
                   <EntryCard entry={e} readOnly={!editable} experimentId={exp.id} context={context}
                     attachments={exp.attachments} onAttachmentsChanged={attachmentsChanged}
-                    onDeleted={load} onMove={d => move(i, d)} isFirst={i === 0} isLast={i === exp.entries.length - 1} />
+                    onDeleted={load} onMove={d => move(i, d)} isFirst={i === 0} isLast={i === exp.entries.length - 1}
+                    comments={commentCounts[e.id] || 0} onComment={() => setFocusEntry(e.id)} />
                 </Fragment>
               ))}
             </div>
@@ -279,6 +293,8 @@ export default function ExperimentPage() {
                 {verify.intact ? 'Content matches the latest signature.' : 'Content does not match the signature. The record may have been altered outside the app.'}
                 <span className="hash" style={{ display: 'block' }}>{verify.content_hash}</span></p>}
             </div>}
+            <Discussion experimentId={exp.id} entries={exp.entries} focusEntry={focusEntry} onFocusDone={() => setFocusEntry(null)}
+              onCountsChange={per => setCommentCounts(per)} canShare={isOwner || user.role === 'admin'} onShare={us => setSharing(us)} />
             <div className="stack" style={{ gap: 6 }}>
               <h3>Record</h3>
               {!exp.is_template && (() => {
@@ -303,6 +319,7 @@ export default function ExperimentPage() {
         </div>
       )}
 
+      {sharing && <ShareDialog experimentId={exp.id} eid={exp.eid} preselect={sharing} onClose={() => { setSharing(null); load() }} />}
       {scaling && (() => {
         const rx = exp.entries.find(e => e.kind === 'reaction')?.content
         const lim = (rx?.rows || []).find((r: any) => r.limiting)

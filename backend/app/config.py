@@ -39,6 +39,18 @@ class Settings:
         self.safety_refresh_days = float(os.environ.get("BENCHTOP_SAFETY_REFRESH_DAYS", "30"))
         # NMR shift table: re-check NMRShiftDB2 monthly and rebuild when it publishes a newer export
         self.nmr_auto_update = os.environ.get("BENCHTOP_NMR_AUTO_UPDATE", "on").lower() not in ("0", "off", "false", "no")
+        # Single sign-on (OpenID Connect): Microsoft Entra ID / Microsoft 365, Google Workspace, Okta,
+        # Keycloak, a university IdP… Register Benchtop there with the redirect URI
+        # <public URL>/api/auth/sso/callback and set these three to switch it on.
+        self.oidc_issuer = os.environ.get("BENCHTOP_OIDC_ISSUER", "").rstrip("/")
+        self.oidc_client_id = os.environ.get("BENCHTOP_OIDC_CLIENT_ID", "")
+        self.oidc_client_secret = os.environ.get("BENCHTOP_OIDC_CLIENT_SECRET", "")
+        self.oidc_name = os.environ.get("BENCHTOP_OIDC_NAME", "")  # button label; guessed from the issuer when empty
+        self.oidc_domains = [d.strip().lower().lstrip("@") for d in os.environ.get("BENCHTOP_OIDC_ALLOWED_DOMAINS", "").split(",") if d.strip()]
+        self.oidc_auto_create = os.environ.get("BENCHTOP_OIDC_AUTO_CREATE", "on").lower() not in ("0", "off", "false", "no")
+        self.oidc_default_role = os.environ.get("BENCHTOP_OIDC_DEFAULT_ROLE", "scientist")
+        self.password_login = os.environ.get("BENCHTOP_PASSWORD_LOGIN", "on").lower() not in ("0", "off", "false", "no")
+        self.public_url = os.environ.get("BENCHTOP_PUBLIC_URL", "").rstrip("/")  # e.g. https://eln.mylab.ca
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.attachments_dir.mkdir(parents=True, exist_ok=True)
 

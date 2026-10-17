@@ -7,6 +7,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
 VENV="$BACKEND/.venv"
+# Optional settings file (single sign-on, backup folder, port…): KEY=value lines.
+# It lives with your data, so upgrades never touch it.
+SETTINGS="${BENCHTOP_DATA_DIR:-$BACKEND/data}/settings.env"
+if [ -f "$SETTINGS" ]; then set -a; . "$SETTINGS"; set +a; fi
 PORT="${BENCHTOP_PORT:-8000}"
 export BENCHTOP_DATA_DIR="${BENCHTOP_DATA_DIR:-$BACKEND/data}"
 export BENCHTOP_STATIC_DIR="${BENCHTOP_STATIC_DIR:-$FRONTEND/dist}"
@@ -96,6 +100,23 @@ case "$cmd" in
     cd "$BACKEND" && exec "$VENV/bin/python" -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT"
     ;;
 
+  lab)
+    # share this computer's Benchtop with labmates on the same network
+    remove_old_login_item
+    if running; then fail "Benchtop is already running on this computer; close that window first, then run ./benchtop lab"; fi
+    ensure_python_env
+    ensure_ui
+    host="$(scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || hostname)"
+    ip="$( (ipconfig getifaddr en0 || ipconfig getifaddr en1 || hostname -I 2>/dev/null | awk '{print $1}') 2>/dev/null | head -1)"
+    say "Starting Benchtop for your lab on port $PORT  (data: $BENCHTOP_DATA_DIR)"
+    say "Labmates on the same network can open:  http://${host}.local:$PORT${ip:+   or   http://$ip:$PORT}"
+    say "Give each person their own account (Users & audit) and put them in a group (Groups)."
+    say "This is plain HTTP on your local network. For access from anywhere, see docs/SERVER.md (HTTPS server or Tailscale)."
+    say "Leave this window open while people work. Close it or press Ctrl+C to stop."
+    ( wait_up && open_browser ) &
+    cd "$BACKEND" && exec "$VENV/bin/python" -m uvicorn app.main:app --host 0.0.0.0 --port "$PORT"
+    ;;
+
   status)
     v="$(curl -fsS "http://127.0.0.1:$PORT/api/health" 2>/dev/null | sed -E 's/.*"version":"([^"]+)".*/\1/' || true)"
     if [ -n "$v" ]; then say "Running: version $v at http://localhost:$PORT"; else say "Not running."; fi
@@ -148,6 +169,7 @@ Everyday
   ./benchtop              start Benchtop and open your browser (close the window or Ctrl+C to stop)
   ./benchtop status       is it running, which version, where is the data
   ./benchtop upgrade ZIP  install a new version from its zip (backs up first, keeps your data)
+  ./benchtop lab          start it so labmates on the same network can use it too
 
 Data
   ./benchtop backup       make a backup now
@@ -163,6 +185,7 @@ Settings (environment variables)
   BENCHTOP_BACKUP_DIR=…              where backups go (e.g. a folder in iCloud Drive)
   BENCHTOP_BACKUP_KEEP=14            how many backups to keep
   BENCHTOP_OBSIDIAN_DIR=…            sync notes into this vault folder every hour while running
+  BENCHTOP_OIDC_ISSUER / _CLIENT_ID / _CLIENT_SECRET   single sign-on (see docs/SERVER.md)
 HELP
     ;;
   *) fail "Unknown command '$cmd'. Try ./benchtop help" ;;

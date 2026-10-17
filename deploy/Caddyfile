@@ -1,0 +1,15 @@
+# HTTPS in front of Benchtop. Caddy gets and renews the certificate for $BENCHTOP_DOMAIN by itself
+# (the domain must point at this server and ports 80/443 must be reachable).
+{$BENCHTOP_DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 60MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+	reverse_proxy app:8000
+}

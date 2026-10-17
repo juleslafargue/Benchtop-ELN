@@ -27,10 +27,11 @@ export interface EntryEditorProps {
 /** Experiment-level facts an editor may need, e.g. the product formula for scaling NMR integrals. */
 export interface EntryContext { productFormula: string | null; productSmiles: string | null; productMW: number | null; openAttachmentId: number | null }
 
-export default function EntryCard({ entry, readOnly, experimentId, attachments, onAttachmentsChanged, onDeleted, onMove, isFirst, isLast, context }: {
+export default function EntryCard({ entry, readOnly, experimentId, attachments, onAttachmentsChanged, onDeleted, onMove, isFirst, isLast, context, comments, onComment }: {
   entry: Entry; readOnly: boolean; experimentId: number; attachments: Attachment[]; context: EntryContext
   onAttachmentsChanged: () => void; onDeleted: () => void
   onMove: (dir: -1 | 1) => void; isFirst: boolean; isLast: boolean
+  comments?: number; onComment?: () => void
 }) {
   const [content, setContent] = useState(entry.content)
   const [title, setTitle] = useState(entry.title)
@@ -95,6 +96,10 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
           onChange={e => { edits.current++; setTitle(e.target.value); setState('dirty') }} />
         <span className="entry-kind"><KindIcon kind={entry.kind} />{KIND_LABEL[entry.kind]}</span>
         <span className={`save-state${state === 'dirty' || state === 'saving' ? ' dirty' : ''}${state === 'error' ? ' err' : ''}`} title={error}>{stateText}</span>
+        {onComment && <button className="btn ghost sm entry-comments" onClick={onComment} aria-label={comments ? `${comments} open comment${comments === 1 ? '' : 's'} on this section` : 'Comment on this section'}
+          title="Comment on this section">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" /></svg>
+          {comments ? <span className="n">{comments}</span> : null}</button>}
         <button className="btn ghost sm" onClick={() => setShowVersions(true)}>History</button>
         {!readOnly && <>
           <button className="btn ghost sm" disabled={isFirst} onClick={() => onMove(-1)} aria-label="Move section up">↑</button>

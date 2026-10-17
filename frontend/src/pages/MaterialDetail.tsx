@@ -66,7 +66,7 @@ export default function MaterialDetail() {
         <div>
           <span className="eid">{m.mid}</span>
           <h1 className="page-title">{m.name}</h1>
-          <p className="lede">{m.kind}{m.source_experiment && <> · made in <Link to={`/experiments/${m.source_experiment.id}`}>{m.source_experiment.eid}</Link></>}</p>
+          <p className="lede">{m.kind}{m.source_experiment && <> · made in {m.source_experiment.id ? <Link to={`/experiments/${m.source_experiment.id}`}>{m.source_experiment.eid}</Link> : <span title="A record you can't open">{m.source_experiment.eid}</span>}</>}</p>
         </div>
         {canWrite && <button className="btn" onClick={() => setEditing(true)}>Edit</button>}
       </div>

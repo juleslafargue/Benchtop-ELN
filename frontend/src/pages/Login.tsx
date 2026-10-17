@@ -56,7 +56,14 @@ export default function Login({ onLogin }: { onLogin: (token: string, user: User
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
+  const [sso, setSso] = useState<{ enabled: boolean; name: string | null; password_login: boolean } | null>(null)
   useEffect(() => { api.get<{ needs_setup: boolean }>('/api/setup').then(r => setNeedsSetup(r.needs_setup)).catch(() => setNeedsSetup(false)) }, [])
+  useEffect(() => {
+    api.get<{ enabled: boolean; name: string | null; password_login: boolean }>('/api/auth/sso').then(setSso).catch(() => setSso(null))
+    const m = /sso_error=([^&]*)/.exec(location.hash)
+    if (m) { setErr(decodeURIComponent(m[1].replace(/\+/g, ' '))); history.replaceState(null, '', location.pathname + location.search) }
+  }, [])
+  const [showPw, setShowPw] = useState(false)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -77,13 +84,21 @@ export default function Login({ onLogin }: { onLogin: (token: string, user: User
           <h1>Benchtop</h1>
           <p className="muted" style={{ margin: 0 }}>Sign in to your lab notebook.</p>
         </div>
-        <label className="field">Username<input className="input" autoFocus autoComplete="username" autoCapitalize="none" value={username} onChange={e => setUsername(e.target.value)} /></label>
-        <label className="field">Password<input className="input" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} /></label>
+        {sso?.enabled && <>
+          <a className="btn primary sso-btn" href={`/api/auth/sso/start?remember=${remember}`}>Sign in with {sso.name}</a>
+          {(sso.password_login || showPw) ? <div className="or-rule"><span>or with a Benchtop password</span></div>
+            : <button type="button" className="link-btn" style={{ alignSelf: 'center' }} onClick={() => setShowPw(true)}>Administrator sign-in</button>}
+        </>}
+        {(!sso?.enabled || sso.password_login || showPw) && <>
+          <label className="field">Username<input className="input" autoFocus={!sso?.enabled} autoComplete="username" autoCapitalize="none" value={username} onChange={e => setUsername(e.target.value)} /></label>
+          <label className="field">Password<input className="input" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} /></label>
+        </>}
         <label className="check-row">
           <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} /> Keep me signed in for 30 days
         </label>
         {err && <p className="error" role="alert">{err}</p>}
-        <button className="btn primary" disabled={busy || !username || !password} style={{ justifyContent: 'center' }}>Sign in</button>
+        {(!sso?.enabled || sso.password_login || showPw) &&
+          <button className={`btn${sso?.enabled ? '' : ' primary'}`} disabled={busy || !username || !password} style={{ justifyContent: 'center' }}>Sign in</button>}
       </form>
     </div>
   )

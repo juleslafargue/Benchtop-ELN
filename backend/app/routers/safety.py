@@ -60,10 +60,11 @@ def _reaction_rows(session: DB, exp: Experiment) -> list[dict[str, Any]]:
 
 
 @router.get("/experiments/{exp_id}/safety")
-def experiment_safety(exp_id: int, _: CurrentUser, session: DB, refresh: bool = False):
+def experiment_safety(exp_id: int, user: CurrentUser, session: DB, refresh: bool = False):
     """Hazards of everything in the experiment's reaction tables, plus combination warnings.
     Missing or stale data is fetched (a limited number per request so the page stays responsive)."""
-    exp = get_or_404(session, Experiment, exp_id)
+    from ..services import read_experiment
+    exp = read_experiment(session, user, exp_id)
     rows = _reaction_rows(session, exp)
     mats = {m.id: m for m in session.exec(select(Material).where(Material.id.in_([r.get("material_id") for r in rows if r.get("material_id")] or [-1]))).all()}
     fetched, records, out = 0, [], []

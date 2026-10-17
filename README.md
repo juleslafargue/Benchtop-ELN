@@ -25,6 +25,7 @@ no code, assets or data formats from any proprietary product and is not affiliat
 | **Dashboard** | The home page is a grid of widgets you arrange yourself: work lists (waiting for my witness signature, returned to me with the reason, my open experiments, recently edited, pinned), quick actions, sticky notes and section headings, a yield-over-time chart (click a point to open the experiment), this month's activity, recent spectra, and inventory alerts (lots below 20 % of what was received, or expiring within 30 days). *Customise* lets you drag, resize, add and remove widgets; the layout is saved to your account. Pin any experiment from its page. On a phone the widgets stack in one column. |
 | **Write-up drafts** | *Draft write-up* composes an SI-style experimental paragraph from the reaction table, conditions, work-up and characterisation (amounts with sensible significant figures, mol% for catalysts, yield). It never guesses: anything missing is listed instead. Copy as rich text or add it as a section. |
 | **Obsidian export** | Every experiment as a Markdown note with Dataview-ready front matter (status, product, yield, temperature, time…), the scheme as SVG, tables and attachments. `./benchtop export-obsidian <folder>` or set `BENCHTOP_OBSIDIAN_DIR` to sync hourly; an index note includes a ready-made Dataview table. |
+| **Have we done this before?** | Under every reaction table, the most similar reactions anyone in the lab has already run (that you're allowed to see), as you draw it, even before there's a product. Reactions are compared by starting materials and products, by the transformation itself (which structural features appear and disappear) and by reagents and solvents, and labelled *same reaction*, *same transformation on a different substrate*, *same product* or *similar starting materials*. Each shows the scheme, who ran it and when, the conditions, the yield and the observations; *Use these conditions* copies the reagents, catalysts, solvents (as equivalents, so they scale) and conditions into your table. |
 | **Reactions overview** | Every reaction across notebooks in one table: scheme, scale, reagents, conditions, yield, purification, data recorded. Filter by text, substructure, yield and temperature; sort; download CSV. |
 | **Safety data (GHS)** | Hazard classifications come from PubChem's public API, which gathers them from the EU CLP harmonised classification (Annex VI), the ECHA C&L Inventory (with the share of notifiers behind each statement), Japan's NITE, Safe Work Australia and HSDB. Benchtop uses the most authoritative source for each chemical (harmonised, then the largest ECHA aggregate) and still lists anything other sources add. Every record shows its source and when it was fetched. Data older than 30 days is re-checked automatically while Benchtop runs. If a classification changes (say a new H350), the change goes into the audit log and onto your dashboard until someone marks it reviewed. Offline, the last data is kept and its age shown. Special hazards (pyrophoric, water-reactive, peroxide former, oxidiser, CMR, acid-gas, explosive) are flagged from the official codes. Supplier SDSs still take precedence. |
 | **Risk assessment** | New experiments include a *Safety & risk assessment* section that reads the reaction table and shows every chemical's pictograms, signal word and H-statements, plus warnings for known dangerous combinations (azides with CH₂Cl₂, NaH in DMF/DMSO, water-reactive reagents with water or alcohols, oxidisers with flammables) and controls suggested from the P-statements. *Record hazards in notebook* saves a snapshot into the record (so a signed record keeps what was known at signing), and a banner appears if the reaction or the classifications change afterwards. |
@@ -38,7 +39,9 @@ no code, assets or data formats from any proprietary product and is not affiliat
 | **Signing** | Author signs → record locks → a different user witnesses (or returns it with a reason). Signing requires password re-entry. Each signature stores a SHA-256 hash of the full record (all sections + attachment hashes); *Verify integrity* recomputes it and flags out-of-band edits. Records can be voided, never deleted. |
 | **History & audit** | Every section save is a new version (view any past version). Every mutation, login and failed signature attempt is written to an append-only audit log where each event hashes the previous one; *Verify hash chain* detects any altered, removed or reordered event. Attachments are content-addressed and checked against their hash on download. |
 | **Quick navigation** | ⌘K (Ctrl K) finds any experiment, material (by name or CAS), notebook or page, and runs actions such as "New experiment"; press N anywhere for a new experiment. Amount fields accept units: `1.2 g` in a mg cell, `250 µL` in mL, `0.5 mol`, `30 min`, `500 mM`. |
-| **Users & accounts** | Admin, scientist and read-only viewer roles. A fresh install opens on a setup screen where you create your own administrator account (the built-in admin login is then retired). Sign-ins can last 30 days. Everyone has an account page to change their name, email, username and password, and preferences (light/dark theme, default notebook, open spectra full-screen) that follow them between computers. Signatures store the printed name at the moment of signing, so later name changes never alter signed records. Admins can edit any account. |
+| **Groups & sharing** | Research groups with leads (a PI, a manager) and members. Each notebook is open to everyone, to one group, or private (plus its group's leads, who see all of their group's notebooks). Share a single experiment with anyone, to view or to edit; only the author signs. Records someone can't open don't appear anywhere for them: lists, search, reactions, compounds, dashboard, spectra and similar-reaction suggestions all respect it. Existing notebooks stay open to everyone until you change them. |
+| **Comments & notifications** | Discuss any experiment or a single section in threads: ask about a peak, request a change, approve. @mention people (autocomplete as you type) and they're notified; replies and comments on your experiments notify you too, via the bell. Resolve threads when done. Comments can be added during review and after signing because they aren't part of the signed record (the signed hash doesn't change), and every comment, edit, deletion and resolution is in the audit trail. Mention someone who can't open the record and Benchtop offers to share it with them. |
+| **Users & accounts** | Admin, scientist and read-only viewer roles. A fresh install opens on a setup screen where you create your own administrator account (the built-in admin login is then retired). **Single sign-on** with Microsoft 365 / Entra ID, Google Workspace or any OpenID Connect provider: people sign in with their university or company account, optionally limited to your email domains, with accounts created on first sign-in or matched to ones an admin added. Sign-ins can last 30 days. Everyone has an account page to change their name, email, username and password, and preferences (light/dark theme, default notebook, open spectra full-screen) that follow them between computers. Signatures store the printed name at the moment of signing, so later name changes never alter signed records. Admins can edit any account. |
 
 ## Quick start (Mac)
 
@@ -55,6 +58,7 @@ Needs Python 3.11+ (python.org); Node is only needed if the bundled interface ha
 
 ```bash
 ./benchtop status               # running? which version? where is the data?
+./benchtop lab                  # share it with labmates on the same network
 ./benchtop upgrade NEW.zip      # backs up, swaps in the new version, keeps your data
 ./benchtop backup | backups | restore FILE
 ./benchtop seed                 # demo data
@@ -66,6 +70,10 @@ Needs Python 3.11+ (python.org); Node is only needed if the bundled interface ha
 Backups are automatic: one on start-up if the newest is more than a day old, then daily while running,
 keeping the newest 14. Each is a single zip with a consistent database snapshot and every attachment.
 Set `BENCHTOP_BACKUP_DIR` to a folder in iCloud Drive or Dropbox to keep copies off your Mac.
+
+**Using it as a group?** See [docs/SERVER.md](docs/SERVER.md): a lab Mac on the local network
+(`./benchtop lab`), the same over Tailscale from anywhere, or a server with HTTPS, Postgres and single
+sign-on (`deploy/`).
 
 ## Quick start (Docker)
 
@@ -121,6 +129,14 @@ To serve the built app from the API (what the Docker image does):
 | `BENCHTOP_PUBCHEM` | `on` | `off` stops all PubChem lookups (works fully offline with whatever was fetched before) |
 | `BENCHTOP_SAFETY_REFRESH_DAYS` | `30` | Safety data older than this is re-checked by the hourly housekeeping |
 | `BENCHTOP_NMR_AUTO_UPDATE` | `on` | `off` stops the monthly check for a newer NMRShiftDB2 export (the bundled table is still used) |
+| `BENCHTOP_OIDC_ISSUER` / `_CLIENT_ID` / `_CLIENT_SECRET` | unset | Single sign-on with any OpenID Connect provider (see docs/SERVER.md) |
+| `BENCHTOP_OIDC_NAME` | from the issuer | Sign-in button label, e.g. `Microsoft`, `UTORid` |
+| `BENCHTOP_OIDC_ALLOWED_DOMAINS` | any | Comma-separated email domains allowed to sign in |
+| `BENCHTOP_OIDC_AUTO_CREATE` | `on` | `off`: only people an admin added (matched by email) can sign in |
+| `BENCHTOP_PASSWORD_LOGIN` | `on` | `off`: single sign-on only (admins keep password sign-in as a fallback) |
+| `BENCHTOP_PUBLIC_URL` | from the request | The address people use, for sign-on redirects behind a proxy |
+
+The `./benchtop` launcher also reads `KEY=value` lines from `backend/data/settings.env`, which upgrades never touch.
 
 ## Architecture
 
@@ -143,7 +159,9 @@ backend/   FastAPI + SQLModel + RDKit
   app/nmrpredict.py NMR shift prediction: atom environments, table builder, lookup
   app/nmrdata.py    NMRShiftDB2 download and rebuild (also a CLI)
   app/data/         bundled NMR shift table and its licence
-  app/routers/      auth, experiments (+signing, export), materials, chemistry, search, reactions, admin
+  app/access.py     who can see and edit what (groups, notebook visibility, shares), used by every route
+  app/routers/      auth, sso, experiments (+signing, export), groups (+sharing), comments (+notifications),
+                    materials, chemistry, search, reactions (+similar), admin
   tests/            API tests incl. signature tamper detection and audit-chain tamper detection
 ```
 
@@ -179,13 +197,12 @@ that work.
 
 ## Roadmap ideas
 
-- Next: HPLC/LC-MS traces, TLC photos; PDF export, supervisor review and notifications, DOI references, bench timeline (v0.9)
+- Next: compound and batch registration with a route view, `.eln` import/export (ELN Consortium format), bench mode with phone photos and barcode scanning; HPLC/LC-MS traces, PDF export, DOI references
 
 - Plate/sample-set entities and a sample-tracking view
 - Varian/JEOL raw FIDs, 2D NMR, and mzML for MS
 - Instrument file drop-folders that auto-attach to experiments
-- SSO (OIDC), per-notebook sharing, project-level permissions
-- Witness assignment and email notifications
+- Email notifications and witness assignment
 - PDF/A export with embedded signature manifest
 
 ## Licence

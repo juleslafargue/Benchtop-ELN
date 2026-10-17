@@ -6,6 +6,8 @@ import NewNotebookDialog from './NewNotebookDialog'
 import NewExperimentDialog from './NewExperimentDialog'
 import CommandPalette from './CommandPalette'
 import BackButton, { BackProvider } from './BackButton'
+import { AudIcon } from './Audience'
+import Notifications from './Notifications'
 
 export const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'
 
@@ -15,6 +17,11 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [creating, setCreating] = useState(false)
   const [palette, setPalette] = useState(false)
   const [newExp, setNewExp] = useState(false)
+  const [narrow, setNarrow] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 900px)').matches)
+  useEffect(() => {
+    const mq = matchMedia('(max-width: 900px)'); const on = () => setNarrow(mq.matches)
+    mq.addEventListener('change', on); return () => mq.removeEventListener('change', on)
+  }, [])
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 
   // ⌘K / Ctrl+K anywhere; "n" for a new experiment when not typing
@@ -34,7 +41,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     <BackProvider>
     <div className="shell">
       <aside className={`side${open ? ' open' : ''}`} aria-label="Main navigation">
-        <NavLink to="/" className="brand"><img src="/flask.svg" alt="" />Benchtop</NavLink>
+        <div className="brand-row"><NavLink to="/" className="brand"><img src="/flask.svg" alt="" />Benchtop</NavLink>{!narrow && <Notifications />}</div>
         <button className="palette-trigger" onClick={() => setPalette(true)}>
           <span>Find or do anything…</span><kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
         </button>
@@ -46,6 +53,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/materials">Materials</NavLink>
           <NavLink to="/inventory">Inventory</NavLink>
           <NavLink to="/templates">Templates</NavLink>
+          <NavLink to="/groups">Groups</NavLink>
           {user.role === 'admin' && <NavLink to="/admin">Users &amp; audit</NavLink>}
         </nav>
         <div>
@@ -56,7 +64,9 @@ export default function Layout({ children }: { children: ReactNode }) {
           <div className="nav">
             {notebooks.map(nb => (
               <NavLink key={nb.id} to={`/notebooks/${nb.id}`} className="nb-link">
-                <span>{nb.name}</span><span className="count">{nb.experiment_count}</span>
+                <span className="nb-name">{nb.name}{nb.visibility && nb.visibility !== 'everyone' &&
+                  <span className={`nb-aud aud-${nb.visibility}`} title={nb.visibility === 'group' ? `${nb.group?.name} only` : 'Private'}><AudIcon v={nb.visibility} /></span>}</span>
+                <span className="count">{nb.experiment_count}</span>
               </NavLink>
             ))}
             {notebooks.length === 0 && <p className="faint" style={{ padding: '0 8px' }}>No notebooks yet.</p>}
@@ -71,7 +81,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="main">
-        <button className="btn menu-btn" onClick={() => setOpen(o => !o)} aria-expanded={open}>Menu</button>
+        <div className="mobile-bar"><button className="btn menu-btn" onClick={() => setOpen(o => !o)} aria-expanded={open}>Menu</button>{narrow && <Notifications />}</div>
         <div className="page"><BackButton />{children}</div>
       </main>
       {creating && <NewNotebookDialog onClose={() => setCreating(false)} />}

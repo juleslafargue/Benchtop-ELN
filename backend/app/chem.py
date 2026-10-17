@@ -6,6 +6,8 @@ Units used throughout the stoichiometry table (the same conventions as most chem
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
 import math
 
 from typing import Any, Optional
@@ -454,6 +456,97 @@ def similarity_scorer(query: str):
         return DataStructs.TanimotoSimilarity(qfp, _fp(m)) if m else 0.0
 
     return score
+
+
+# ---------------------------------------------------------------- reaction similarity ("have we done this before?")
+
+@lru_cache(maxsize=20000)
+def _mol_key(smiles: str) -> tuple[Optional[str], Any]:
+    """(InChIKey of the parent, Morgan fingerprint) for a SMILES, or (None, None) if it doesn't parse."""
+    m = Chem.MolFromSmiles(smiles) if smiles else None
+    if m is None:
+        return None, None
+    frags = Chem.GetMolFrags(m, asMols=True)  # salts: compare the largest piece (the parent)
+    parent = max(frags, key=lambda f: f.GetNumHeavyAtoms()) if len(frags) > 1 else m
+    return Chem.MolToInchiKey(parent) or None, _fp(parent)
+
+
+def _set_sim(a: list[Any], b: list[Any]) -> Optional[float]:
+    """Symmetric best-match Tanimoto between two sets of fingerprints (None if either side is empty)."""
+    if not a or not b:
+        return None
+    ab = sum(max(DataStructs.BulkTanimotoSimilarity(x, b)) for x in a) / len(a)
+    ba = sum(max(DataStructs.BulkTanimotoSimilarity(y, a)) for y in b) / len(b)
+    return (ab + ba) / 2
+
+
+def reaction_profile(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Fingerprints and keys for one reaction table, split into substrates, products and everything else."""
+    out: dict[str, Any] = {"sub": [], "prod": [], "other": set(), "sub_keys": set(), "prod_keys": set(), "names": set()}
+    for r in rows or []:
+        role, smi = r.get("role"), (r.get("smiles") or "").strip()
+        key, fp = _mol_key(smi) if smi else (None, None)
+        name = (r.get("name") or "").strip().lower()
+        if role == "product":
+            if fp is not None:
+                out["prod"].append(fp); out["prod_keys"].add(key)
+        elif role == "reactant" or r.get("limiting"):
+            if fp is not None:
+                out["sub"].append(fp); out["sub_keys"].add(key)
+        else:  # reagents, catalysts, solvents: compared by identity
+            if key:
+                out["other"].add(key)
+            elif name:
+                out["names"].add(name)
+    return out
+
+
+def _transform_fp(p: dict[str, Any]):
+    """What the reaction does: product bits minus substrate bits (a crude difference fingerprint)."""
+    if not p["sub"] or not p["prod"]:
+        return None
+    on_p = set().union(*(set(f.GetOnBits()) for f in p["prod"]))
+    on_s = set().union(*(set(f.GetOnBits()) for f in p["sub"]))
+    made, lost = on_p - on_s, on_s - on_p
+    return made, lost
+
+
+def reaction_similarity(q: dict[str, Any], c: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Score how alike two reaction profiles are (0..1) and say in what way.
+
+    Substrates and products are compared as sets of structures, the transformation by which
+    structural features appear and disappear, and reagents/solvents by identity. A query without
+    a product yet (still planning) is scored on substrates and reagents alone."""
+    sub = _set_sim(q["sub"], c["sub"])
+    prod = _set_sim(q["prod"], c["prod"])
+    if sub is None and prod is None:
+        return None
+    tq, tc = _transform_fp(q), _transform_fp(c)
+    trans = None
+    if tq and tc:
+        def jac(x: set, y: set) -> float:
+            return len(x & y) / len(x | y) if (x or y) else 1.0
+        trans = (jac(tq[0], tc[0]) + jac(tq[1], tc[1])) / 2
+    qa, ca = q["other"] | q["names"], c["other"] | c["names"]
+    cond = len(qa & ca) / len(qa | ca) if (qa and ca) else None
+    parts = [(sub, 0.35), (prod, 0.35), (trans, 0.2), (cond, 0.1)]
+    got = [(v, w) for v, w in parts if v is not None]
+    score = sum(v * w for v, w in got) / sum(w for _, w in got)
+    same_sub = bool(q["sub_keys"]) and q["sub_keys"] == c["sub_keys"]
+    same_prod = bool(q["prod_keys"]) and q["prod_keys"] == c["prod_keys"]
+    if same_sub and (same_prod or not q["prod_keys"]):
+        kind, score = "same", max(score, 0.95)
+    elif same_prod:
+        kind = "same_product"
+    elif trans is not None and trans >= 0.6 and (sub or 0) >= 0.3:
+        kind = "analogue"      # same transformation on a different substrate
+    elif same_sub or (sub or 0) >= 0.7:
+        kind = "same_substrate"
+    else:
+        kind = "related"
+    return {"score": round(score, 3), "kind": kind, "substrates": None if sub is None else round(sub, 3),
+            "products": None if prod is None else round(prod, 3), "transformation": None if trans is None else round(trans, 3),
+            "conditions": None if cond is None else round(cond, 3)}
 
 
 # ---------------------------------------------------------------- structure checks for spectra

@@ -77,8 +77,9 @@ export default function Account() {
             <button className="btn" onClick={() => setUname(true)}>Change username</button>
           </div>
           <div className="section spread" style={{ alignItems: 'center' }}>
-            <div><div className="faint">Password</div>••••••••</div>
-            <button className="btn" onClick={() => setPw(true)}>Change password</button>
+            <div><div className="faint">{user.has_password === false ? 'Signing password' : 'Password'}</div>{user.has_password === false
+              ? <span className="warn-text">Not set: you sign in with single sign-on, and need a password to sign records</span> : '••••••••'}</div>
+            <button className={`btn${user.has_password === false ? ' primary' : ''}`} onClick={() => setPw(true)}>{user.has_password === false ? 'Set signing password' : 'Change password'}</button>
           </div>
         </div>
 

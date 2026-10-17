@@ -60,6 +60,17 @@ class User(SQLModel, table=True):
     preferences: Optional[dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
 
 
+class UserIdentity(SQLModel, table=True):
+    """A sign-in from an identity provider (single sign-on) linked to a Benchtop account."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    issuer: str = Field(index=True)
+    subject: str = Field(index=True)
+    email: str = ""
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    last_login_at: Optional[NaiveDatetime] = None
+
+
 class Notebook(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
@@ -67,6 +78,63 @@ class Notebook(SQLModel, table=True):
     owner_id: int = Field(foreign_key="user.id")
     archived: bool = False
     created_at: NaiveDatetime = Field(default_factory=utcnow)
+    # added in 0.9: who can see it. None/"everyone" = every account (how notebooks worked before groups),
+    # "group" = members of group_id, "private" = its owner (plus the group's leads, if it has a group)
+    group_id: Optional[int] = Field(default=None, foreign_key="labgroup.id", nullable=True)
+    visibility: Optional[str] = Field(default=None, nullable=True)
+
+
+class LabGroup(SQLModel, table=True):
+    """A research group or team. Leads (PIs, managers) see every notebook in the group."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    description: str = ""
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+class GroupMember(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    group_id: int = Field(foreign_key="labgroup.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    role: str = "member"  # member | lead
+    added_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+class ExperimentShare(SQLModel, table=True):
+    """One experiment shared with one person outside the notebook's audience."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    experiment_id: int = Field(foreign_key="experiment.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    permission: str = "view"  # view | edit
+    created_by: int = Field(foreign_key="user.id")
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+class Comment(SQLModel, table=True):
+    """Discussion on an experiment or one of its sections. Not part of the signed record."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    experiment_id: int = Field(foreign_key="experiment.id", index=True)
+    entry_id: Optional[int] = Field(default=None, foreign_key="entry.id", nullable=True)
+    parent_id: Optional[int] = Field(default=None, foreign_key="comment.id", nullable=True)
+    user_id: int = Field(foreign_key="user.id")
+    body: str = Field(default="", sa_column=Column(Text))
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    edited_at: Optional[NaiveDatetime] = None
+    deleted: bool = False
+    resolved_at: Optional[NaiveDatetime] = None
+    resolved_by: Optional[int] = Field(default=None, foreign_key="user.id", nullable=True)
+
+
+class Notification(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    kind: str  # mention | reply | comment | share | review
+    actor_id: Optional[int] = Field(default=None, foreign_key="user.id", nullable=True)
+    experiment_id: Optional[int] = Field(default=None, foreign_key="experiment.id", nullable=True)
+    comment_id: Optional[int] = Field(default=None, foreign_key="comment.id", nullable=True)
+    text: str = ""
+    created_at: NaiveDatetime = Field(default_factory=utcnow, index=True)
+    read_at: Optional[NaiveDatetime] = None
 
 
 class Experiment(SQLModel, table=True):

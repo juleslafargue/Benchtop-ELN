@@ -12,7 +12,7 @@ from .. import audit, chem, safety
 from ..db import engine
 from ..models import Entry, EntryKind, Experiment, Lot, LotTransaction, Material
 from ..security import DB, CurrentUser, Writer
-from ..services import get_or_404, user_brief
+from ..services import read_experiment, get_or_404, user_brief
 
 router = APIRouter(prefix="/api", tags=["materials & inventory"])
 
@@ -36,7 +36,7 @@ def lot_out(lot: Lot) -> dict[str, Any]:
     return {k: (v.isoformat() + "Z" if isinstance(v, datetime) else v) for k, v in lot.model_dump().items()}
 
 
-def material_out(session, m: Material, with_lots: bool = False) -> dict[str, Any]:
+def material_out(session, m: Material, with_lots: bool = False, user=None) -> dict[str, Any]:
     d = {k: (v.isoformat() + "Z" if isinstance(v, datetime) else v) for k, v in m.model_dump().items()}
     d["mid"] = m.mid
     lots = session.exec(select(Lot).where(Lot.material_id == m.id).order_by(Lot.id)).all()
@@ -49,7 +49,11 @@ def material_out(session, m: Material, with_lots: bool = False) -> dict[str, Any
         d["created_by_user"] = user_brief(session, m.created_by)
         if m.source_experiment_id:
             src = session.get(Experiment, m.source_experiment_id)
-            d["source_experiment"] = {"id": src.id, "eid": src.eid, "title": src.title} if src else None
+            from ..access import access_for
+            if src and user is not None and not access_for(session, user).can_read(src):
+                d["source_experiment"] = {"id": None, "eid": src.eid, "title": ""}  # the ID only: the record itself is private
+            else:
+                d["source_experiment"] = {"id": src.id, "eid": src.eid, "title": src.title} if src else None
     return d
 
 
@@ -108,7 +112,7 @@ def create_material(body: MaterialIn, user: Writer, session: DB, background: Bac
     audit.record(session, user, "create", "material", m.id, mid=m.mid, name=m.name, inchikey=m.inchikey)
     session.commit()
     background.add_task(_fetch_safety_later, m.id)
-    return material_out(session, m, with_lots=True)
+    return material_out(session, m, with_lots=True, user=user)
 
 
 @router.post("/materials/{mat_id}/safety/refresh")
@@ -137,15 +141,17 @@ def acknowledge_material_safety(mat_id: int, user: CurrentUser, session: DB):
 
 
 @router.get("/materials/{mat_id}")
-def get_material(mat_id: int, _: CurrentUser, session: DB):
+def get_material(mat_id: int, user: CurrentUser, session: DB):
+    from ..access import access_for
+    acc = access_for(session, user)
     m = get_or_404(session, Material, mat_id)
-    out = material_out(session, m, with_lots=True)
+    out = material_out(session, m, with_lots=True, user=user)
     # experiments whose reaction tables reference this material
     used = []
     for e in session.exec(select(Entry).where(Entry.kind == EntryKind.reaction, Entry.deleted == False)):  # noqa: E712
         if any(r.get("material_id") == m.id for r in (e.content or {}).get("rows", [])):
             exp = session.get(Experiment, e.experiment_id)
-            if exp and exp.id not in {u["id"] for u in used}:
+            if exp and acc.can_read(exp) and exp.id not in {u["id"] for u in used}:
                 used.append({"id": exp.id, "eid": exp.eid, "title": exp.title, "status": exp.status.value})
     out["used_in"] = used
     return out
@@ -174,7 +180,7 @@ def update_material(mat_id: int, body: MaterialPatch, user: Writer, session: DB)
     session.add(m)
     audit.record(session, user, "update", "material", m.id, changes=changes)
     session.commit()
-    return material_out(session, m, with_lots=True)
+    return material_out(session, m, with_lots=True, user=user)
 
 
 # ------------------------------------------------------------------ lots
@@ -261,7 +267,7 @@ def lot_transaction(lot_id: int, body: TxIn, user: Writer, session: DB):
     if body.unit not in _UNITS:
         raise HTTPException(400, "unknown unit")
     if body.experiment_id:
-        get_or_404(session, Experiment, body.experiment_id)
+        read_experiment(session, user, body.experiment_id)
     if body.direction not in ("out", "in"):
         raise HTTPException(400, "direction must be 'out' or 'in'")
     if not (body.amount > 0 and body.amount < 1e12):
@@ -335,7 +341,7 @@ class RegisterProductIn(BaseModel):
 
 @router.post("/materials/register-product", status_code=201)
 def register_product(body: RegisterProductIn, user: Writer, session: DB):
-    exp = get_or_404(session, Experiment, body.experiment_id)
+    exp = read_experiment(session, user, body.experiment_id)
     m = None
     if body.smiles:
         ik = chem.properties(body.smiles)["inchikey"]

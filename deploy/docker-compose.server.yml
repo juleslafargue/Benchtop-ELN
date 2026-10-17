@@ -1,0 +1,62 @@
+# Benchtop on a lab server, with HTTPS (automatic certificates from Let's Encrypt via Caddy)
+# and Postgres. See docs/SERVER.md for the step-by-step guide.
+#
+#   cp deploy/server.env.example deploy/.env      # then edit deploy/.env
+#   docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env up -d --build
+#
+services:
+  app:
+    build: ..
+    environment:
+      BENCHTOP_DATABASE_URL: postgresql+psycopg://benchtop:${POSTGRES_PASSWORD}@db:5432/benchtop
+      BENCHTOP_PUBLIC_URL: https://${BENCHTOP_DOMAIN}
+      BENCHTOP_ADMIN_USER: admin
+      BENCHTOP_ADMIN_PASSWORD: ${BENCHTOP_ADMIN_PASSWORD}
+      BENCHTOP_SECRET_KEY: ${BENCHTOP_SECRET_KEY}
+      BENCHTOP_TOKEN_TTL_HOURS: ${BENCHTOP_TOKEN_TTL_HOURS:-12}
+      BENCHTOP_BACKUP_DIR: /backups
+      BENCHTOP_OIDC_ISSUER: ${BENCHTOP_OIDC_ISSUER:-}
+      BENCHTOP_OIDC_CLIENT_ID: ${BENCHTOP_OIDC_CLIENT_ID:-}
+      BENCHTOP_OIDC_CLIENT_SECRET: ${BENCHTOP_OIDC_CLIENT_SECRET:-}
+      BENCHTOP_OIDC_NAME: ${BENCHTOP_OIDC_NAME:-}
+      BENCHTOP_OIDC_ALLOWED_DOMAINS: ${BENCHTOP_OIDC_ALLOWED_DOMAINS:-}
+      BENCHTOP_OIDC_AUTO_CREATE: ${BENCHTOP_OIDC_AUTO_CREATE:-on}
+      BENCHTOP_PASSWORD_LOGIN: ${BENCHTOP_PASSWORD_LOGIN:-on}
+    volumes:
+      - benchtop-data:/data
+      - ${BENCHTOP_BACKUP_HOST_DIR:-./backups}:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: benchtop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: benchtop
+    volumes: ["benchtop-pg:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U benchtop"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    environment:
+      BENCHTOP_DOMAIN: ${BENCHTOP_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [app]
+    restart: unless-stopped
+
+volumes:
+  benchtop-data:
+  benchtop-pg:
+  caddy-data:
+  caddy-config:

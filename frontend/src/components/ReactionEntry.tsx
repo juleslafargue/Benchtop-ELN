@@ -8,6 +8,7 @@ import type { LookupResult } from './Safety'
 import Modal from './Modal'
 import type { EntryEditorProps } from './EntryCard'
 import ConditionsBar, { type Conditions } from './ConditionsBar'
+import SimilarReactions from './SimilarReactions'
 
 const ROLE_ORDER: StoichRow['role'][] = ['reactant', 'reagent', 'catalyst', 'solvent', 'product']
 const ROLE_LABEL: Record<StoichRow['role'], string> = {
@@ -304,6 +305,8 @@ export default function ReactionEntry({ content, onChange, readOnly, experimentI
         </div>
       })()}
       {(content.warnings || []).map((w: string) => <p className="warn" key={w}>{w}</p>)}
+      <SimilarReactions rows={rows} experimentId={experimentId} readOnly={readOnly}
+        onUse={(add, cond) => recompute([...rows, ...add.map(r => ({ ...blank(r.role || 'reagent'), ...r } as StoichRow))], { conditions: { ...conditions, ...cond } })} />
       {!readOnly && rows.length > 0 && <p className="faint">The highlighted cell in each row is the value you entered; the rest are calculated from it.</p>}
 
       {drawing && (

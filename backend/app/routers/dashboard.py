@@ -23,8 +23,10 @@ EXPIRY_DAYS = 30
 
 @router.get("/dashboard")
 def dashboard(user: CurrentUser, session: DB):
-    exps = session.exec(select(Experiment).where(Experiment.is_template == False)  # noqa: E712
-                        .order_by(Experiment.updated_at.desc())).all()
+    from ..access import visible_experiment_filter
+    vis = lambda stmt: visible_experiment_filter(stmt, session, user)  # noqa: E731
+    exps = session.exec(vis(select(Experiment).where(Experiment.is_template == False)  # noqa: E712
+                        .order_by(Experiment.updated_at.desc()))).all()
     mine = [e for e in exps if e.owner_id == user.id]
     summ = lambda e: experiment_summary(session, e)  # noqa: E731
 
@@ -42,7 +44,7 @@ def dashboard(user: CurrentUser, session: DB):
     pinned = [summ(by_id[i]) for i in pinned_ids if i in by_id]
 
     # lab stats (everyone's reactions)
-    rx = _collect(session)
+    rx = _collect(session, user)
     now = utcnow()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     prev_start = (month_start - timedelta(days=1)).replace(day=1)
@@ -55,8 +57,8 @@ def dashboard(user: CurrentUser, session: DB):
                "yield_pct": r["yield_pct"], "product": r["product"]} for r in rx if r["yield_pct"] is not None]
 
     spectra = []
-    for a, e in session.exec(select(Attachment, Experiment).join(Experiment, Experiment.id == Attachment.experiment_id)
-                             .order_by(Attachment.created_at.desc())).all():
+    for a, e in session.exec(vis(select(Attachment, Experiment).join(Experiment, Experiment.id == Attachment.experiment_id)
+                             .order_by(Attachment.created_at.desc()))).all():
         if SPECTRUM_RE.search(a.filename):
             spectra.append({"id": a.id, "filename": a.filename, "experiment_id": e.id, "eid": e.eid, "title": e.title,
                             "created_at": a.created_at.isoformat() + "Z"})

@@ -197,6 +197,8 @@ export default function Dashboard() {
           </div>
         ) : <button className="btn" onClick={() => setEditing(true)}>Customise</button>)}
       </div>
+      {user.has_password === false && <p className="notice" style={{ margin: 0 }}>
+        {sessionStorage.getItem('benchtop.welcome') ? 'Welcome to Benchtop! ' : ''}You sign in with single sign-on. To sign records you'll also need a signing password: <Link to="/account">set one in Account settings</Link>.</p>}
       {editing && <p className="notice" style={{ margin: 0 }}>Drag a widget by its title to move it, drag the bottom-right corner to resize it, and use Remove or Add widget to change what's shown. Click Done to save.</p>}
       {narrow ? (
         <div className="stack dash-stack" style={{ gap: 12 }}>{[...widgets].sort((a, b) => a.y - b.y || a.x - b.x).map(card)}</div>

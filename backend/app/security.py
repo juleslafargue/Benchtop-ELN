@@ -29,7 +29,16 @@ def hash_password(password: str) -> str:
     return f"pbkdf2_sha256${_ITERATIONS}${salt.hex()}${dk.hex()}"
 
 
+SSO_ONLY = "sso-only$"  # accounts created by single sign-on start without a password
+
+
+def has_password(stored: str) -> bool:
+    return bool(stored) and not stored.startswith(SSO_ONLY)
+
+
 def verify_password(password: str, stored: str) -> bool:
+    if not has_password(stored):
+        return False
     try:
         algo, iters, salt_hex, dk_hex = stored.split("$")
         if algo != "pbkdf2_sha256":

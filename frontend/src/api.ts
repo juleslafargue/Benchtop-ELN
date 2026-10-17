@@ -5,11 +5,28 @@ export type Status = 'open' | 'signed' | 'witnessed' | 'voided'
 export type EntryKind = 'text' | 'reaction' | 'table' | 'file' | 'purification' | 'characterization' | 'safety' | 'screen'
 
 export interface Preferences { theme?: 'system' | 'light' | 'dark'; default_notebook_id?: number | null; spectrum_expanded?: boolean; pinned?: number[]; dashboard?: { widgets: unknown[] } }
-export interface User { id: number; username: string; full_name: string; email: string; role: Role; active: boolean; preferences: Preferences }
+export interface User { id: number; username: string; full_name: string; email: string; role: Role; active: boolean; preferences: Preferences; has_password?: boolean }
 export interface UserBrief { id: number; username: string; full_name: string }
+export type Visibility = 'everyone' | 'group' | 'private'
 export interface Notebook {
   id: number; name: string; description: string; archived: boolean; owner: UserBrief
   experiment_count: number; status_counts: Record<Status, number>; created_at: string
+  visibility: Visibility; group: { id: number; name: string } | null
+}
+export interface Group {
+  id: number; name: string; description: string; created_at: string; notebook_count: number
+  members: (UserBrief & { role: 'lead' | 'member' })[]; my_role: 'lead' | 'member' | null; can_manage: boolean
+}
+export interface Audience { visibility: Visibility; group: { id: number; name: string } | null }
+export interface Comment {
+  id: number; experiment_id: number; entry_id: number | null; parent_id: number | null; user: UserBrief
+  body: string; deleted: boolean; created_at: string; edited_at: string | null
+  resolved_at: string | null; resolved_by: UserBrief | null; mine: boolean
+  unseen_mentions?: UserBrief[]
+}
+export interface Notification {
+  id: number; kind: string; text: string; actor: UserBrief | null; experiment: { id: number; eid: string; title: string } | null
+  comment_id: number | null; entry_id: number | null; created_at: string; read: boolean
 }
 export interface ExperimentSummary {
   id: number; eid: string; title: string; description: string; status: Status
@@ -29,6 +46,7 @@ export interface Signature {
 }
 export interface Experiment extends ExperimentSummary {
   entries: Entry[]; attachments: Attachment[]; signatures: Signature[]
+  can_edit: boolean; shared_with_me: 'view' | 'edit' | null; audience: Audience; open_comments: number
 }
 export interface StoichRow {
   role: 'reactant' | 'reagent' | 'catalyst' | 'solvent' | 'product'
@@ -48,7 +66,7 @@ export interface Lot {
 export interface Material {
   id: number; mid: string; name: string; kind: string; smiles: string; cas: string; formula: string
   mw: number | null; inchikey: string; density: number | null; synonyms: string; hazards: string; notes: string
-  lot_count: number; available_lots: number; lots?: Lot[]; safety?: any; pubchem_cid?: number | null; source_experiment?: { id: number; eid: string; title: string } | null
+  lot_count: number; available_lots: number; lots?: Lot[]; safety?: any; pubchem_cid?: number | null; source_experiment?: { id: number | null; eid: string; title: string } | null
   used_in?: { id: number; eid: string; title: string; status: Status }[]; created_by_user?: UserBrief; created_at: string
   score?: number
 }
@@ -136,3 +154,13 @@ export const when = (iso: string) => {
 }
 
 export const displayName = (u?: UserBrief | null) => (u ? u.full_name || u.username : '—')
+
+/** "just now", "5 min ago", "3 h ago", "yesterday", then a date */
+export const ago = (iso: string) => {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000
+  if (s < 45) return 'just now'
+  if (s < 3600) return `${Math.round(s / 60)} min ago`
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`
+  if (s < 172800) return 'yesterday'
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: s > 300 * 86400 ? 'numeric' : undefined })
+}

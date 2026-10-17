@@ -25,8 +25,10 @@ REMEMBER_HOURS = 24 * 30
 
 
 def user_out(u: User) -> dict:
+    from ..security import has_password
     return {"id": u.id, "username": u.username, "full_name": u.full_name, "email": u.email,
-            "role": u.role.value, "active": u.active, "preferences": u.preferences or {}}
+            "role": u.role.value, "active": u.active, "preferences": u.preferences or {},
+            "has_password": has_password(u.password_hash)}
 
 
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -156,6 +158,8 @@ def login(body: LoginIn, session: DB):
                      username=body.username)
         session.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
+    if not settings.password_login and user.role != Role.admin:  # admins keep a password as a way in if SSO breaks
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This Benchtop uses single sign-on; use the sign-in button instead")
     audit.record(session, user, "login", "user", user.id, remember=body.remember)
     session.commit()
     return {"token": create_token(user.id, REMEMBER_HOURS if body.remember else None), "user": user_out(user)}
@@ -228,7 +232,9 @@ class PasswordIn(BaseModel):
 
 @router.post("/auth/password")
 def change_password(body: PasswordIn, user: CurrentUser, session: DB):
-    if not verify_password(body.current_password, user.password_hash):
+    """Change your password, or (for an account made by single sign-on) set one: signatures need it."""
+    from ..security import has_password
+    if has_password(user.password_hash) and not verify_password(body.current_password, user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is wrong")
     if len(body.new_password) < 8:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Use at least 8 characters")

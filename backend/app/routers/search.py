@@ -129,7 +129,8 @@ def search(user: CurrentUser, session: DB, q: str = "", mode: str = "text", thre
         return ((not status or exp.status.value == status) and (notebook_id is None or exp.notebook_id == notebook_id)
                 and (not mine or exp.owner_id == user.id))
 
-    exps = {e.id: e for e in session.exec(select(Experiment)) if allowed(e)}
+    from ..access import visible_experiment_filter
+    exps = {e.id: e for e in session.exec(visible_experiment_filter(select(Experiment), session, user)) if allowed(e)}
 
     if mode == "text":
         terms = _terms(q)

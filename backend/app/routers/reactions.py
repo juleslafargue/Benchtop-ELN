@@ -5,8 +5,12 @@ import csv
 import io
 from typing import Any
 
+import html
+import re
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlmodel import select
 
 from .. import chem
@@ -17,8 +21,9 @@ from ..services import user_brief
 router = APIRouter(prefix="/api", tags=["reactions"])
 
 
-def _collect(session) -> list[dict[str, Any]]:
-    exps = {e.id: e for e in session.exec(select(Experiment).where(Experiment.is_template == False))}  # noqa: E712
+def _collect(session, user) -> list[dict[str, Any]]:
+    from ..access import visible_experiment_filter
+    exps = {e.id: e for e in session.exec(visible_experiment_filter(select(Experiment).where(Experiment.is_template == False), session, user))}  # noqa: E712
     entries = session.exec(select(Entry).where(Entry.deleted == False).order_by(Entry.experiment_id, Entry.position))  # noqa: E712
     by_exp: dict[int, list[Entry]] = {}
     for en in entries:
@@ -101,10 +106,10 @@ def _filter(rows, q, min_yield, max_yield, min_temp, max_temp, atmosphere, subst
 
 
 @router.get("/reactions")
-def list_reactions(_: CurrentUser, session: DB, q: str = "", min_yield: float | None = None,
+def list_reactions(user: CurrentUser, session: DB, q: str = "", min_yield: float | None = None,
                    max_yield: float | None = None, min_temp: float | None = None, max_temp: float | None = None,
                    atmosphere: str = "", substructure: str = "", status: str = "", format: str = "json"):
-    rows = _filter(_collect(session), q, min_yield, max_yield, min_temp, max_temp, atmosphere, substructure, status)
+    rows = _filter(_collect(session, user), q, min_yield, max_yield, min_temp, max_temp, atmosphere, substructure, status)
     if format != "csv":
         return rows
     buf = io.StringIO()
@@ -120,7 +125,7 @@ def list_reactions(_: CurrentUser, session: DB, q: str = "", min_yield: float | 
 
 
 @router.get("/compounds")
-def compounds(_: CurrentUser, session: DB):
+def compounds(user: CurrentUser, session: DB):
     """Every product made (from reaction tables) and every registered product/sample, one row per
     structure, with medicinal-chemistry descriptors."""
     from ..models import Material
@@ -145,7 +150,7 @@ def compounds(_: CurrentUser, session: DB):
             row["name"] = name
         return row
 
-    for r in _collect(session):
+    for r in _collect(session, user):
         for pd in r["products_detail"]:
             row = add(pd["smiles"], pd["name"] or "")
             if row is None:
@@ -160,3 +165,98 @@ def compounds(_: CurrentUser, session: DB):
             if row is not None:
                 row["material"] = {"id": m.id, "mid": m.mid}
     return sorted(seen.values(), key=lambda r: r["name"].lower())
+
+
+# ---------------------------------------------------------------- "have we done this before?"
+
+class SimilarIn(BaseModel):
+    rows: list[dict[str, Any]] = []
+    experiment_id: int | None = None
+    limit: int = 5
+
+
+_TAG = re.compile(r"<[^>]+>")
+_NOTE_TITLES = re.compile(r"observ|result|conclu|outcome|comment|note|discussion|summary", re.I)
+
+
+def _plain(h: str) -> str:
+    return re.sub(r"\s+", " ", html.unescape(_TAG.sub(" ", h or ""))).strip()
+
+
+def _notes(ens: list[Entry], rxn: Entry) -> str:
+    """The most useful free text about how it went: results/observations sections first, then
+    purification and reaction notes. Trimmed to a sentence or two."""
+    texts = []
+    for e in ens:
+        if e.kind == EntryKind.text and _NOTE_TITLES.search(e.title or ""):
+            texts.append(_plain((e.content or {}).get("html", "")))
+    pur = next((e.content for e in ens if e.kind == EntryKind.purification), None) or {}
+    texts += [_plain(pur.get("notes_html", "")), ((rxn.content or {}).get("conditions") or {}).get("notes") or ""]
+    t = next((x for x in texts if len(x) > 3), "")
+    return t if len(t) <= 220 else t[:217].rsplit(" ", 1)[0] + "…"
+
+
+def _condition_row(r: dict[str, Any]) -> dict[str, Any]:
+    """A reagent/catalyst/solvent row ready to drop into another reaction at a different scale:
+    amounts typed as mass or mmol become the equivalents they worked out to."""
+    keep = ("role", "name", "smiles", "formula", "mw", "material_id", "density", "purity", "conc_m", "notes")
+    out = {k: r.get(k) for k in keep if r.get(k) not in (None, "")}
+    basis = r.get("basis") or "equiv"
+    if r.get("role") == "solvent":
+        out["basis"] = basis if basis in ("fill", "volume") else "volume"
+        if out["basis"] == "volume" and r.get("volume_ml") is not None:
+            out["volume_ml"] = r["volume_ml"]
+    elif r.get("equiv") is not None:
+        out.update(basis="equiv", equiv=r["equiv"])
+    return out
+
+
+@router.post("/reactions/similar")
+def similar_reactions(body: SimilarIn, user: CurrentUser, session: DB):
+    """Past reactions most like the one being planned, best first, with how they turned out."""
+    q = chem.reaction_profile(body.rows)
+    if not q["sub"] and not q["prod"]:
+        return {"results": [], "searched": 0, "reason": "Add a structure for a starting material or product to look for similar reactions."}
+    from ..access import visible_experiment_filter
+    stmt = select(Experiment).where(Experiment.is_template == False, Experiment.status != "voided")  # noqa: E712
+    stmt = visible_experiment_filter(stmt, session, user)
+    exps = {e.id: e for e in session.exec(stmt) if e.id != body.experiment_id}
+    by_exp: dict[int, list[Entry]] = {}
+    if exps:
+        for en in session.exec(select(Entry).where(Entry.deleted == False, Entry.experiment_id.in_(list(exps))).order_by(Entry.position)):  # noqa: E712
+            by_exp.setdefault(en.experiment_id, []).append(en)
+    scored, searched = [], 0
+    for exp_id, ens in by_exp.items():
+        for en in ens:
+            if en.kind != EntryKind.reaction or not (en.content or {}).get("rows"):
+                continue
+            searched += 1
+            sim = chem.reaction_similarity(q, chem.reaction_profile(en.content["rows"]))
+            if sim and sim["score"] >= 0.4:
+                scored.append((sim, exps[exp_id], en, ens))
+    scored.sort(key=lambda t: (-t[0]["score"], -(t[1].updated_at.timestamp())))
+    out = []
+    for sim, exp, en, ens in scored[: max(1, min(body.limit, 20))]:
+        c = en.content or {}
+        rows = c.get("rows") or []
+        cond = c.get("conditions") or {}
+        products = [r for r in rows if r.get("role") == "product"]
+        best = max((p for p in products if p.get("yield_pct") is not None), key=lambda p: p["yield_pct"], default=None)
+        name = lambda r: r.get("name") or r.get("formula") or ""  # noqa: E731
+        out.append({
+            **sim, "experiment_id": exp.id, "eid": exp.eid, "title": exp.title, "status": exp.status.value,
+            "owner": user_brief(session, exp.owner_id), "date": exp.created_at.isoformat() + "Z", "entry_id": en.id,
+            "reaction_smiles": c.get("reaction_smiles", ""),
+            "substrates": [name(r) for r in rows if r.get("role") == "reactant"],
+            "products": [name(r) for r in products],
+            "reagents": [name(r) for r in rows if r.get("role") in ("reagent", "catalyst")],
+            "solvents": [name(r) for r in rows if r.get("role") == "solvent"],
+            "temperature_c": cond.get("temperature_c"), "temperature_label": cond.get("temperature_label"),
+            "time_h": cond.get("time_h"), "atmosphere": cond.get("atmosphere"),
+            "yield_pct": best["yield_pct"] if best else None,
+            "notes": _notes(ens, en),
+            # what "Use these conditions" copies: everything that isn't a substrate or product
+            "condition_rows": [_condition_row(r) for r in rows if r.get("role") in ("reagent", "catalyst", "solvent")],
+            "conditions_raw": {k: v for k, v in cond.items() if v not in (None, "")},
+        })
+    return {"results": out, "searched": searched}

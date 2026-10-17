@@ -23,7 +23,7 @@ from ..models import (
 )
 from ..security import DB, CurrentUser, Writer, verify_password
 from ..services import (
-    content_hash, entry_out, experiment_summary, get_or_404, live_entries, require_editable,
+    content_hash, entry_out, experiment_summary, get_or_404, live_entries, read_experiment, require_editable,
     signatures_out, snapshot, user_brief,
 )
 
@@ -35,39 +35,69 @@ router = APIRouter(prefix="/api", tags=["notebooks & experiments"])
 class NotebookIn(BaseModel):
     name: str = Field(min_length=1)
     description: str = ""
+    group_id: int | None = None
+    visibility: str | None = None
+
+
+def _check_audience(session, user: User, group_id: int | None, visibility: str | None) -> tuple[int | None, str]:
+    """Validate a notebook's group/visibility: you can only give a notebook to a group you belong to."""
+    from ..access import VISIBILITIES, access_for
+    from ..models import LabGroup
+    vis = visibility or ("group" if group_id else "everyone")
+    if vis not in VISIBILITIES:
+        raise HTTPException(422, f"visibility must be one of {', '.join(VISIBILITIES)}")
+    if group_id is not None:
+        get_or_404(session, LabGroup, group_id)
+        if user.role != Role.admin and group_id not in access_for(session, user).groups:
+            raise HTTPException(403, "You can only put a notebook in a group you belong to")
+    elif vis == "group":
+        raise HTTPException(422, "Choose a group for a group notebook")
+    return group_id, vis
+
+
+def notebook_out(session, nb: Notebook, exps: list[Experiment] | None = None) -> dict[str, Any]:
+    from ..models import LabGroup
+    g = session.get(LabGroup, nb.group_id) if nb.group_id else None
+    out = {"id": nb.id, "name": nb.name, "description": nb.description, "archived": nb.archived,
+           "owner": user_brief(session, nb.owner_id), "created_at": nb.created_at.isoformat() + "Z",
+           "visibility": nb.visibility or "everyone", "group": {"id": g.id, "name": g.name} if g else None}
+    if exps is not None:
+        out["experiment_count"] = len(exps)
+        out["status_counts"] = {s.value: sum(1 for e in exps if e.status == s) for s in ExperimentStatus}
+    return out
 
 
 @router.get("/notebooks")
-def list_notebooks(_: CurrentUser, session: DB, include_archived: bool = False):
-    q = select(Notebook).order_by(Notebook.name)
+def list_notebooks(user: CurrentUser, session: DB, include_archived: bool = False):
+    from ..access import access_for
+    acc = access_for(session, user)
+    q = acc.filter_notebooks(select(Notebook).order_by(Notebook.name))
     if not include_archived:
         q = q.where(Notebook.archived == False)  # noqa: E712
     out = []
     for nb in session.exec(q):
-        exps = session.exec(select(Experiment).where(Experiment.notebook_id == nb.id)).all()
-        out.append({
-            "id": nb.id, "name": nb.name, "description": nb.description, "archived": nb.archived,
-            "owner": user_brief(session, nb.owner_id), "created_at": nb.created_at.isoformat() + "Z",
-            "experiment_count": len(exps),
-            "status_counts": {s.value: sum(1 for e in exps if e.status == s) for s in ExperimentStatus},
-        })
+        exps = session.exec(acc.filter(select(Experiment).where(Experiment.notebook_id == nb.id))).all()
+        out.append(notebook_out(session, nb, exps))
     return out
 
 
 @router.post("/notebooks", status_code=201)
 def create_notebook(body: NotebookIn, user: Writer, session: DB):
-    nb = Notebook(name=body.name, description=body.description, owner_id=user.id)
+    gid, vis = _check_audience(session, user, body.group_id, body.visibility)
+    nb = Notebook(name=body.name, description=body.description, owner_id=user.id, group_id=gid, visibility=vis)
     session.add(nb)
     session.flush()
-    audit.record(session, user, "create", "notebook", nb.id, name=nb.name)
+    audit.record(session, user, "create", "notebook", nb.id, name=nb.name, group_id=gid, visibility=vis)
     session.commit()
-    return {"id": nb.id, "name": nb.name, "description": nb.description}
+    return notebook_out(session, nb, [])
 
 
 class NotebookPatch(BaseModel):
     name: str | None = None
     description: str | None = None
     archived: bool | None = None
+    group_id: int | None = None
+    visibility: str | None = None
 
 
 @router.patch("/notebooks/{nb_id}")
@@ -76,12 +106,19 @@ def update_notebook(nb_id: int, body: NotebookPatch, user: Writer, session: DB):
     if nb.owner_id != user.id and user.role != Role.admin:
         raise HTTPException(403, "Only the notebook owner can change it")
     changes = body.model_dump(exclude_unset=True)
+    if "group_id" in changes or "visibility" in changes:
+        gid = changes["group_id"] if "group_id" in changes else nb.group_id
+        vis = changes.get("visibility") or (nb.visibility if gid else None)
+        if vis == "group" and not gid:
+            vis = None
+        changes["group_id"], changes["visibility"] = _check_audience(session, user, gid, vis)
+    before = {k: getattr(nb, k) for k in changes}
     for k, v in changes.items():
         setattr(nb, k, v)
     session.add(nb)
-    audit.record(session, user, "update", "notebook", nb.id, changes=changes)
+    audit.record(session, user, "update", "notebook", nb.id, before=before, changes=changes)
     session.commit()
-    return {"id": nb.id, "name": nb.name, "description": nb.description, "archived": nb.archived}
+    return notebook_out(session, nb)
 
 
 # ====================================================================== experiments
@@ -178,11 +215,12 @@ def _num(v):
 
 @router.get("/experiments")
 def list_experiments(
-    _: CurrentUser, session: DB,
+    user: CurrentUser, session: DB,
     notebook_id: int | None = None, status_: ExperimentStatus | None = Query(None, alias="status"),
     owner_id: int | None = None, templates: bool = False, limit: int = 200,
 ):
-    q = select(Experiment).where(Experiment.is_template == templates)
+    from ..access import visible_experiment_filter
+    q = visible_experiment_filter(select(Experiment).where(Experiment.is_template == templates), session, user)
     if notebook_id is not None:
         q = q.where(Experiment.notebook_id == notebook_id)
     if status_ is not None:
@@ -202,10 +240,18 @@ def _new_entry(session, exp_id: int, kind: EntryKind, title: str, content: dict,
     return e
 
 
+def _require_notebook(session, user: User, nb_id: int) -> Notebook:
+    from ..access import access_for
+    nb = get_or_404(session, Notebook, nb_id)
+    if not access_for(session, user).can_read_notebook(nb):
+        raise HTTPException(404, f"Notebook {nb_id} not found")
+    return nb
+
+
 @router.post("/experiments", status_code=201)
 def create_experiment(body: ExperimentIn, user: Writer, session: DB):
     if body.notebook_id is not None:
-        get_or_404(session, Notebook, body.notebook_id)
+        _require_notebook(session, user, body.notebook_id)
     elif not body.is_template:
         raise HTTPException(400, "notebook_id is required")
     exp = Experiment(title=body.title, notebook_id=body.notebook_id, description=body.description,
@@ -214,7 +260,7 @@ def create_experiment(body: ExperimentIn, user: Writer, session: DB):
     session.add(exp)
     session.flush()
     if body.template_id:
-        tpl = get_or_404(session, Experiment, body.template_id)
+        tpl = read_experiment(session, user, body.template_id)
         sections = [(e.kind, e.title, copy.deepcopy(e.content)) for e in live_entries(session, tpl.id)]
     else:
         sections = DEFAULT_SECTIONS
@@ -227,14 +273,32 @@ def create_experiment(body: ExperimentIn, user: Writer, session: DB):
 
 
 @router.get("/experiments/{exp_id}")
-def get_experiment(exp_id: int, _: CurrentUser, session: DB):
-    exp = get_or_404(session, Experiment, exp_id)
+def get_experiment(exp_id: int, user: CurrentUser, session: DB):
+    exp = read_experiment(session, user, exp_id)
     atts = session.exec(select(Attachment).where(Attachment.experiment_id == exp.id))
     return {
         **experiment_summary(session, exp),
         "entries": [entry_out(e) for e in live_entries(session, exp.id)],
         "attachments": [attachment_out(a) for a in atts],
         "signatures": signatures_out(session, exp.id),
+        **_access_info(session, user, exp),
+    }
+
+
+def _access_info(session, user: User, exp: Experiment) -> dict[str, Any]:
+    from ..access import access_for
+    from ..models import Comment, LabGroup
+    acc = access_for(session, user)
+    nb = session.get(Notebook, exp.notebook_id) if exp.notebook_id else None
+    g = session.get(LabGroup, nb.group_id) if nb and nb.group_id else None
+    open_threads = session.exec(select(Comment.id).where(Comment.experiment_id == exp.id, Comment.parent_id == None,  # noqa: E711
+                                                         Comment.deleted == False, Comment.resolved_at == None)).all()  # noqa: E712
+    return {
+        "can_edit": acc.can_edit(exp),
+        "shared_with_me": acc.shares.get(exp.id),
+        "audience": {"visibility": (nb.visibility or "everyone") if nb else ("everyone" if exp.is_template else "private"),
+                     "group": {"id": g.id, "name": g.name} if g else None},
+        "open_comments": len(open_threads),
     }
 
 
@@ -247,9 +311,15 @@ class ExperimentPatch(BaseModel):
 
 @router.patch("/experiments/{exp_id}")
 def update_experiment(exp_id: int, body: ExperimentPatch, user: Writer, session: DB):
-    exp = get_or_404(session, Experiment, exp_id)
+    exp = read_experiment(session, user, exp_id)
     require_editable(exp, user)
     changes = body.model_dump(exclude_unset=True)
+    if changes.get("notebook_id") not in (None, exp.notebook_id):
+        if exp.owner_id != user.id and user.role != Role.admin:
+            raise HTTPException(403, "Only the owner can move an experiment to another notebook")
+        _require_notebook(session, user, changes["notebook_id"])
+    elif "notebook_id" in changes:
+        changes.pop("notebook_id")
     before = {k: getattr(exp, k) for k in changes}
     for k, v in changes.items():
         setattr(exp, k, v)
@@ -262,9 +332,13 @@ def update_experiment(exp_id: int, body: ExperimentPatch, user: Writer, session:
 
 @router.post("/experiments/{exp_id}/clone", status_code=201)
 def clone_experiment(exp_id: int, user: Writer, session: DB, as_template: bool = False, scale: float | None = None):
-    src = get_or_404(session, Experiment, exp_id)
+    src = read_experiment(session, user, exp_id)
     if scale is not None and not (0.001 <= scale <= 1000):
         raise HTTPException(400, "Scale factor must be between 0.001 and 1000")
+    from ..access import access_for
+    nb = session.get(Notebook, src.notebook_id) if src.notebook_id else None
+    if not as_template and src.notebook_id is not None and (nb is None or not access_for(session, user).can_read_notebook(nb)):
+        raise HTTPException(403, "You can copy this experiment as a template, but not into a notebook you can't open")
     prefix = "Template: " if as_template else (f"×{scale:g} scale: " if scale else "Copy of ")
     exp = Experiment(
         title=prefix + src.title,
@@ -406,7 +480,7 @@ def add_entry(exp_id: int, body: EntryIn, user: Writer, session: DB):
 
 
 def _add_entry(exp_id: int, body: EntryIn, user, session) -> dict[str, Any]:
-    exp = get_or_404(session, Experiment, exp_id)
+    exp = read_experiment(session, user, exp_id)
     require_editable(exp, user)
     existing = live_entries(session, exp.id)
     pos = body.position if body.position is not None else (max((e.position for e in existing), default=-1) + 1)
@@ -432,7 +506,7 @@ class EntryUpdate(BaseModel):
 @router.put("/entries/{entry_id}")
 def update_entry(entry_id: int, body: EntryUpdate, user: Writer, session: DB):
     e = get_or_404(session, Entry, entry_id)
-    exp = get_or_404(session, Experiment, e.experiment_id)
+    exp = read_experiment(session, user, e.experiment_id)
     require_editable(exp, user)
     if body.expected_version is not None and body.expected_version != e.version:
         raise HTTPException(status.HTTP_409_CONFLICT,
@@ -457,7 +531,7 @@ def update_entry(entry_id: int, body: EntryUpdate, user: Writer, session: DB):
 def delete_entry(entry_id: int, user: Writer, session: DB):
     """Soft delete: the entry and every prior version remain in the history."""
     e = get_or_404(session, Entry, entry_id)
-    exp = get_or_404(session, Experiment, e.experiment_id)
+    exp = read_experiment(session, user, e.experiment_id)
     require_editable(exp, user)
     e.deleted = True
     e.version += 1
@@ -474,7 +548,7 @@ class ReorderIn(BaseModel):
 
 @router.post("/experiments/{exp_id}/reorder")
 def reorder_entries(exp_id: int, body: ReorderIn, user: Writer, session: DB):
-    exp = get_or_404(session, Experiment, exp_id)
+    exp = read_experiment(session, user, exp_id)
     require_editable(exp, user)
     entries = {e.id: e for e in live_entries(session, exp.id)}
     if set(body.entry_ids) != set(entries):
@@ -488,8 +562,8 @@ def reorder_entries(exp_id: int, body: ReorderIn, user: Writer, session: DB):
 
 
 @router.get("/entries/{entry_id}/versions")
-def entry_versions(entry_id: int, _: CurrentUser, session: DB):
-    get_or_404(session, Entry, entry_id)
+def entry_versions(entry_id: int, user: CurrentUser, session: DB):
+    read_experiment(session, user, get_or_404(session, Entry, entry_id).experiment_id)
     vs = session.exec(select(EntryVersion).where(EntryVersion.entry_id == entry_id)
                       .order_by(EntryVersion.version.desc()))
     return [{"version": v.version, "title": v.title, "content": v.content, "deleted": v.deleted,
@@ -511,7 +585,7 @@ def _blob_path(sha: str):
 
 @router.post("/experiments/{exp_id}/attachments", status_code=201)
 async def upload_attachment(exp_id: int, user: Writer, session: DB, file: UploadFile = File(...)):
-    exp = get_or_404(session, Experiment, exp_id)
+    exp = read_experiment(session, user, exp_id)
     require_editable(exp, user)
     data = await file.read()
     if len(data) > settings.max_upload_mb * 1024 * 1024:
@@ -533,8 +607,9 @@ async def upload_attachment(exp_id: int, user: Writer, session: DB, file: Upload
 
 
 @router.get("/attachments/{att_id}")
-def download_attachment(att_id: int, _: CurrentUser, session: DB, inline: bool = False):
+def download_attachment(att_id: int, user: CurrentUser, session: DB, inline: bool = False):
     a = get_or_404(session, Attachment, att_id)
+    read_experiment(session, user, a.experiment_id)
     path = _blob_path(a.sha256)
     if not path.exists():
         raise HTTPException(410, "Attachment blob missing from storage")
@@ -553,6 +628,9 @@ class SignIn(BaseModel):
 
 
 def _check_password(user: User, password: str, session) -> None:
+    from ..security import has_password
+    if not has_password(user.password_hash):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Signing needs a password. You sign in with single sign-on, so set a signing password in Account settings first.")
     if not verify_password(password, user.password_hash):
         audit.record(session, user, "signature_failed", "user", user.id)
         session.commit()
@@ -573,7 +651,7 @@ def _sign(session, exp: Experiment, user: User, meaning: str, comment: str) -> S
 @router.post("/experiments/{exp_id}/sign")
 def sign_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
     """Author signature: locks the record and sends it for witnessing."""
-    exp = get_or_404(session, Experiment, exp_id)
+    exp = read_experiment(session, user, exp_id)
     if exp.is_template:
         raise HTTPException(400, "Templates are not signed")
     if exp.status != ExperimentStatus.open:
@@ -596,7 +674,7 @@ def _author_sig(session, exp: Experiment) -> Signature | None:
 
 @router.post("/experiments/{exp_id}/witness")
 def witness_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
-    exp = get_or_404(session, Experiment, exp_id)
+    exp = read_experiment(session, user, exp_id)
     if exp.status != ExperimentStatus.signed:
         raise HTTPException(409, "Only author-signed experiments can be witnessed")
     if exp.owner_id == user.id:
@@ -616,7 +694,7 @@ def witness_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
 @router.post("/experiments/{exp_id}/reject")
 def reject_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
     """Witness declines; record returns to the author as open, with the reason recorded."""
-    exp = get_or_404(session, Experiment, exp_id)
+    exp = read_experiment(session, user, exp_id)
     if exp.status != ExperimentStatus.signed:
         raise HTTPException(409, "Only experiments awaiting witness can be rejected")
     if exp.owner_id == user.id:
@@ -635,7 +713,7 @@ def reject_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
 @router.post("/experiments/{exp_id}/withdraw")
 def withdraw_signature(exp_id: int, body: SignIn, user: Writer, session: DB):
     """Author pulls a signed (not yet witnessed) record back to open."""
-    exp = get_or_404(session, Experiment, exp_id)
+    exp = read_experiment(session, user, exp_id)
     if exp.status != ExperimentStatus.signed or exp.owner_id != user.id:
         raise HTTPException(409, "Only the author can withdraw a record awaiting witness")
     _check_password(user, body.password, session)
@@ -648,7 +726,7 @@ def withdraw_signature(exp_id: int, body: SignIn, user: Writer, session: DB):
 
 @router.post("/experiments/{exp_id}/void")
 def void_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
-    exp = get_or_404(session, Experiment, exp_id)
+    exp = read_experiment(session, user, exp_id)
     if exp.owner_id != user.id and user.role != Role.admin:
         raise HTTPException(403, "Only the author or an admin can void")
     if exp.status == ExperimentStatus.voided:
@@ -664,8 +742,8 @@ def void_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
 
 
 @router.get("/experiments/{exp_id}/verify")
-def verify_experiment(exp_id: int, _: CurrentUser, session: DB):
-    exp = get_or_404(session, Experiment, exp_id)
+def verify_experiment(exp_id: int, user: CurrentUser, session: DB):
+    exp = read_experiment(session, user, exp_id)
     current = content_hash(session, exp)
     sigs = signatures_out(session, exp.id)
     for s in sigs:
@@ -677,16 +755,16 @@ def verify_experiment(exp_id: int, _: CurrentUser, session: DB):
 
 
 @router.get("/experiments/{exp_id}/writeup")
-def experiment_writeup(exp_id: int, _: CurrentUser, session: DB):
+def experiment_writeup(exp_id: int, user: CurrentUser, session: DB):
     from .. import writeup
 
-    exp = get_or_404(session, Experiment, exp_id)
+    exp = read_experiment(session, user, exp_id)
     return writeup.draft(live_entries(session, exp.id))
 
 
 @router.get("/experiments/{exp_id}/audit")
-def experiment_audit(exp_id: int, _: CurrentUser, session: DB):
-    exp = get_or_404(session, Experiment, exp_id)
+def experiment_audit(exp_id: int, user: CurrentUser, session: DB):
+    exp = read_experiment(session, user, exp_id)
     entry_ids = [e.id for e in session.exec(select(Entry).where(Entry.experiment_id == exp.id))]
     att_ids = [a.id for a in session.exec(select(Attachment).where(Attachment.experiment_id == exp.id))]
     from ..models import AuditEvent
@@ -819,8 +897,8 @@ def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
 
 
 @router.get("/experiments/{exp_id}/export")
-def export_experiment(exp_id: int, _: CurrentUser, session: DB, format: str = "html"):
-    exp = get_or_404(session, Experiment, exp_id)
+def export_experiment(exp_id: int, user: CurrentUser, session: DB, format: str = "html"):
+    exp = read_experiment(session, user, exp_id)
     if format == "md":
         from ..export_md import experiment_markdown, safe_name
 
@@ -857,11 +935,12 @@ SPECTRUM_RE = re.compile(r"\.(jdx|dx|jcamp|jcm|csv|tsv|txt|xy|zip)$", re.I)
 
 
 @router.get("/spectra")
-def list_spectra(_: CurrentUser, session: DB, q: str = "", near: int | None = None, limit: int = 60):
+def list_spectra(user: CurrentUser, session: DB, q: str = "", near: int | None = None, limit: int = 60):
     """Attachments that look like spectra, for overlays. `near` (an attachment id) puts its experiment first."""
     home = session.get(Attachment, near).experiment_id if near and session.get(Attachment, near) else None
-    rows = session.exec(select(Attachment, Experiment).join(Experiment, Experiment.id == Attachment.experiment_id)
-                        .order_by(Attachment.created_at.desc())).all()
+    from ..access import visible_experiment_filter
+    rows = session.exec(visible_experiment_filter(select(Attachment, Experiment).join(Experiment, Experiment.id == Attachment.experiment_id)
+                        .order_by(Attachment.created_at.desc()), session, user)).all()
     ql = q.lower().strip()
     out = []
     for a, e in rows:
