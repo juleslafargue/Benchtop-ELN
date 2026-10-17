@@ -1,0 +1,313 @@
+import { useRef, useState } from "react"
+import { Link } from 'react-router-dom'
+import { useApp } from '../App'
+import { api, fmt, type Material, type StoichRow } from '../api'
+import { Mol, NumInput, StructureEditor } from './bits'
+import MaterialPicker from './MaterialPicker'
+import Modal from './Modal'
+import type { EntryEditorProps } from './EntryCard'
+import ConditionsBar, { type Conditions } from './ConditionsBar'
+
+const ROLE_ORDER: StoichRow['role'][] = ['reactant', 'reagent', 'catalyst', 'solvent', 'product']
+const ROLE_LABEL: Record<StoichRow['role'], string> = {
+  reactant: 'Reactants', reagent: 'Reagents', catalyst: 'Catalysts', solvent: 'Solvents', product: 'Products',
+}
+
+const blank = (role: StoichRow['role']): StoichRow => ({
+  role, name: '', smiles: '', formula: '', mw: null, material_id: null, lot_id: null,
+  equiv: role === 'product' ? 1 : null, mmol: null, mass_mg: null, volume_ml: null, density: null, conc_m: null,
+  purity: 100, limiting: false, basis: role === 'solvent' ? 'volume' : 'equiv',
+  actual_mass_mg: null, theoretical_mass_mg: null, yield_pct: null, notes: '',
+})
+
+export default function ReactionEntry({ content, onChange, readOnly, experimentId }: EntryEditorProps) {
+  const { toast } = useApp()
+  const rows: StoichRow[] = content.rows || []
+  const [drawing, setDrawing] = useState<null | { mode: 'reaction' } | { mode: 'molecule'; row: number }>(null)
+  const [picking, setPicking] = useState(false)
+  const [zoom, setZoom] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [pasting, setPasting] = useState(false)
+  const [deducting, setDeducting] = useState<StoichRow[] | null>(null)
+  const [pasteText, setPasteText] = useState('')
+  const reqId = useRef(0)
+  const conditions: Conditions = content.conditions || {}
+
+  /** Push edited rows to the server engine, then store the recomputed table. */
+  const recompute = async (next: StoichRow[], extra: Record<string, any> = {}) => {
+    onChange({ ...content, ...extra, rows: next }) // optimistic
+    const my = ++reqId.current
+    const target = (extra.conditions ?? conditions).target_conc_m ?? null
+    try {
+      const r = await api.post<{ rows: StoichRow[]; totals: any; warnings: string[] }>('/api/chem/stoichiometry', { rows: next, target_conc_m: target })
+      if (my === reqId.current) onChange({ ...content, ...extra, rows: r.rows, totals: r.totals, warnings: r.warnings })
+    } catch (e: any) { setErr(e.message) }
+  }
+
+  const setField = (i: number, patch: Partial<StoichRow>, basis?: StoichRow['basis']) => {
+    const next = rows.map((r, j) => (j === i ? { ...r, ...patch, ...(basis ? { basis } : {}) } : r))
+    if (patch.limiting) next.forEach((r, j) => { if (j !== i) r.limiting = false })
+    recompute(next)
+  }
+
+  const addRow = (role: StoichRow['role']) => recompute([...rows, { ...blank(role), limiting: role === 'reactant' && !rows.some(r => r.limiting) }])
+  const removeRow = (i: number) => recompute(rows.filter((_, j) => j !== i))
+
+  const fromMaterial = (m: Material, role: StoichRow['role']) => {
+    const lot = m.lots?.find(l => l.status === 'available')
+    const row: StoichRow = {
+      ...blank(m.kind === 'solvent' ? 'solvent' : role), name: m.name, smiles: m.smiles, mw: m.mw, formula: m.formula,
+      material_id: m.id, lot_id: lot?.id ?? null, density: m.density, purity: lot?.purity ?? 100,
+    }
+    if (row.role === 'reactant' && !rows.some(r => r.limiting)) { row.limiting = true; row.basis = 'mass' }
+    recompute([...rows, row])
+    setPicking(false)
+  }
+
+  const applyReaction = async (rxn: string) => {
+    setBusy(true); setErr('')
+    try {
+      const parsed = await api.post<{ rows: StoichRow[]; reaction_smiles: string }>('/api/chem/reaction/parse', { reaction: rxn })
+      // 1) unchanged structures keep everything; 2) an edited structure inherits the amounts the
+      //    chemist typed for the row it replaced (same role, same order); 3) hand-added rows stay.
+      const used = new Set<StoichRow>()
+      const newSmiles = new Set(parsed.rows.map(p => p.smiles))
+      const carried = parsed.rows.map(p => {
+        const same = rows.find(r => r.smiles === p.smiles && !used.has(r))
+        if (same) { used.add(same); return { ...p, ...same } }
+        const prev = rows.find(r => r.role === p.role && r.smiles && !used.has(r) && !newSmiles.has(r.smiles))
+        if (!prev) return { ...p, limiting: false }
+        used.add(prev)
+        return {
+          ...p, basis: prev.basis, equiv: prev.equiv, mmol: prev.basis === 'mmol' ? prev.mmol : null,
+          mass_mg: prev.basis === 'mass' ? prev.mass_mg : null, volume_ml: prev.basis === 'volume' ? prev.volume_ml : null,
+          conc_m: prev.conc_m, limiting: prev.limiting, actual_mass_mg: prev.actual_mass_mg, purity: prev.purity,
+        }
+      })
+      if (!carried.some(r => r.limiting)) { const first = carried.find(r => r.role === 'reactant'); if (first) first.limiting = true }
+      const keep = rows.filter(r => !used.has(r) && (!r.smiles || ['solvent', 'catalyst', 'reagent'].includes(r.role)))
+      await recompute([...carried, ...keep], { reaction_smiles: parsed.reaction_smiles })
+    } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  const pasteReaction = () => { setPasteText(content.reaction_smiles || ''); setPasting(true) }
+
+  const setConditions = (patch: Partial<Conditions>) => {
+    const next = { ...conditions, ...patch }
+    if ('target_conc_m' in patch && rows.length) recompute(rows, { conditions: next })
+    else onChange({ ...content, conditions: next })
+  }
+
+  const deductable = (r: StoichRow) => !!r.lot_id && r.role !== 'product' && !(r as any).deducted && !!(r.mass_mg || r.volume_ml)
+  const usage = (r: StoichRow) => {
+    const useVol = r.basis === 'volume' || r.basis === 'fill' || (!r.mass_mg && !!r.volume_ml)
+    return useVol ? { amount: r.volume_ml as number, unit: 'mL' } : { amount: r.mass_mg as number, unit: 'mg' }
+  }
+  const deduct = () => {
+    const todo = rows.filter(deductable)
+    if (!todo.length) { toast('Nothing to deduct: add rows from the registry (so they have a lot) and enter amounts first'); return }
+    setDeducting(todo)
+  }
+  const runDeduct = async (todo: StoichRow[]) => {
+    setDeducting(null)
+    const next = [...rows]
+    for (const r of todo) {
+      const u = usage(r)
+      try {
+        const res = await api.post<{ transaction_id: number }>(`/api/lots/${r.lot_id}/transactions`, {
+          ...u, direction: 'out', experiment_id: experimentId, note: `${r.name || r.formula} in reaction`,
+        })
+        next[rows.indexOf(r)] = { ...r, deducted: { tx_id: res.transaction_id, ...u } } as StoichRow
+      } catch (e: any) { toast(`${r.name}: ${e.message}`) }
+    }
+    onChange({ ...content, rows: next })
+    toast('Inventory updated')
+  }
+  const undoDeduct = async (i: number) => {
+    const d = (rows[i] as any).deducted
+    try {
+      if (d && typeof d === 'object') await api.post(`/api/lots/transactions/${d.tx_id}/reverse`)
+      onChange({ ...content, rows: rows.map((r, j) => (j === i ? { ...r, deducted: null } : r)) })
+      toast('Returned to inventory')
+    } catch (e: any) { toast(e.message) }
+  }
+
+  const register = async (r: StoichRow) => {
+    try {
+      const res = await api.post<{ material: Material }>('/api/materials/register-product', {
+        experiment_id: experimentId, name: r.name || r.formula || 'Product', smiles: r.smiles,
+        amount_mg: r.actual_mass_mg, purity: r.purity,
+      })
+      const i = rows.indexOf(r)
+      onChange({ ...content, rows: rows.map((x, j) => (j === i ? { ...x, material_id: res.material.id } : x)) })
+      toast(`Registered as ${res.material.mid}`)
+    } catch (e: any) { toast(e.message) }
+  }
+
+  const grouped = ROLE_ORDER.map(role => ({ role, items: rows.map((r, i) => ({ r, i })).filter(x => x.r.role === role) }))
+    .filter(g => g.items.length)
+  const totals = content.totals || {}
+  const nonProduct = grouped.filter(g => g.role !== 'product')
+  const products = grouped.find(g => g.role === 'product')?.items || []
+
+  const nameCell = (r: StoichRow, i: number) => (
+    <td style={{ minWidth: 170 }}>
+      <div className="row" style={{ gap: 4, flexWrap: 'nowrap' }}>
+        <input className="text" aria-label="Name" disabled={readOnly} value={r.name} placeholder={r.formula || "Name"}
+          onChange={e => onChange({ ...content, rows: rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
+        {r.material_id && <Link to={`/materials/${r.material_id}`} className="faint" title="Open in registry">reg</Link>}
+      </div>
+    </td>
+  )
+  const structCell = (r: StoichRow, i: number) => (
+    <td style={{ width: 70 }}>
+      {r.smiles
+        ? <button className="btn ghost sm" style={{ padding: 0 }} onClick={() => setZoom(r.smiles)} aria-label="Enlarge structure"><Mol className="mol-thumb" smiles={r.smiles} w={128} h={80} /></button>
+        : !readOnly && <button className="btn ghost sm" onClick={() => setDrawing({ mode: 'molecule', row: i })}>Draw</button>}
+    </td>
+  )
+  const UNIT_OF: Partial<Record<keyof StoichRow, 'mg' | 'mL' | 'mmol' | 'M'>> = { mass_mg: 'mg', actual_mass_mg: 'mg', volume_ml: 'mL', mmol: 'mmol', conc_m: 'M' }
+  const n = (r: StoichRow, i: number, k: keyof StoichRow, basis?: StoichRow['basis'], nd = 4) => (
+    <td><NumInput label={String(k)} nd={nd} disabled={readOnly} value={r[k] as number | null} unit={UNIT_OF[k]}
+      className={basis && r.basis === basis ? 'basis' : ''} onCommit={v => setField(i, { [k]: v } as Partial<StoichRow>, basis)} /></td>
+  )
+
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <div className={`rxn-scheme${content.reaction_smiles ? '' : ' empty'}`}>
+        {content.reaction_smiles
+          ? <Mol rxn smiles={content.reaction_smiles} w={760} h={190} />
+          : <span>No reaction scheme yet. Draw one to fill the table from the structures.</span>}
+      </div>
+      {!readOnly && (
+        <div className="row">
+          <button className="btn" onClick={() => setDrawing({ mode: 'reaction' })} disabled={busy}>{content.reaction_smiles ? 'Edit reaction' : 'Draw reaction'}</button>
+          <button className="btn ghost" onClick={pasteReaction}>Paste reaction SMILES</button>
+          <span className="grow" />
+          <button className="btn ghost" onClick={() => setPicking(true)}>Add from registry</button>
+          <select className="select" value="" aria-label="Add blank row" onChange={e => e.target.value && addRow(e.target.value as StoichRow['role'])}>
+            <option value="">Add row…</option>
+            {ROLE_ORDER.map(r => <option key={r} value={r}>{ROLE_LABEL[r].slice(0, -1)}</option>)}
+          </select>
+        </div>
+      )}
+      {err && <p className="error">{err}</p>}
+      <ConditionsBar value={conditions} onChange={setConditions} readOnly={readOnly} />
+
+      {rows.length > 0 && (
+        <div className="grid-wrap">
+          <table className="grid">
+            <thead><tr>
+              <th></th><th>Name</th><th>MW</th><th title="Limiting reagent">Lim.</th><th>Equiv</th><th>mmol</th>
+              <th>Mass (mg)</th><th>Vol (mL)</th><th>ρ (g/mL)</th><th>Conc (M)</th><th>Purity %</th><th></th>
+            </tr></thead>
+            <tbody>
+              {nonProduct.map(g => [
+                <tr className="group" key={g.role}><td colSpan={12}>{ROLE_LABEL[g.role]}</td></tr>,
+                ...g.items.map(({ r, i }) => (
+                  <tr key={i}>
+                    {structCell(r, i)}{nameCell(r, i)}
+                    <td className="calc" title={r.formula}>{fmt(r.mw, 2)}</td>
+                    <td style={{ textAlign: 'center' }}>{g.role !== 'solvent' &&
+                      <input type="radio" className="lim-dot" name={`lim-${experimentId}`} aria-label="Limiting reagent" disabled={readOnly}
+                        checked={r.limiting} onChange={() => setField(i, { limiting: true }, r.mass_mg ? 'mass' : 'mmol')} />}</td>
+                    {g.role === 'solvent'
+                      ? <td colSpan={2}><label className="fill-toggle" title="Calculate this solvent's volume from the target concentration">
+                          <input type="checkbox" disabled={readOnly} checked={r.basis === 'fill'}
+                            onChange={e => setField(i, {}, e.target.checked ? 'fill' : 'volume')} /> fill to {conditions.target_conc_m ? `${conditions.target_conc_m} M` : 'target M'}
+                        </label></td>
+                      : <>{n(r, i, 'equiv', 'equiv', 3)}{n(r, i, 'mmol', 'mmol')}</>}
+                    {n(r, i, 'mass_mg', 'mass', 3)}
+                    {r.basis === 'fill' ? <td className="calc"><b>{fmt(r.volume_ml, 3)}</b></td> : n(r, i, 'volume_ml', 'volume')}
+                    {n(r, i, 'density', undefined, 4)}{n(r, i, 'conc_m', undefined, 4)}{n(r, i, 'purity', undefined, 2)}
+                    <td>{!readOnly && <button className="btn ghost sm" onClick={() => removeRow(i)} aria-label={`Remove ${r.name || 'row'}`}>×</button>}
+                      {(r as any).deducted && <span className="faint" style={{ whiteSpace: 'nowrap' }} title="Deducted from inventory">✓ used
+                        {!readOnly && <button className="btn ghost sm" style={{ padding: '0 4px' }} onClick={() => undoDeduct(i)}>undo</button>}</span>}</td>
+                  </tr>
+                )),
+              ])}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {products.length > 0 && (
+        <div className="grid-wrap">
+          <table className="grid">
+            <thead><tr>
+              <th></th><th>Product</th><th>MW</th><th>Equiv</th><th>Theor. mmol</th><th>Theor. mass (mg)</th>
+              <th>Isolated (mg)</th><th>Purity %</th><th>Yield</th><th></th>
+            </tr></thead>
+            <tbody>
+              {products.map(({ r, i }) => (
+                <tr key={i}>
+                  {structCell(r, i)}{nameCell(r, i)}
+                  <td className="calc">{fmt(r.mw, 2)}</td>
+                  {n(r, i, 'equiv', undefined, 3)}
+                  <td className="calc">{fmt(r.mmol, 4)}</td>
+                  <td className="calc">{fmt(r.theoretical_mass_mg, 2)}</td>
+                  {n(r, i, 'actual_mass_mg', undefined, 2)}{n(r, i, 'purity', undefined, 2)}
+                  <td className="calc yield">{r.yield_pct !== null ? `${fmt(r.yield_pct, 1)}%` : ''}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {!readOnly && r.actual_mass_mg && !r.material_id && <button className="btn sm" onClick={() => register(r)}>Register</button>}
+                    {!readOnly && <button className="btn ghost sm" onClick={() => removeRow(i)} aria-label="Remove product">×</button>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="spread">
+          <div className="totals">
+            <span>Limiting: <b>{fmt(totals.limiting_mmol, 4) || '—'}</b> mmol</span>
+            <span>Total volume: <b>{fmt(totals.total_volume_ml, 2) || '—'}</b> mL</span>
+            {totals.concentration_m && <span>Concentration: <b>{fmt(totals.concentration_m, 3)}</b> M</span>}
+          </div>
+          {!readOnly && <button className="btn sm" onClick={deduct}>Deduct amounts from inventory</button>}
+        </div>
+      )}
+      {(content.warnings || []).map((w: string) => <p className="warn" key={w}>{w}</p>)}
+      {!readOnly && rows.length > 0 && <p className="faint">The highlighted cell in each row is the value you entered; the rest are calculated from it.</p>}
+
+      {drawing && (
+        <StructureEditor
+          mode={drawing.mode}
+          initial={drawing.mode === 'reaction' ? content.reaction_smiles : undefined}
+          onClose={() => setDrawing(null)}
+          onDone={async ({ smiles }) => {
+            const d = drawing
+            setDrawing(null)
+            if (d.mode === 'reaction') { if (smiles) applyReaction(smiles) }
+            else if (smiles) setField(d.row, { smiles, mw: null })
+          }}
+        />
+      )}
+      {deducting && <Modal title="Deduct from inventory" onClose={() => setDeducting(null)} footer={<>
+        <button className="btn" onClick={() => setDeducting(null)}>Cancel</button>
+        <button className="btn primary" onClick={() => runDeduct(deducting)}>Deduct {deducting.length} amount{deducting.length === 1 ? '' : 's'}</button>
+      </>}>
+        <p style={{ marginTop: 0 }}>These amounts will be taken from their lots and linked to this experiment. You can undo each one afterwards.</p>
+        <table className="plain"><thead><tr><th>Material</th><th>Amount</th></tr></thead>
+          <tbody>{deducting.map((r, k) => { const u = usage(r); return <tr key={k}><td>{r.name || r.formula}</td><td className="num">{fmt(u.amount, 3)} {u.unit}</td></tr> })}</tbody></table>
+        <p className="faint">Masses are as weighed (already corrected for purity), so they match what leaves the bottle.</p>
+      </Modal>}
+      {pasting && <Modal title="Paste reaction SMILES" onClose={() => setPasting(false)} footer={<>
+        <button className="btn" onClick={() => setPasting(false)}>Cancel</button>
+        <button className="btn primary" disabled={!pasteText.trim()} onClick={() => { setPasting(false); applyReaction(pasteText.trim()) }}>Use reaction</button>
+      </>}>
+        <label className="field">Reactants &gt; agents &gt; products, e.g. <code>CC(=O)O.OCC&gt;[H+]&gt;CC(=O)OCC</code>
+          <textarea className="input" rows={3} autoFocus value={pasteText} onChange={e => setPasteText(e.target.value)} style={{ fontFamily: 'var(--mono)', fontSize: 13 }} /></label>
+        {pasteText.includes('>') && <div className="rxn-scheme" style={{ marginTop: 10, minHeight: 80 }}><Mol rxn smiles={pasteText.trim()} w={520} h={130} /></div>}
+      </Modal>}
+      {picking && <MaterialPicker onClose={() => setPicking(false)} onPick={(m, role) => fromMaterial(m, role)} />}
+      {zoom && <Modal title="Structure" onClose={() => setZoom(null)} footer={<button className="btn" onClick={() => setZoom(null)}>Close</button>}>
+        <div style={{ textAlign: 'center' }}><Mol smiles={zoom} w={480} h={320} /></div>
+        <p className="hash" style={{ textAlign: 'center' }}>{zoom}</p>
+      </Modal>}
+    </div>
+  )
+}

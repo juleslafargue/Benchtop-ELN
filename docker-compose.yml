@@ -1,0 +1,31 @@
+# Default: one container, SQLite in a named volume.
+#   docker compose up -d --build
+#   docker compose exec app python -m app.seed      # optional demo data
+#
+# For a shared lab server, use Postgres instead:
+#   docker compose --profile postgres up -d --build
+# and uncomment BENCHTOP_DATABASE_URL below.
+services:
+  app:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      BENCHTOP_ADMIN_USER: admin
+      BENCHTOP_ADMIN_PASSWORD: ${BENCHTOP_ADMIN_PASSWORD:-change-me-now}
+      # BENCHTOP_DATABASE_URL: postgresql+psycopg://benchtop:benchtop@db:5432/benchtop
+    volumes: ["benchtop-data:/data"]
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: benchtop
+      POSTGRES_PASSWORD: benchtop
+      POSTGRES_DB: benchtop
+    volumes: ["benchtop-pg:/var/lib/postgresql/data"]
+    restart: unless-stopped
+
+volumes:
+  benchtop-data:
+  benchtop-pg:
