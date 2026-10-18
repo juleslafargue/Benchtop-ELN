@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import ErrorBoundary from './ErrorBoundary'
 import { KindIcon } from './AddSection'
 import { api, type Attachment, type Entry } from '../api'
 import TextEntry from './TextEntry'
@@ -133,8 +134,9 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
       </header>
       {state === 'error' && <p className="error" style={{ padding: '6px 16px 0' }}>{error} {error.includes('reload') && <button className="btn sm" onClick={() => location.reload()}>Reload</button>}</p>}
       {collapsed && <button className="entry-peek" onClick={() => setCollapsed(false)} title="Show this section">
-        <span>{peek(entry.kind, content) || 'Hidden'}</span>{state === 'dirty' || state === 'saving' ? <span className="faint"> · saving…</span> : null}</button>}
+        <span>{safePeek(entry.kind, content) || 'Hidden'}</span>{state === 'dirty' || state === 'saving' ? <span className="faint"> · saving…</span> : null}</button>}
       <div className="entry-body" id={`entry-body-${entry.id}`} hidden={collapsed}>
+        <ErrorBoundary label={`section ${entry.title}`} raw={content} resetKey={entry.version}>
         {entry.kind === 'text' && <TextEntry {...props} />}
         {entry.kind === 'reaction' && <ReactionEntry {...props} />}
         {entry.kind === 'table' && <TableEntry {...props} />}
@@ -144,11 +146,14 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
         {entry.kind === 'safety' && <SafetyEntry {...props} />}
         {entry.kind === 'screen' && <ScreenEntry {...props} />}
         {entry.kind === 'custom' && <CustomEntry {...props} />}
+        </ErrorBoundary>
       </div>
       {showVersions && <VersionsDialog entryId={entry.id} kind={entry.kind} onClose={() => setShowVersions(false)} />}
     </section>
   )
 }
+
+const safePeek = (kind: string, c: any) => { try { return peek(kind, c) } catch { return '' } }
 
 /** One line saying what a hidden section holds. */
 function peek(kind: string, c: any): string {

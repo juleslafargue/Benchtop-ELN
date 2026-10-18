@@ -1,6 +1,8 @@
 """Full-text and structure search across experiments and the materials registry."""
 from __future__ import annotations
 
+import math
+
 import html
 import re
 from typing import Any
@@ -93,7 +95,7 @@ def _section_text(kind: EntryKind, c: dict[str, Any]) -> str:
         chems = [f"{ch.get('name', '')} {' '.join(ch.get('hazards') or [])}" for ch in snap.get("chemicals") or [] if isinstance(ch, dict)]
         return " · ".join(p for p in [*chems, c.get("controls") or "", c.get("waste") or "", c.get("emergency") or ""] if p)
     if kind == EntryKind.file:
-        return c.get("caption") or ""
+        return str(c.get("caption") or "")
     if kind == EntryKind.custom:
         from ..plugins import text_of
         return text_of(c).replace("\n", " · ")
@@ -146,7 +148,11 @@ def search(user: CurrentUser, session: DB, q: str = "", mode: str = "text", thre
         sections: dict[int, list[tuple[str, str]]] = {}
         for en in session.exec(select(Entry).where(Entry.deleted == False)):  # noqa: E712
             if en.experiment_id in exps:
-                sections.setdefault(en.experiment_id, []).append((en.title, _section_text(en.kind, en.content)))
+                try:
+                    text = str(_section_text(en.kind, en.content) or "")
+                except Exception:  # an odd section mustn't break search for the whole lab
+                    text = " ".join(_strings(en.content))
+                sections.setdefault(en.experiment_id, []).append((en.title, text))
         files: dict[int, list[Attachment]] = {}
         for a in session.exec(select(Attachment)):
             files.setdefault(a.experiment_id, []).append(a)
@@ -164,10 +170,13 @@ def search(user: CurrentUser, session: DB, q: str = "", mode: str = "text", thre
             # where it matched, for the result card: prefer a section body over metadata
             where = next(((lab, txt) for lab, txt, w in fields if w == 1 and any(p.search(txt.lower()) for p in pats)), None) \
                 or next(((lab, txt) for lab, txt, w in fields if any(p.search(txt.lower()) for p in pats)), ("", ""))
-            hits.append({**experiment_summary(session, exp), "score": score, "match": where[0],
-                         "snippet": _snippet(where[1], terms) if where[0] not in ("ID", "Title") else ""})
-        hits.sort(key=lambda h: h["updated_at"], reverse=True)  # ties: most recently edited first
-        hits.sort(key=lambda h: -h["score"])
+            hits.append((score, exp, where))
+        hits.sort(key=lambda h: h[1].updated_at, reverse=True)  # ties: most recently edited first
+        hits.sort(key=lambda h: -h[0])
+        # only build result cards for what's returned (a common word can match thousands of records)
+        hits = [{**experiment_summary(session, exp), "score": score, "match": where[0],
+                 "snippet": _snippet(where[1], terms) if where[0] not in ("ID", "Title") else ""}
+                for score, exp, where in hits[:limit]]
 
         mats = []
         lots = {}
@@ -196,7 +205,7 @@ def search(user: CurrentUser, session: DB, q: str = "", mode: str = "text", thre
             cutoff = 0.5
         elif mode == "similarity":
             scorer = chem.similarity_scorer(q)
-            cutoff = max(0.0, min(threshold, 1.0))
+            cutoff = max(0.0, min(threshold, 1.0)) if math.isfinite(threshold) else 0.5
         else:
             raise HTTPException(400, "mode must be text, substructure or similarity")
     except chem.ChemError as exc:
@@ -212,11 +221,14 @@ def search(user: CurrentUser, session: DB, q: str = "", mode: str = "text", thre
         if en.experiment_id not in exps:
             continue
         best, best_row = 0.0, None
-        for r in (en.content or {}).get("rows", []):
-            sc = scorer(r.get("smiles", ""))
+        rows = (en.content or {}).get("rows")
+        for r in rows if isinstance(rows, list) else []:
+            if not isinstance(r, dict) or not isinstance(r.get("smiles"), str):
+                continue
+            sc = scorer(r["smiles"])
             if sc > best:
                 best, best_row = sc, r
-        if best >= cutoff and (en.experiment_id not in out or out[en.experiment_id]["score"] < best):
+        if best_row is not None and best >= cutoff and (en.experiment_id not in out or out[en.experiment_id]["score"] < best):
             exp = exps[en.experiment_id]
             out[exp.id] = {**experiment_summary(session, exp), "score": round(best, 3),
                            "match": f"{best_row.get('role')}: {best_row.get('name') or best_row.get('formula') or ''}".strip(),

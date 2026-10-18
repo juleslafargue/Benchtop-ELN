@@ -22,9 +22,13 @@ export default function NotebookPage() {
     } catch (e: any) { toast(e.message) }
   }
 
-  useEffect(() => {
-    api.get<ExperimentSummary[]>(`/api/experiments?notebook_id=${id}${filter ? `&status=${filter}` : ''}`).then(setItems)
-  }, [id, filter])
+  const PAGE = 200
+  const [more, setMore] = useState(false)
+  const load = (offset: number) =>
+    api.get<ExperimentSummary[]>(`/api/experiments?notebook_id=${id}${filter ? `&status=${filter}` : ''}&limit=${PAGE}&offset=${offset}`).then(xs => {
+      setItems(old => (offset ? [...old, ...xs] : xs)); setMore(xs.length === PAGE)
+    })
+  useEffect(() => { load(0) }, [id, filter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!nb) return <p className="empty">Notebook not found.</p>
   return (
@@ -49,6 +53,7 @@ export default function NotebookPage() {
         ))}
       </div>
       <div className="panel"><ExperimentList items={items} showNotebook={false} empty="No experiments here yet." /></div>
+      {more && <div style={{ textAlign: 'center' }}><button className="btn" onClick={() => load(items.length)}>Show older experiments</button></div>}
       {creating && <NewExperimentDialog notebookId={nb.id} onClose={() => setCreating(false)} />}
       {audEdit && <Modal title={`Who can open ${nb.name}`} onClose={() => setAudEdit(null)} footer={<>
         <button className="btn" onClick={() => setAudEdit(null)}>Cancel</button>

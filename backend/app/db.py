@@ -7,8 +7,11 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from .config import settings
 
-_connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
-engine = create_engine(settings.database_url, connect_args=_connect_args)
+_connect_args = {"check_same_thread": False, "timeout": 30} if settings.database_url.startswith("sqlite") else {}
+# FastAPI runs each request on a thread pool (40 threads); with SQLite's default 5+10 connections, busy
+# moments queued requests for up to 30 s. SQLite connections are cheap, so allow plenty.
+_pool = {"pool_size": 20, "max_overflow": 40, "pool_timeout": 60} if settings.database_url.startswith("sqlite") else {}
+engine = create_engine(settings.database_url, connect_args=_connect_args, **_pool)
 
 if settings.database_url.startswith("sqlite"):
 

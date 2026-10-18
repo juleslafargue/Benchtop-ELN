@@ -33,6 +33,26 @@ def require_editable(exp: Experiment, user: User) -> None:
         sess = object_session(exp)
         if sess is None or not access_for(sess, user).can_edit(exp):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the experiment owner, or someone it was shared with for editing, can edit it")
+    _claim_open(exp)
+
+
+def _claim_open(exp: Experiment) -> None:
+    """Take the record for this edit, atomically, only if it is still a draft.
+
+    The status check above and the write that follows are separate steps; without this, a save that
+    arrives while someone signs could land after the signature, and two saves of the same version
+    could both succeed. The no-op UPDATE makes the database order edits to one experiment, and fails
+    if the record was signed in the meantime."""
+    from sqlalchemy import update
+    from sqlalchemy.orm import object_session
+    sess = object_session(exp)
+    if sess is None or exp.id is None:
+        return
+    res = sess.execute(update(Experiment).where(Experiment.id == exp.id, Experiment.status == ExperimentStatus.open)
+                       .values(status=ExperimentStatus.open).execution_options(synchronize_session=False))
+    if res.rowcount != 1:
+        sess.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, f"{exp.eid} was just signed; signed records are locked")
 
 
 def read_experiment(session: Session, user: User, exp_id: int) -> Experiment:

@@ -106,6 +106,12 @@ CSP = "; ".join([
 ])
 
 
+@app.exception_handler(OverflowError)
+async def _too_big(request, exc):  # e.g. /api/experiments/99999999999999999999
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"detail": "Number too large"}, status_code=404 if request.method == "GET" else 422)
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     resp = await call_next(request)
@@ -147,6 +153,9 @@ if settings.static_dir and Path(settings.static_dir).is_dir():
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str):
+        if path == "api" or path.startswith("api/"):  # a mistyped API URL should say so, not return the app page
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
         f = static / path
         if path and f.is_file() and static in f.resolve().parents:
             return FileResponse(f)

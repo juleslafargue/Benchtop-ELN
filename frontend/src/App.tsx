@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import ErrorBoundary from './components/ErrorBoundary'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { api, getToken, setToken, setUnauthorizedHandler, type Group, type Notebook, type User } from './api'
 import Layout from './components/Layout'
@@ -109,8 +110,9 @@ export default function App() {
 
   return (
     <AppCtx.Provider value={{ user, notebooks, refreshNotebooks, groups, refreshGroups, toast, logout, canWrite: user.role !== 'viewer', setUser }}>
-      {loc.pathname.startsWith('/bench/') ? <Routes><Route path="/bench/:id" element={<BenchPage />} /></Routes> : <>
+      {loc.pathname.startsWith('/bench/') ? <ErrorBoundary page label="the bench view" resetKey={loc.pathname}><Routes><Route path="/bench/:id" element={<BenchPage />} /></Routes></ErrorBoundary> : <>
       <Layout>
+        <ErrorBoundary page label="this page" resetKey={loc.pathname}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/notebooks/:id" element={<NotebookPage />} />
@@ -127,6 +129,7 @@ export default function App() {
           <Route path="/admin" element={user.role === 'admin' ? <Admin /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
+        </ErrorBoundary>
       </Layout>
       <Shortcuts />
       </>}

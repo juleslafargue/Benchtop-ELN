@@ -18,56 +18,68 @@ from ..models import Entry, EntryKind, Experiment
 from ..security import DB, CurrentUser
 from ..services import user_brief
 
+import logging
+log = logging.getLogger("benchtop.reactions")
 router = APIRouter(prefix="/api", tags=["reactions"])
 
 
 def _collect(session, user) -> list[dict[str, Any]]:
     from ..access import visible_experiment_filter
     exps = {e.id: e for e in session.exec(visible_experiment_filter(select(Experiment).where(Experiment.is_template == False), session, user))}  # noqa: E712
-    entries = session.exec(select(Entry).where(Entry.deleted == False).order_by(Entry.experiment_id, Entry.position))  # noqa: E712
+    kinds = [EntryKind.reaction, EntryKind.purification, EntryKind.characterization]  # skip text, tables, etc.
+    entries = session.exec(select(Entry).where(Entry.deleted == False, Entry.kind.in_(kinds))  # noqa: E712
+                           .order_by(Entry.experiment_id, Entry.position))
     by_exp: dict[int, list[Entry]] = {}
     for en in entries:
         if en.experiment_id in exps:
             by_exp.setdefault(en.experiment_id, []).append(en)
     out = []
     for exp_id, ens in by_exp.items():
-        exp = exps[exp_id]
-        purif = next((e.content for e in ens if e.kind == EntryKind.purification), None) or {}
-        chars = [it.get("technique") for e in ens if e.kind == EntryKind.characterization
-                 for it in (e.content or {}).get("items", []) if it.get("data")]
-        for en in ens:
-            if en.kind != EntryKind.reaction:
-                continue
-            c = en.content or {}
-            rows = c.get("rows") or []
-            if not rows and not c.get("reaction_smiles"):
-                continue
-            products = [r for r in rows if r.get("role") == "product"]
-            lim = next((r for r in rows if r.get("limiting")), None)
-            best = max((p for p in products if p.get("yield_pct") is not None), key=lambda p: p["yield_pct"], default=None)
-            cond = c.get("conditions") or {}
-            out.append({
-                "experiment_id": exp.id, "eid": exp.eid, "title": exp.title, "status": exp.status.value,
-                "owner": user_brief(session, exp.owner_id), "tags": exp.tags or [],
-                "date": exp.created_at.isoformat() + "Z", "entry_title": en.title,
-                "reaction_smiles": c.get("reaction_smiles", ""),
-                "temperature_c": cond.get("temperature_c"), "temperature_label": cond.get("temperature_label"),
-                "time_h": cond.get("time_h"), "atmosphere": cond.get("atmosphere"),
-                "concentration_m": (c.get("totals") or {}).get("concentration_m"),
-                "limiting": lim.get("name") or lim.get("formula") if lim else None,
-                "scale_mmol": (c.get("totals") or {}).get("limiting_mmol"),
-                "reagents": [r.get("name") or r.get("formula") for r in rows if r.get("role") in ("reagent", "catalyst")],
-                "solvents": [r.get("name") or r.get("formula") for r in rows if r.get("role") == "solvent"],
-                "product": (best or (products[0] if products else {})).get("name") or (best or {}).get("formula"),
-                "yield_pct": best["yield_pct"] if best else None,
-                "purification": purif.get("method") if purif.get("isolated_mg") is not None or purif.get("eluent") else None,
-                "characterised": chars,
-                "smiles_all": [r.get("smiles") for r in rows if r.get("smiles")],
-                "metrics": chem.green_metrics([chem.new_row(**r) for r in rows]) if rows else {},
-                "products_detail": [{"name": p.get("name") or p.get("formula"), "smiles": p.get("smiles"), "yield_pct": p.get("yield_pct"),
-                                     "actual_mass_mg": p.get("actual_mass_mg")} for p in products if p.get("smiles")],
-            })
+        try:
+            out.extend(_rows_for(session, exps[exp_id], ens))
+        except Exception:  # an odd record shouldn't empty the reactions page for everyone
+            log.exception("Skipping reactions of experiment %s", exp_id)
     out.sort(key=lambda r: r["date"], reverse=True)
+    return out
+
+
+def _rows_for(session, exp: Experiment, ens: list[Entry]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    purif = next((e.content for e in ens if e.kind == EntryKind.purification), None) or {}
+    chars = [it.get("technique") for e in ens if e.kind == EntryKind.characterization
+             for it in (e.content or {}).get("items", []) if it.get("data")]
+    for en in ens:
+        if en.kind != EntryKind.reaction:
+            continue
+        c = en.content or {}
+        rows = c.get("rows") or []
+        if not rows and not c.get("reaction_smiles"):
+            continue
+        products = [r for r in rows if r.get("role") == "product"]
+        lim = next((r for r in rows if r.get("limiting")), None)
+        best = max((p for p in products if p.get("yield_pct") is not None), key=lambda p: p["yield_pct"], default=None)
+        cond = c.get("conditions") or {}
+        out.append({
+            "experiment_id": exp.id, "eid": exp.eid, "title": exp.title, "status": exp.status.value,
+            "owner": user_brief(session, exp.owner_id), "tags": exp.tags or [],
+            "date": exp.created_at.isoformat() + "Z", "entry_title": en.title,
+            "reaction_smiles": c.get("reaction_smiles", ""),
+            "temperature_c": cond.get("temperature_c"), "temperature_label": cond.get("temperature_label"),
+            "time_h": cond.get("time_h"), "atmosphere": cond.get("atmosphere"),
+            "concentration_m": (c.get("totals") or {}).get("concentration_m"),
+            "limiting": lim.get("name") or lim.get("formula") if lim else None,
+            "scale_mmol": (c.get("totals") or {}).get("limiting_mmol"),
+            "reagents": [r.get("name") or r.get("formula") for r in rows if r.get("role") in ("reagent", "catalyst")],
+            "solvents": [r.get("name") or r.get("formula") for r in rows if r.get("role") == "solvent"],
+            "product": (best or (products[0] if products else {})).get("name") or (best or {}).get("formula"),
+            "yield_pct": best["yield_pct"] if best else None,
+            "purification": purif.get("method") if purif.get("isolated_mg") is not None or purif.get("eluent") else None,
+            "characterised": chars,
+            "smiles_all": [r.get("smiles") for r in rows if r.get("smiles")],
+            "metrics": chem.green_metrics([chem.new_row(**r) for r in rows]) if rows else {},
+            "products_detail": [{"name": p.get("name") or p.get("formula"), "smiles": p.get("smiles"), "yield_pct": p.get("yield_pct"),
+                                 "actual_mass_mg": p.get("actual_mass_mg")} for p in products if p.get("smiles")],
+        })
     return out
 
 

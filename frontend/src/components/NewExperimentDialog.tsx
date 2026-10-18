@@ -33,7 +33,7 @@ export default function NewExperimentDialog({ notebookId, onClose }: { notebookI
       <button className="btn primary" disabled={!title.trim() || !nb} onClick={create}>Create experiment</button>
     </>}>
       <div className="stack">
-        <label className="field">Title<input className="input" autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Boc protection of 4-aminopiperidine" /></label>
+        <label className="field">Title<input className="input" autoFocus maxLength={300} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Boc protection of 4-aminopiperidine" /></label>
         <label className="field">Notebook
           <select className="select" value={nb} onChange={e => setNb(Number(e.target.value))}>
             {notebooks.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}

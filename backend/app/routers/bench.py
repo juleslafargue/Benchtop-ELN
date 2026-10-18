@@ -11,7 +11,7 @@ from collections import Counter
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from .. import audit
@@ -27,9 +27,9 @@ LOG_TITLE = "Bench log"
 # ====================================================================== bench log
 
 class LogIn(BaseModel):
-    text: str = ""
-    time: str = ""   # the author's local clock, e.g. "14:32" (the server may be in another time zone)
-    day: str = ""    # e.g. "Sat 17 Oct 2026"; a heading is added when the day changes
+    text: str = Field("", max_length=5000)
+    time: str = Field("", max_length=20)   # the author's local clock, e.g. "14:32" (the server may be in another time zone)
+    day: str = Field("", max_length=60)    # e.g. "Sat 17 Oct 2026"; a heading is added when the day changes
     attachment_id: int | None = None
 
 

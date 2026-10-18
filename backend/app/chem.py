@@ -493,7 +493,9 @@ def _set_sim(a: list[Any], b: list[Any]) -> Optional[float]:
 def reaction_profile(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Fingerprints and keys for one reaction table, split into substrates, products and everything else."""
     out: dict[str, Any] = {"sub": [], "prod": [], "other": set(), "sub_keys": set(), "prod_keys": set(), "names": set()}
-    for r in rows or []:
+    for r in rows if isinstance(rows, list) else []:
+        if not isinstance(r, dict) or not isinstance(r.get("smiles") or "", str):
+            continue
         role, smi = r.get("role"), (r.get("smiles") or "").strip()
         key, fp = _mol_key(smi) if smi else (None, None)
         name = (r.get("name") or "").strip().lower()

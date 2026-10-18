@@ -33,11 +33,14 @@ def dashboard(user: CurrentUser, session: DB):
 
     # returned to me: open, mine, and the latest signature event is a rejection
     returned = []
+    open_mine = {e.id: e for e in mine if e.status == ExperimentStatus.open}
+    last_sig: dict[int, Signature] = {}
+    if open_mine:  # one query for all of them, not one per draft
+        for sig in session.exec(select(Signature).where(Signature.experiment_id.in_(list(open_mine))).order_by(Signature.id)):
+            last_sig[sig.experiment_id] = sig
     for e in mine:
-        if e.status != ExperimentStatus.open:
-            continue
-        last = session.exec(select(Signature).where(Signature.experiment_id == e.id).order_by(Signature.id.desc())).first()
-        if last and last.meaning == "rejected":
+        last = last_sig.get(e.id)
+        if e.id in open_mine and last and last.meaning == "rejected":
             returned.append({**summ(e), "reason": last.comment, "returned_by": last.signer_name})
 
     pinned_ids = [i for i in ((user.preferences or {}).get("pinned") or []) if isinstance(i, int)]
@@ -90,16 +93,17 @@ def dashboard(user: CurrentUser, session: DB):
     low.sort(key=lambda r: r["fraction"])
     expiring.sort(key=lambda r: r["expires_at"])
 
+    returned_ids = {r["id"] for r in returned}
     return {
         "lists": {
             "recent": [summ(e) for e in mine[:8]],
-            "open": [summ(e) for e in mine if e.status == ExperimentStatus.open][:10],
-            "awaiting": [summ(e) for e in exps if e.status == ExperimentStatus.signed and e.owner_id != user.id][:10],
+            "open": [summ(e) for e in [e for e in mine if e.status == ExperimentStatus.open][:10]],
+            "awaiting": [summ(e) for e in [e for e in exps if e.status == ExperimentStatus.signed and e.owner_id != user.id][:10]],
             "returned": returned[:10],
             "pinned": pinned,
             # drafts nobody has touched for two weeks (returned ones are already listed above)
-            "stale": [summ(e) for e in mine if e.status == ExperimentStatus.open and e.updated_at < now - timedelta(days=STALE_DAYS)
-                      and e.id not in {r["id"] for r in returned}][:10],
+            "stale": [summ(e) for e in [e for e in mine if e.status == ExperimentStatus.open and e.updated_at < now - timedelta(days=STALE_DAYS)
+                      and e.id not in returned_ids][:10]],
         },
         "stale_days": STALE_DAYS,
         "stats": {"this_month": this_month, "last_month": last_month, "witnessed_this_month": witnessed_month,

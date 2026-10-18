@@ -281,7 +281,7 @@ export default function ExperimentPage() {
             {exp.notebook_id && <Link className="faint" to={`/notebooks/${exp.notebook_id}`}>{exp.notebook_name}</Link>}
             {exp.is_template && <span className="tag">Template</span>}
           </div>
-          <textarea className="exp-title-input" aria-label="Experiment title" disabled={!editable} defaultValue={exp.title} key={`t${exp.id}-${exp.title}`} rows={1}
+          <textarea className="exp-title-input" aria-label="Experiment title" disabled={!editable} defaultValue={exp.title} key={`t${exp.id}-${exp.title}`} rows={1} maxLength={300}
             ref={el => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` } }}
             onInput={e => { const el = e.currentTarget; el.value = el.value.replace(/\n/g, ' '); el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` }}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}

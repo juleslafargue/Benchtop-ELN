@@ -7,7 +7,7 @@ import re
 import threading
 import hashlib
 import html
-from typing import Any
+from typing import Annotated, Any
 
 import nh3
 
@@ -22,6 +22,22 @@ _ATTRS.setdefault("a", set()).update({"href", "target"})
 _ATTRS.setdefault("th", set()).update({"colspan", "rowspan"})
 _ATTRS.setdefault("img", set()).update({"data-attachment-id", "alt", "width"})
 _ATTRS.setdefault("td", set()).update({"colspan", "rowspan"})
+
+
+_TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)[^>]*?(/?)>")
+_VOID = {"br", "img", "hr", "wbr", "col", "input"}
+MAX_NESTING = 60
+
+
+def nesting_depth(html: str) -> int:
+    """How deeply tags are nested; the editor stays well under 20, the PDF renderer gives up in the hundreds."""
+    depth = deepest = 0
+    for close, tag, selfclose in _TAG_RE.findall(html or ""):
+        if tag.lower() in _VOID or selfclose:
+            continue
+        depth = max(0, depth - 1) if close else depth + 1
+        deepest = max(deepest, depth)
+    return deepest
 
 
 def clean_html(html: str) -> str:
@@ -44,14 +60,16 @@ from ..services import (
     signatures_out, snapshot, user_brief,
 )
 
+import logging
+log = logging.getLogger("benchtop.experiments")
 router = APIRouter(prefix="/api", tags=["notebooks & experiments"])
 
 # ====================================================================== notebooks
 
 
 class NotebookIn(BaseModel):
-    name: str = Field(min_length=1)
-    description: str = ""
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field("", max_length=5000)
     group_id: int | None = None
     visibility: str | None = None
 
@@ -110,8 +128,8 @@ def create_notebook(body: NotebookIn, user: Writer, session: DB):
 
 
 class NotebookPatch(BaseModel):
-    name: str | None = None
-    description: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=5000)
     archived: bool | None = None
     group_id: int | None = None
     visibility: str | None = None
@@ -141,13 +159,16 @@ def update_notebook(nb_id: int, body: NotebookPatch, user: Writer, session: DB):
 # ====================================================================== experiments
 
 
+Tags = Annotated[list[Annotated[str, Field(max_length=60)]], Field(max_length=50)]
+
+
 class ExperimentIn(BaseModel):
-    title: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=300)
     notebook_id: int | None = None
-    description: str = ""
+    description: str = Field("", max_length=20_000)
     template_id: int | None = None
     is_template: bool = False
-    tags: list[str] = []
+    tags: Tags = []
 
 
 DEFAULT_CONTENT: dict[EntryKind, dict] = {
@@ -248,7 +269,8 @@ def _num(v):
 def list_experiments(
     user: CurrentUser, session: DB,
     notebook_id: int | None = None, status_: ExperimentStatus | None = Query(None, alias="status"),
-    owner_id: int | None = None, templates: bool = False, limit: int = 200,
+    owner_id: int | None = None, templates: bool = False,
+    limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0),
 ):
     from ..access import visible_experiment_filter
     q = visible_experiment_filter(select(Experiment).where(Experiment.is_template == templates), session, user)
@@ -258,7 +280,7 @@ def list_experiments(
         q = q.where(Experiment.status == status_)
     if owner_id is not None:
         q = q.where(Experiment.owner_id == owner_id)
-    q = q.order_by(Experiment.updated_at.desc()).limit(limit)
+    q = q.order_by(Experiment.updated_at.desc(), Experiment.id.desc()).offset(offset).limit(limit)
     return [experiment_summary(session, e) for e in session.exec(q)]
 
 
@@ -334,9 +356,9 @@ def _access_info(session, user: User, exp: Experiment) -> dict[str, Any]:
 
 
 class ExperimentPatch(BaseModel):
-    title: str | None = None
-    description: str | None = None
-    tags: list[str] | None = None
+    title: str | None = Field(None, min_length=1, max_length=300)
+    description: str | None = Field(None, max_length=20_000)
+    tags: Tags | None = None
     notebook_id: int | None = None
 
 
@@ -425,34 +447,79 @@ def _scaled(kind: EntryKind, content: dict[str, Any], f: float) -> dict[str, Any
 
 class EntryIn(BaseModel):
     kind: EntryKind
-    title: str = ""
+    title: str = Field("", max_length=300)
     content: dict[str, Any] = {}
     position: int | None = None
     plugin_section: str | None = None  # "plugin-id/section-id" for kind == custom
 
 
+def _str(v: Any, n: int = 4000) -> str:
+    """Text fields from the API: numbers become text, lists/objects become nothing."""
+    if v is None or isinstance(v, (dict, list)):
+        return ""
+    return str(v)[:n]
+
+
+_ROW_TEXT = ("role", "name", "smiles", "formula", "basis", "notes")
+_ROW_NUMS = ("mw", "equiv", "mmol", "mass_mg", "volume_ml", "density", "conc_m", "purity",
+             "actual_mass_mg", "theoretical_mass_mg", "yield_pct")
+
+
+def _clean_row(r: dict[str, Any]) -> dict[str, Any]:
+    """One reagent row as the app writes it: plain values only, numbers as numbers, ids as ints."""
+    out = {k: v for k, v in r.items() if isinstance(k, str) and (v is None or isinstance(v, (str, int, float, bool)))}
+    for k in _ROW_TEXT:
+        if k in out:
+            out[k] = _str(out[k], 2000)
+    for k in _ROW_NUMS:
+        if k in out:
+            out[k] = _num(out[k])
+    if out.get("purity") is None:
+        out.pop("purity", None)
+    for k in ("material_id", "lot_id"):
+        if k in out and (isinstance(out[k], bool) or not isinstance(out[k], int)):
+            out[k] = None
+    out["limiting"] = bool(out.get("limiting"))
+    return out
+
+
 def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
+    """Sanitise a section before storing it. Anything the API is sent (by the app, a script or a
+    plugin) is brought to the shape the app writes, so one odd record can't break search or export."""
     content = dict(content or {})
     if kind == EntryKind.text:
-        content["html"] = clean_html(content.get("html", ""))
+        content["html"] = clean_html(_str(content.get("html"), 5_000_000))
+        if nesting_depth(content["html"]) > MAX_NESTING:
+            raise HTTPException(422, "This text has formatting nested too deeply to store; paste it as plain text instead")
     elif kind == EntryKind.reaction:
-        cond = {k: (content.get("conditions") or {}).get(k) for k in CONDITION_FIELDS}
-        for k in ("temperature_c", "time_h", "target_conc_m"):
-            cond[k] = _num(cond[k])
+        raw_cond = content.get("conditions") if isinstance(content.get("conditions"), dict) else {}
+        cond = {k: raw_cond.get(k) for k in CONDITION_FIELDS}
+        for k in cond:
+            cond[k] = _num(cond[k]) if k in ("temperature_c", "time_h", "target_conc_m") else (_str(cond[k]) if cond[k] is not None else None)
         content["conditions"] = cond
-        rows = content.get("rows") or []
+        for k in ("reaction_smiles", "rxn_smiles"):
+            if k in content:
+                content[k] = _str(content[k], 20000)
+        rows = [_clean_row(r) for r in content.get("rows") or [] if isinstance(r, dict)] if isinstance(content.get("rows"), list) else []
+        content["rows"] = rows
         if rows:
             calc = chem.compute_stoichiometry(rows, cond["target_conc_m"])
             content["rows"], content["totals"] = calc["rows"], calc["totals"]
             content["warnings"] = calc["warnings"]
     elif kind == EntryKind.purification:
-        content["notes_html"] = clean_html(content.get("notes_html", ""))
+        content["notes_html"] = clean_html(_str(content.get("notes_html"), 500_000))
         content["isolated_mg"] = _num(content.get("isolated_mg"))
+        for k in ("method", "stationary_phase", "eluent", "rf_eluent", "appearance", "rf"):
+            if k in content and content[k] is not None:
+                content[k] = _str(content[k], 400)
     elif kind == EntryKind.characterization:
         items = []
-        for it in content.get("items") or []:
-            item = {"technique": str(it.get("technique", "")), "conditions": str(it.get("conditions", "")),
-                    "data": str(it.get("data", "")), "attachment_id": it.get("attachment_id")}
+        for it in content.get("items") if isinstance(content.get("items"), list) else []:
+            if not isinstance(it, dict):
+                continue
+            att = it.get("attachment_id")
+            item = {"technique": _str(it.get("technique"), 200), "conditions": _str(it.get("conditions"), 2000),
+                    "data": _str(it.get("data"), 200_000), "attachment_id": att if isinstance(att, int) and not isinstance(att, bool) else None}
             analysis = _clean_analysis(it.get("analysis"))
             if analysis:
                 item["analysis"] = analysis
@@ -461,7 +528,7 @@ def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
     elif kind == EntryKind.safety:
         for k in ("controls", "waste", "emergency"):
             content[k] = str(content.get(k) or "")[:4000]
-        content["notes_html"] = clean_html(content.get("notes_html", ""))
+        content["notes_html"] = clean_html(_str(content.get("notes_html"), 500_000))
         snap = content.get("snapshot")
         content["snapshot"] = snap if isinstance(snap, dict) and len(json.dumps(snap)) < 200_000 else None
     elif kind == EntryKind.screen:
@@ -486,16 +553,24 @@ def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
                     cells[f"{i},{j}"] = cell
         content["cells"] = cells
     elif kind == EntryKind.table:
-        content.setdefault("columns", [])
-        content.setdefault("rows", [])
+        cols = content.get("columns") if isinstance(content.get("columns"), list) else []
+        content["columns"] = [{**{k: v for k, v in c.items() if isinstance(v, (str, int, float, bool)) or v is None}, "name": _str(c.get("name"), 200)}
+                              for c in cols if isinstance(c, dict)][:200]
+        rows = content.get("rows") if isinstance(content.get("rows"), list) else []
+        content["rows"] = [[v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else _str(v, 2000) for v in r]
+                           for r in rows if isinstance(r, list)][:20000]
     elif kind == EntryKind.custom:
         try:
             content = plugins.clean_content(content)
         except plugins.PluginError as e:
             raise HTTPException(422, str(e)) from None
     elif kind == EntryKind.file:
-        content.setdefault("attachment_ids", [])
-        analyses = {str(k): _clean_analysis(v) for k, v in (content.get("analyses") or {}).items()}
+        ids = content.get("attachment_ids")
+        content["attachment_ids"] = [i for i in ids if isinstance(i, int) and not isinstance(i, bool)] if isinstance(ids, list) else []
+        if "caption" in content:
+            content["caption"] = _str(content["caption"], 2000)
+        raw_an = content.get("analyses") if isinstance(content.get("analyses"), dict) else {}
+        analyses = {str(k): _clean_analysis(v) for k, v in raw_an.items()}
         content["analyses"] = {k: v for k, v in analyses.items() if v}
     return content
 
@@ -542,7 +617,7 @@ def _add_entry(exp_id: int, body: EntryIn, user, session) -> dict[str, Any]:
 
 
 class EntryUpdate(BaseModel):
-    title: str | None = None
+    title: str | None = Field(None, max_length=300)
     content: dict[str, Any] | None = None
     expected_version: int | None = None
 
@@ -552,6 +627,9 @@ def update_entry(entry_id: int, body: EntryUpdate, user: Writer, session: DB):
     e = get_or_404(session, Entry, entry_id)
     exp = read_experiment(session, user, e.experiment_id)
     require_editable(exp, user)
+    session.refresh(e)  # now that this edit holds the record, read the section as it is
+    if e.deleted:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This section was removed elsewhere; reload")
     if body.expected_version is not None and body.expected_version != e.version:
         raise HTTPException(status.HTTP_409_CONFLICT,
                             f"Entry was changed elsewhere (now v{e.version}); reload before saving")
@@ -577,6 +655,7 @@ def delete_entry(entry_id: int, user: Writer, session: DB):
     e = get_or_404(session, Entry, entry_id)
     exp = read_experiment(session, user, e.experiment_id)
     require_editable(exp, user)
+    session.refresh(e)
     e.deleted = True
     e.version += 1
     session.add_all([e, EntryVersion(entry_id=e.id, version=e.version, title=e.title,
@@ -592,6 +671,7 @@ def restore_entry(entry_id: int, user: Writer, session: DB):
     e = get_or_404(session, Entry, entry_id)
     exp = read_experiment(session, user, e.experiment_id)
     require_editable(exp, user)
+    session.refresh(e)
     if not e.deleted:
         return entry_out(e)
     e.deleted = False
@@ -676,8 +756,11 @@ def download_attachment(att_id: int, user: CurrentUser, session: DB, inline: boo
         raise HTTPException(410, "Attachment blob missing from storage")
     if hashlib.sha256(path.read_bytes()).hexdigest() != a.sha256:
         raise HTTPException(500, "Attachment failed integrity check")
-    return FileResponse(path, media_type=a.content_type, filename=a.filename,
+    resp = FileResponse(path, media_type=a.content_type, filename=a.filename,
                         content_disposition_type="inline" if inline else "attachment")
+    if a.content_type != "application/pdf":  # an uploaded .html/.svg can never run script on Benchtop's address
+        resp.headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'"
+    return resp
 
 
 # ====================================================================== signing workflow
@@ -701,6 +784,24 @@ def _check_password(user: User, password: str, session) -> None:
         session.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Password re-entry failed; signature not applied")
     clear_failures(session, key)
+
+
+def _claim(session, exp: Experiment, to: ExperimentStatus, *, frm: ExperimentStatus | None = None,
+           not_: ExperimentStatus | None = None, msg: str = "") -> None:
+    """Move the record to a new status only if nobody else has moved it first.
+
+    Two clicks on "Sign" (or two people witnessing at once) used to both pass the status check and both
+    write a signature. A conditional UPDATE is atomic in the database, so exactly one request wins and
+    the others get 409."""
+    from sqlalchemy import update
+    cond = Experiment.id == exp.id
+    cond = cond & (Experiment.status == frm) if frm is not None else cond & (Experiment.status != not_)
+    res = session.execute(update(Experiment).where(cond).values(status=to, updated_at=utcnow()))
+    if res.rowcount != 1:
+        session.rollback()
+        raise HTTPException(409, msg or f"{exp.eid} was changed by someone else just now; reload and try again")
+    exp.status = to
+    exp.updated_at = utcnow()
 
 
 def _sign(session, exp: Experiment, user: User, meaning: str, comment: str) -> Signature:
@@ -729,11 +830,9 @@ def sign_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
     if missing:
         raise HTTPException(422, "Fill in the required items before signing — " + "; ".join(missing))
     _check_password(user, body.password, session)
+    _claim(session, exp, ExperimentStatus.signed, frm=ExperimentStatus.open, msg=f"{exp.eid} has already been signed")
     _sign(session, exp, user, "author", body.comment)
     nmrpredict.lab_record(session, exp)  # its confirmed NMR assignments now teach the predictor
-    exp.status = ExperimentStatus.signed
-    exp.updated_at = utcnow()
-    session.add(exp)
     session.commit()
     return get_experiment(exp.id, user, session)
 
@@ -754,10 +853,8 @@ def witness_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
     author = _author_sig(session, exp)
     if author is None or author.content_hash != content_hash(session, exp):
         raise HTTPException(409, "Record content no longer matches the author signature")
+    _claim(session, exp, ExperimentStatus.witnessed, frm=ExperimentStatus.signed, msg=f"{exp.eid} is no longer awaiting a witness")
     _sign(session, exp, user, "witness", body.comment)
-    exp.status = ExperimentStatus.witnessed
-    exp.updated_at = utcnow()
-    session.add(exp)
     session.commit()
     return get_experiment(exp.id, user, session)
 
@@ -773,11 +870,9 @@ def reject_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
     if not body.comment.strip():
         raise HTTPException(400, "A reason is required")
     _check_password(user, body.password, session)
+    _claim(session, exp, ExperimentStatus.open, frm=ExperimentStatus.signed, msg=f"{exp.eid} is no longer awaiting a witness")
     _sign(session, exp, user, "rejected", body.comment)
     nmrpredict.lab_forget(session, exp.id)
-    exp.status = ExperimentStatus.open
-    exp.updated_at = utcnow()
-    session.add(exp)
     session.commit()
     return get_experiment(exp.id, user, session)
 
@@ -789,10 +884,9 @@ def withdraw_signature(exp_id: int, body: SignIn, user: Writer, session: DB):
     if exp.status != ExperimentStatus.signed or exp.owner_id != user.id:
         raise HTTPException(409, "Only the author can withdraw a record awaiting witness")
     _check_password(user, body.password, session)
+    _claim(session, exp, ExperimentStatus.open, frm=ExperimentStatus.signed, msg=f"{exp.eid} is no longer awaiting a witness")
     _sign(session, exp, user, "withdrawn", body.comment)
     nmrpredict.lab_forget(session, exp.id)
-    exp.status = ExperimentStatus.open
-    session.add(exp)
     session.commit()
     return get_experiment(exp.id, user, session)
 
@@ -807,10 +901,9 @@ def void_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
     if not body.comment.strip():
         raise HTTPException(400, "A reason is required")
     _check_password(user, body.password, session)
+    _claim(session, exp, ExperimentStatus.voided, not_=ExperimentStatus.voided, msg="Already voided")
     _sign(session, exp, user, "void", body.comment)
     nmrpredict.lab_forget(session, exp.id)
-    exp.status = ExperimentStatus.voided
-    session.add(exp)
     session.commit()
     return get_experiment(exp.id, user, session)
 
@@ -904,6 +997,14 @@ def _inline_images(h: str, atts: dict[int, Attachment], pdf: bool = False) -> st
     return _IMG_REF.sub(sub, h)
 
 
+def _render_entry_safe(e: Entry, atts: dict[int, Attachment], pdf: bool = False) -> str:
+    try:
+        return _render_entry(e, atts, pdf)
+    except Exception:
+        log.exception("Couldn't render entry %s", e.id)
+        return f"<section><h2>{html.escape(e.title or '')}</h2><p><i>This section couldn't be shown in the report.</i></p></section>"
+
+
 def _render_entry(e: Entry, atts: dict[int, Attachment], pdf: bool = False) -> str:
     c = e.content or {}
     h = f"<section><h2>{html.escape(e.title)}</h2>"
@@ -991,12 +1092,13 @@ def _render_entry(e: Entry, atts: dict[int, Attachment], pdf: bool = False) -> s
         if sch.get("plugin"):
             h += f"<p class='meta' style='font-size:11px'>Section type: {html.escape(sch.get('name', ''))} (plugin {html.escape(sch['plugin'])})</p>"
     elif e.kind == EntryKind.table:
-        cols = c.get("columns", [])
+        cols = [col if isinstance(col, dict) else {"name": col} for col in c.get("columns") or [] if col is not None]
         h += "<table><tr>" + "".join(
-            f"<th>{html.escape(col.get('name', ''))}{(' (' + html.escape(col['unit']) + ')') if col.get('unit') else ''}</th>"
+            f"<th>{html.escape(str(col.get('name', '')))}{(' (' + html.escape(str(col['unit'])) + ')') if col.get('unit') else ''}</th>"
             for col in cols) + "</tr>"
-        for row in c.get("rows", []):
-            h += "<tr>" + "".join(f"<td>{_fmt(v)}</td>" for v in row) + "</tr>"
+        for row in c.get("rows") or []:
+            if isinstance(row, list):
+                h += "<tr>" + "".join(f"<td>{_fmt(v)}</td>" for v in row) + "</tr>"
         h += "</table>"
     elif e.kind == EntryKind.purification:
         rows = [("Method", PURIFICATION_LABELS.get(c.get("method"), c.get("method") or "")),
@@ -1020,7 +1122,7 @@ def _render_entry(e: Entry, atts: dict[int, Attachment], pdf: bool = False) -> s
         h += "".join(_inline_images(f'<p><img data-attachment-id="{i}"></p>', atts, pdf)
                      for i in c.get("attachment_ids", []) if i in atts and atts[i].content_type.startswith("image/"))
         if c.get("caption"):
-            h += f"<p>{html.escape(c['caption'])}</p>"
+            h += f"<p>{html.escape(str(c['caption']))}</p>"
     return h + "</section>"
 
 
@@ -1048,7 +1150,10 @@ def _pdf_response(session, exp: Experiment) -> Response:
     except ImportError:
         raise HTTPException(503, "PDF export needs one more package: stop Benchtop and start it again so it can install it") from None
     out = io.BytesIO()
-    res = pisa.CreatePDF(report_html(session, exp, pdf=True), dest=out, encoding="utf-8")
+    try:
+        res = pisa.CreatePDF(report_html(session, exp, pdf=True), dest=out, encoding="utf-8")
+    except RecursionError:
+        raise HTTPException(422, "This record's formatting is too complex for a PDF; the printable report (Print) still works") from None
     if res.err:
         raise HTTPException(500, "Couldn't make the PDF; the printable report (Print) still works")
     from ..export_md import safe_name
@@ -1062,7 +1167,7 @@ def report_html(session, exp: Experiment, pdf: bool = False) -> str:
     atts = {a.id: a for a in session.exec(select(Attachment).where(Attachment.experiment_id == exp.id))}
     owner = session.get(User, exp.owner_id)
     sigs = signatures_out(session, exp.id)
-    body = "".join(_render_entry(e, atts, pdf) for e in live_entries(session, exp.id))
+    body = "".join(_render_entry_safe(e, atts, pdf) for e in live_entries(session, exp.id))
     sig_html = "".join(
         f"<tr><td>{html.escape(s['meaning'])}</td><td>{html.escape(s['signer_name'] or s['user']['username'])}</td>"
         f"<td>{s['signed_at']}</td><td>{html.escape(s['comment'])}</td><td><code>{s['content_hash'][:16]}…</code></td></tr>"

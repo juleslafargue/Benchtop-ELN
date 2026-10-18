@@ -149,7 +149,8 @@ def get_material(mat_id: int, user: CurrentUser, session: DB):
     # experiments whose reaction tables reference this material
     used = []
     for e in session.exec(select(Entry).where(Entry.kind == EntryKind.reaction, Entry.deleted == False)):  # noqa: E712
-        if any(r.get("material_id") == m.id for r in (e.content or {}).get("rows", [])):
+        rows = (e.content or {}).get("rows")
+        if isinstance(rows, list) and any(isinstance(r, dict) and r.get("material_id") == m.id for r in rows):
             exp = session.get(Experiment, e.experiment_id)
             if exp and acc.can_read(exp) and exp.id not in {u["id"] for u in used}:
                 used.append({"id": exp.id, "eid": exp.eid, "title": exp.title, "status": exp.status.value})

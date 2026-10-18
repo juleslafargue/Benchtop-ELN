@@ -34,6 +34,13 @@
   --open: #9aaaba; --signed: #e0a64a; --witnessed: #4fc2ae; --voided: #d58c8c; --danger: #ff8a80; color-scheme: dark;
 }
 
+/* Structure drawings come from the server with black bonds; in dark mode flip them to light bonds,
+   keeping the colours of O (red), N (blue) etc. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) img[src^="/api/chem/depict"] { filter: invert(0.9) hue-rotate(180deg); }
+}
+:root[data-theme='dark'] img[src^="/api/chem/depict"] { filter: invert(0.9) hue-rotate(180deg); }
+
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 body {
@@ -1035,3 +1042,13 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 .conf.lab { background: color-mix(in srgb, var(--witnessed) 16%, transparent); color: var(--witnessed); margin-left: 3px; }
 .asg-check { flex-basis: 100%; border-left: 3px solid var(--signed); background: color-mix(in srgb, var(--signed) 8%, transparent); padding: 8px 10px; border-radius: 0; font-size: 13px; }
 .asg-check ul { margin: 4px 0; padding-left: 18px; }
+
+/* Long unbroken names (a pasted IUPAC name, a SMILES in a title) wrap instead of widening the page */
+.list-row > span, .page-title, .lede, .tag, .card-title, .entry-title, .side-nav a, .crumbs, .ref-title, .timer-label { min-width: 0; overflow-wrap: anywhere; }
+
+/* A section or page that couldn't be displayed */
+.crash { border: 1px dashed var(--rule-strong); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; font-size: 14px; }
+.crash p { margin: 0; }
+.panel.crash { padding: 24px; max-width: 640px; }
+.panel.crash h2 { margin: 0; font-size: 20px; }
+.crash-msg { font-family: var(--mono); font-size: 12px; color: var(--ink-3); overflow-wrap: anywhere; }

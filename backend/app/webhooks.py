@@ -52,7 +52,7 @@ VERBS = {
 }
 
 _KEY = "benchtop_events"
-_q: "queue.Queue[tuple[int, dict]]" = queue.Queue()
+_q: "queue.Queue[tuple[str, tuple]]" = queue.Queue()
 _worker: threading.Thread | None = None
 _lock = threading.Lock()
 # tests set this to deliver inline; a callable(url, body, headers) -> status code may replace HTTP
@@ -69,10 +69,16 @@ def note(session: Session, user: User | None, action: str, object_type: str, obj
 
 @sa_event.listens_for(Session, "after_commit")
 def _after_commit(session: Session) -> None:
+    # Never touch the database here: the request still holds its connection, and opening a second one
+    # per commit exhausted the pool under load (requests waited 30 s and failed). The worker does it.
     pending = session.info.pop(_KEY, None)
     if pending:
         for item in pending:
-            _dispatch(*item)
+            if synchronous:
+                _dispatch(*item)
+            else:
+                _q.put(("event", item))
+                _ensure_worker()
 
 
 @sa_event.listens_for(Session, "after_rollback")
@@ -153,11 +159,10 @@ def _dispatch(ev: str, object_type: str, object_id: int, user_id: int | None, de
     for h in hooks:
         if private and not h.include_private:
             continue
-        job = (h.id, payload)
         if synchronous:
-            deliver(*job)
+            deliver(h.id, payload)
         else:
-            _q.put(job)
+            _q.put(("deliver", (h.id, payload)))
             _ensure_worker()
 
 
@@ -171,9 +176,12 @@ def _ensure_worker() -> None:
 
 def _run() -> None:
     while True:
-        hook_id, payload = _q.get()
+        kind, args = _q.get()
         try:
-            deliver(hook_id, payload)
+            if kind == "event":
+                _dispatch(*args)   # find the webhooks that want it and build the payload
+            else:
+                deliver(*args)
         except Exception:  # never let one bad hook stop the others
             log.exception("Webhook delivery crashed")
 

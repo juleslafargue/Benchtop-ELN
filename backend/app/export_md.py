@@ -151,23 +151,26 @@ def experiment_markdown(session: Session, exp: Experiment, asset_dir: str = "_as
         "created": exp.created_at.strftime("%Y-%m-%d"), "updated": exp.updated_at.strftime("%Y-%m-%d"),
         "tags": [re.sub(r"\s+", "-", t) for t in (exp.tags or [])],
     }
-    if rxn:
-        c = rxn.content
-        cond = c.get("conditions") or {}
-        prods = [r for r in c.get("rows", []) if r.get("role") == "product"]
-        best = max(prods, key=lambda p: p.get("yield_pct") or -1) if prods else None
-        lim = next((r for r in c.get("rows", []) if r.get("limiting")), None)
-        fm.update({
-            "reaction_smiles": c.get("reaction_smiles") or None,
-            "limiting_reagent": (lim.get("name") or lim.get("formula")) if lim else None,
-            "scale_mmol": (c.get("totals") or {}).get("limiting_mmol"),
-            "temperature_c": cond.get("temperature_c"), "temperature": cond.get("temperature_label") or None,
-            "time_h": cond.get("time_h"), "atmosphere": cond.get("atmosphere") or None,
-            "concentration_m": (c.get("totals") or {}).get("concentration_m"),
-            "product": (best.get("name") or best.get("formula")) if best else None,
-            "yield_pct": best.get("yield_pct") if best else None,
-        })
-    if pur:
+    try:  # front-matter summary; an odd old record just leaves these fields out
+        if rxn:
+            c = rxn.content
+            cond = c.get("conditions") or {}
+            prods = [r for r in c.get("rows", []) if r.get("role") == "product"]
+            best = max(prods, key=lambda p: p.get("yield_pct") or -1) if prods else None
+            lim = next((r for r in c.get("rows", []) if r.get("limiting")), None)
+            fm.update({
+                "reaction_smiles": c.get("reaction_smiles") or None,
+                "limiting_reagent": (lim.get("name") or lim.get("formula")) if lim else None,
+                "scale_mmol": (c.get("totals") or {}).get("limiting_mmol"),
+                "temperature_c": cond.get("temperature_c"), "temperature": cond.get("temperature_label") or None,
+                "time_h": cond.get("time_h"), "atmosphere": cond.get("atmosphere") or None,
+                "concentration_m": (c.get("totals") or {}).get("concentration_m"),
+                "product": (best.get("name") or best.get("formula")) if best else None,
+                "yield_pct": best.get("yield_pct") if best else None,
+            })
+    except (AttributeError, TypeError, ValueError):
+        pass
+    if isinstance(pur, dict) and isinstance(pur.get("method"), str):
         fm["purification"] = pur.get("method")
     fm["benchtop"] = f"{base_url}/experiments/{exp.id}"
     fm["content_hash"] = content_hash(session, exp)
@@ -180,98 +183,103 @@ def experiment_markdown(session: Session, exp: Experiment, asset_dir: str = "_as
         out += [exp.description, ""]
 
     for e in entries:
-        c = e.content or {}
-        out += [f"## {e.title}", ""]
-        if e.kind == EntryKind.text:
-            out += [html_to_md(c.get("html", "")) or "_(empty)_", ""]
-        elif e.kind == EntryKind.reaction:
-            cond = c.get("conditions") or {}
-            bits = [x for x in (
-                f"{_fmt(cond.get('temperature_c'))} °C" if cond.get("temperature_c") is not None else None,
-                cond.get("temperature_label"), f"{_fmt(cond.get('time_h'))} h" if cond.get("time_h") is not None else None,
-                cond.get("atmosphere"), f"{_fmt(cond.get('target_conc_m'))} M" if cond.get("target_conc_m") else None) if x]
-            if bits:
-                out += [f"**Conditions:** {', '.join(bits)}" + (f". {cond['notes']}" if cond.get("notes") else ""), ""]
-            if c.get("reaction_smiles") and assets is not None:
-                try:
-                    svg = chem.depict_reaction_svg(c["reaction_smiles"], 700, 190)
-                    name = f"{exp.eid}-scheme-{e.id}.svg"
-                    assets[name] = svg.encode()
-                    out += [f"![[{name}]]", ""]
-                except chem.ChemError:
-                    pass
-            rows = c.get("rows") or []
-            if rows:
-                out += ["| Role | Name | MW | Equiv | mmol | Mass (mg) | Vol (mL) | Yield |", "|---|---|---|---|---|---|---|---|"]
-                for r in rows:
-                    out.append("| " + " | ".join([
-                        r.get("role", "") + (" ★" if r.get("limiting") else ""), (r.get("name") or r.get("formula") or "").replace("|", "/"),
-                        _fmt(r.get("mw"), 2), _fmt(r.get("equiv")), _fmt(r.get("mmol"), 4),
-                        _fmt(r.get("actual_mass_mg") if r.get("role") == "product" else r.get("mass_mg"), 2),
-                        _fmt(r.get("volume_ml"), 3), f"{_fmt(r.get('yield_pct'), 1)}%" if r.get("yield_pct") is not None else ""]) + " |")
+        mark = len(out)
+        try:
+            c = e.content or {}
+            out += [f"## {e.title}", ""]
+            if e.kind == EntryKind.text:
+                out += [html_to_md(c.get("html", "")) or "_(empty)_", ""]
+            elif e.kind == EntryKind.reaction:
+                cond = c.get("conditions") or {}
+                bits = [x for x in (
+                    f"{_fmt(cond.get('temperature_c'))} °C" if cond.get("temperature_c") is not None else None,
+                    cond.get("temperature_label"), f"{_fmt(cond.get('time_h'))} h" if cond.get("time_h") is not None else None,
+                    cond.get("atmosphere"), f"{_fmt(cond.get('target_conc_m'))} M" if cond.get("target_conc_m") else None) if x]
+                if bits:
+                    out += [f"**Conditions:** {', '.join(bits)}" + (f". {cond['notes']}" if cond.get("notes") else ""), ""]
+                if c.get("reaction_smiles") and assets is not None:
+                    try:
+                        svg = chem.depict_reaction_svg(c["reaction_smiles"], 700, 190)
+                        name = f"{exp.eid}-scheme-{e.id}.svg"
+                        assets[name] = svg.encode()
+                        out += [f"![[{name}]]", ""]
+                    except chem.ChemError:
+                        pass
+                rows = c.get("rows") or []
+                if rows:
+                    out += ["| Role | Name | MW | Equiv | mmol | Mass (mg) | Vol (mL) | Yield |", "|---|---|---|---|---|---|---|---|"]
+                    for r in rows:
+                        out.append("| " + " | ".join([
+                            r.get("role", "") + (" ★" if r.get("limiting") else ""), (r.get("name") or r.get("formula") or "").replace("|", "/"),
+                            _fmt(r.get("mw"), 2), _fmt(r.get("equiv")), _fmt(r.get("mmol"), 4),
+                            _fmt(r.get("actual_mass_mg") if r.get("role") == "product" else r.get("mass_mg"), 2),
+                            _fmt(r.get("volume_ml"), 3), f"{_fmt(r.get('yield_pct'), 1)}%" if r.get("yield_pct") is not None else ""]) + " |")
+                    out.append("")
+            elif e.kind == EntryKind.safety:
+                snap = c.get("snapshot") or {}
+                for ch in snap.get("chemicals") or []:
+                    out.append(f"- **{ch.get('name', '')}**" + (f" ({ch['signal']})" if ch.get("signal") else "") + ": " + "; ".join(ch.get("hazards") or []))
+                for w in snap.get("warnings") or []:
+                    out.append(f"> [!warning] {w.get('text', '')}")
+                for k, label in (("controls", "Controls"), ("waste", "Waste"), ("emergency", "Emergency")):
+                    if c.get(k):
+                        out.append(f"- **{label}:** {c[k]}")
+                notes = html_to_md(c.get("notes_html", ""))
+                out += ([notes] if notes else []) + [""]
+            elif e.kind == EntryKind.screen:
+                xs, ys, cells = c.get("x_levels") or [], c.get("y_levels") or [], c.get("cells") or {}
+                if xs and ys:
+                    out += [f"{c.get('response', '')}: {c.get('y_name', '')} (rows) × {c.get('x_name', '')} (columns)", "",
+                            "| | " + " | ".join(xs) + " |", "|---|" + "---|" * len(xs)]
+                    out += ["| " + yv + " | " + " | ".join(_fmt((cells.get(f"{i},{j}") or {}).get("value"), 1) for j in range(len(xs))) + " |"
+                            for i, yv in enumerate(ys)]
+                    out.append("")
+            elif e.kind == EntryKind.purification:
+                items = [("Method", PURIF.get(c.get("method"), c.get("method"))), ("Stationary phase", c.get("stationary_phase")),
+                         ("Eluent", c.get("eluent")), ("Rf", (c.get("rf") or "") + (f" ({c['rf_eluent']})" if c.get("rf_eluent") else "")),
+                         ("Isolated", f"{_fmt(c.get('isolated_mg'), 2)} mg" if c.get("isolated_mg") is not None else None),
+                         ("Appearance", c.get("appearance"))]
+                out += [f"- **{k}:** {v}" for k, v in items if v] + [""]
+                notes = html_to_md(c.get("notes_html", ""))
+                if notes:
+                    out += [notes, ""]
+            elif e.kind == EntryKind.characterization:
+                for it in c.get("items", []):
+                    if not (it.get("data") or it.get("attachment_id")):
+                        continue
+                    line = f"- **{it.get('technique', '')}**" + (f" ({it['conditions']})" if it.get("conditions") else "")
+                    line += f" {it.get('data', '')}".rstrip()
+                    a = atts.get(it.get("attachment_id"))
+                    if a:
+                        line += f" — [[{_asset_name(a)}]]"
+                        if assets is not None:
+                            assets[_asset_name(a)] = _blob(a)
+                    out.append(line)
                 out.append("")
-        elif e.kind == EntryKind.safety:
-            snap = c.get("snapshot") or {}
-            for ch in snap.get("chemicals") or []:
-                out.append(f"- **{ch.get('name', '')}**" + (f" ({ch['signal']})" if ch.get("signal") else "") + ": " + "; ".join(ch.get("hazards") or []))
-            for w in snap.get("warnings") or []:
-                out.append(f"> [!warning] {w.get('text', '')}")
-            for k, label in (("controls", "Controls"), ("waste", "Waste"), ("emergency", "Emergency")):
-                if c.get(k):
-                    out.append(f"- **{label}:** {c[k]}")
-            notes = html_to_md(c.get("notes_html", ""))
-            out += ([notes] if notes else []) + [""]
-        elif e.kind == EntryKind.screen:
-            xs, ys, cells = c.get("x_levels") or [], c.get("y_levels") or [], c.get("cells") or {}
-            if xs and ys:
-                out += [f"{c.get('response', '')}: {c.get('y_name', '')} (rows) × {c.get('x_name', '')} (columns)", "",
-                        "| | " + " | ".join(xs) + " |", "|---|" + "---|" * len(xs)]
-                out += ["| " + yv + " | " + " | ".join(_fmt((cells.get(f"{i},{j}") or {}).get("value"), 1) for j in range(len(xs))) + " |"
-                        for i, yv in enumerate(ys)]
-                out.append("")
-        elif e.kind == EntryKind.purification:
-            items = [("Method", PURIF.get(c.get("method"), c.get("method"))), ("Stationary phase", c.get("stationary_phase")),
-                     ("Eluent", c.get("eluent")), ("Rf", (c.get("rf") or "") + (f" ({c['rf_eluent']})" if c.get("rf_eluent") else "")),
-                     ("Isolated", f"{_fmt(c.get('isolated_mg'), 2)} mg" if c.get("isolated_mg") is not None else None),
-                     ("Appearance", c.get("appearance"))]
-            out += [f"- **{k}:** {v}" for k, v in items if v] + [""]
-            notes = html_to_md(c.get("notes_html", ""))
-            if notes:
-                out += [notes, ""]
-        elif e.kind == EntryKind.characterization:
-            for it in c.get("items", []):
-                if not (it.get("data") or it.get("attachment_id")):
-                    continue
-                line = f"- **{it.get('technique', '')}**" + (f" ({it['conditions']})" if it.get("conditions") else "")
-                line += f" {it.get('data', '')}".rstrip()
-                a = atts.get(it.get("attachment_id"))
-                if a:
-                    line += f" — [[{_asset_name(a)}]]"
+            elif e.kind == EntryKind.table:
+                cols = c.get("columns") or []
+                if cols:
+                    out += ["| " + " | ".join(str(col.get("name", "") if isinstance(col, dict) else col) for col in cols) + " |", "|" + "---|" * len(cols)]
+                    out += ["| " + " | ".join(str(v).replace("|", "/") for v in r) + " |" for r in c.get("rows") or [] if isinstance(r, list)]
+                    out.append("")
+            elif e.kind == EntryKind.custom:
+                from .plugins import text_of
+                out += [f"- {line}" for line in text_of(c).splitlines()] + [""]
+            elif e.kind == EntryKind.file:
+                for i in c.get("attachment_ids", []):
+                    a = atts.get(i)
+                    if not a:
+                        continue
+                    embed = "!" if a.content_type.startswith("image/") else ""
+                    out.append(f"- {embed}[[{_asset_name(a)}]]")
                     if assets is not None:
                         assets[_asset_name(a)] = _blob(a)
-                out.append(line)
-            out.append("")
-        elif e.kind == EntryKind.table:
-            cols = c.get("columns") or []
-            if cols:
-                out += ["| " + " | ".join(col.get("name", "") for col in cols) + " |", "|" + "---|" * len(cols)]
-                out += ["| " + " | ".join(str(v).replace("|", "/") for v in r) + " |" for r in c.get("rows", [])]
+                if c.get("caption"):
+                    out += ["", str(c["caption"])]
                 out.append("")
-        elif e.kind == EntryKind.custom:
-            from .plugins import text_of
-            out += [f"- {line}" for line in text_of(c).splitlines()] + [""]
-        elif e.kind == EntryKind.file:
-            for i in c.get("attachment_ids", []):
-                a = atts.get(i)
-                if not a:
-                    continue
-                embed = "!" if a.content_type.startswith("image/") else ""
-                out.append(f"- {embed}[[{_asset_name(a)}]]")
-                if assets is not None:
-                    assets[_asset_name(a)] = _blob(a)
-            if c.get("caption"):
-                out += ["", c["caption"]]
-            out.append("")
+        except Exception:  # one odd section shouldn't stop the whole export
+            del out[mark:]
+            out += [f"## {e.title}", "", "_(This section couldn't be exported.)_", ""]
 
     sigs = signatures_out(session, exp.id)
     if sigs:
@@ -280,7 +288,7 @@ def experiment_markdown(session: Session, exp: Experiment, asset_dir: str = "_as
                 + (f" — “{s['comment']}”" if s["comment"] else "") for s in sigs]
         out.append("")
     out += ["---", f"*Exported from Benchtop. The signed record of truth is [{exp.eid} in Benchtop]({fm['benchtop']}); edits made here are not synced back.*", ""]
-    return "\n".join(out)
+    return "\n".join(map(str, out))
 
 
 def _asset_name(a: Attachment) -> str:
