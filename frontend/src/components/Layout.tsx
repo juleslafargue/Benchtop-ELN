@@ -10,6 +10,7 @@ import { AudIcon } from './Audience'
 import Notifications from './Notifications'
 import MainNav from './MainNav'
 import { TimerTray } from './BenchTools'
+import { useCollapsed } from '../collapse'
 
 export const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'
 
@@ -39,6 +40,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [canWrite])
   const loc = useLocation()
+  const [nbHidden, setNbHidden] = useCollapsed('side.notebooks')
   useEffect(() => setOpen(false), [loc.pathname])
 
   return (
@@ -53,10 +55,14 @@ export default function Layout({ children }: { children: ReactNode }) {
         <TimerTray />
         <div>
           <div className="side-heading">
-            <span>Notebooks</span>
+            <button className="side-toggle" onClick={() => setNbHidden(!nbHidden)} aria-expanded={!nbHidden} aria-controls="side-notebooks"
+              title={nbHidden ? 'Show notebooks' : 'Hide notebooks'}>
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6l4 4 4-4" /></svg>
+              Notebooks{nbHidden && notebooks.length > 0 && <span className="count">{notebooks.length}</span>}
+            </button>
             {canWrite && <button className="btn ghost sm" onClick={() => setCreating(true)} aria-label="New notebook">+ New</button>}
           </div>
-          <div className="nav">
+          <div className="nav" id="side-notebooks" hidden={nbHidden}>
             {notebooks.map(nb => (
               <NavLink key={nb.id} to={`/notebooks/${nb.id}`} className="nb-link">
                 <span className="nb-name">{nb.name}{nb.visibility && nb.visibility !== 'everyone' &&

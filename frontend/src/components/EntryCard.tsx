@@ -11,6 +11,7 @@ import VersionsDialog from './VersionsDialog'
 import SafetyEntry from './SafetyEntry'
 import ScreenEntry from './ScreenEntry'
 import CustomEntry from './CustomEntry'
+import { useCollapsed } from '../collapse'
 
 type SaveState = 'saved' | 'dirty' | 'saving' | 'error'
 const KIND_LABEL = { text: 'Text', reaction: 'Reaction & stoichiometry', table: 'Data table', file: 'Files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening grid', custom: 'Plugin section' }
@@ -104,12 +105,17 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
     return () => window.removeEventListener('benchtop:save-now', now)
   }, [state, save])
 
+  const [collapsed, setCollapsed] = useCollapsed(`entry.${entry.id}`)
   const props: EntryEditorProps = { content, onChange: change, readOnly, experimentId, attachments, onAttachmentsChanged, context }
   const stateText = { saved: `v${version}`, dirty: 'Unsaved', saving: 'Saving…', error: 'Not saved' }[state]
 
   return (
     <section className="entry" id={`entry-${entry.id}`} aria-label={title}>
-      <header className="entry-head">
+      <header className={`entry-head${collapsed ? ' collapsed' : ''}`}>
+        <button className="entry-toggle" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-controls={`entry-body-${entry.id}`}
+          aria-label={collapsed ? `Show ${title}` : `Hide ${title}`} title={collapsed ? 'Show this section' : 'Hide this section'}>
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6l4 4 4-4" /></svg>
+        </button>
         <input className="entry-title" value={title} disabled={readOnly} aria-label="Section title"
           onChange={e => { edits.current++; setTitle(e.target.value); setState('dirty') }} />
         <span className="entry-kind" title={entry.kind === 'custom' && content?.schema?.plugin ? `From the ${content.schema.plugin} plugin` : undefined}><KindIcon kind={entry.kind} />{entry.kind === 'custom' ? (content?.schema?.name || 'Plugin section') : KIND_LABEL[entry.kind]}</span>
@@ -126,7 +132,9 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
         </>}
       </header>
       {state === 'error' && <p className="error" style={{ padding: '6px 16px 0' }}>{error} {error.includes('reload') && <button className="btn sm" onClick={() => location.reload()}>Reload</button>}</p>}
-      <div className="entry-body">
+      {collapsed && <button className="entry-peek" onClick={() => setCollapsed(false)} title="Show this section">
+        <span>{peek(entry.kind, content) || 'Hidden'}</span>{state === 'dirty' || state === 'saving' ? <span className="faint"> · saving…</span> : null}</button>}
+      <div className="entry-body" id={`entry-body-${entry.id}`} hidden={collapsed}>
         {entry.kind === 'text' && <TextEntry {...props} />}
         {entry.kind === 'reaction' && <ReactionEntry {...props} />}
         {entry.kind === 'table' && <TableEntry {...props} />}
@@ -140,4 +148,25 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
       {showVersions && <VersionsDialog entryId={entry.id} kind={entry.kind} onClose={() => setShowVersions(false)} />}
     </section>
   )
+}
+
+/** One line saying what a hidden section holds. */
+function peek(kind: string, c: any): string {
+  const text = (html: string) => (html || '').replace(/<(br|\/p|\/li|\/h\d)>/g, ' · ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').replace(/^( · )+|( · )+$/g, '').trim()
+  const cut = (s: string) => (s.length > 140 ? s.slice(0, 140) + '…' : s)
+  if (!c) return ''
+  if (kind === 'text') return cut(text(c.html))
+  if (kind === 'reaction') {
+    const rows = c.rows || [], prod = rows.find((r: any) => r.role === 'product')
+    return cut([rows.filter((r: any) => r.role !== 'product').map((r: any) => r.name).filter(Boolean).slice(0, 4).join(', '),
+      prod ? `→ ${prod.name || 'product'}${prod.yield_pct != null ? ` (${Math.round(prod.yield_pct)}%)` : ''}` : ''].filter(Boolean).join(' '))
+  }
+  if (kind === 'purification') return cut([c.method, c.eluent, c.isolated_mg != null ? `${c.isolated_mg} mg` : ''].filter(Boolean).join(' · '))
+  if (kind === 'characterization') return cut((c.items || []).map((i: any) => i.technique).filter(Boolean).join(', '))
+  if (kind === 'file') return `${(c.attachment_ids || []).length} file${(c.attachment_ids || []).length === 1 ? '' : 's'}`
+  if (kind === 'table') return `${(c.rows || []).length} row${(c.rows || []).length === 1 ? '' : 's'} × ${(c.columns || []).length} columns`
+  if (kind === 'screen') return `${c.y_name || ''} × ${c.x_name || ''}`
+  if (kind === 'safety') return c.snapshot ? `${(c.snapshot.chemicals || []).length} chemicals assessed` : 'Hazards not recorded yet'
+  if (kind === 'custom') return cut(Object.entries(c.values || {}).filter(([, v]) => v !== null && v !== '' && v !== false).slice(0, 4).map(([k, v]) => `${(c.schema?.fields || []).find((f: any) => f.id === k)?.label || k}: ${v === true ? '✓' : v}`).join(' · '))
+  return ''
 }

@@ -10,6 +10,7 @@ import { AudienceBadge } from '../components/Audience'
 import SignDialog, { type SignAction } from '../components/SignDialog'
 import WriteupDialog from '../components/WriteupDialog'
 import { BenchBar, PhoneDialog } from '../components/BenchTools'
+import { isCollapsed, setCollapsedMany } from '../collapse'
 import ScaleDialog from '../components/ScaleDialog'
 import { useBackTarget } from '../components/BackButton'
 import { parseSpectrumBuffer, techniqueFor } from '../spectra'
@@ -116,6 +117,8 @@ export default function ExperimentPage() {
   const dragDepth = useRef(0)
   const [bench, setBench] = useState<null | 'log' | 'timer'>(null)
   const [phone, setPhone] = useState(false)
+  const [, redraw] = useState(0)
+  useEffect(() => { const on = () => redraw(n => n + 1); window.addEventListener('benchtop:collapse', on); return () => window.removeEventListener('benchtop:collapse', on) }, [])
 
   const load = useCallback(async () => {
     try { setExp(await api.get<Experiment>(`/api/experiments/${id}`)); setErr('') } catch (e: any) { setErr(e.message) }
@@ -305,7 +308,15 @@ export default function ExperimentPage() {
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'record'} onClick={() => setTab('record')}>Record</button>
         <button role="tab" aria-selected={tab === 'history'} onClick={() => setTab('history')}>Audit trail</button>
-        {tab === 'record' && editable && <div className="tabs-end"><AddSection variant="button" existing={kindsPresent} onAdd={(k, p) => addSection(k, undefined, p)} /></div>}
+        {tab === 'record' && <div className="tabs-end">
+          {exp.entries.length > 1 && (() => {
+            const keys = exp.entries.map(e => `entry.${e.id}`)
+            const allHidden = keys.every(isCollapsed)
+            return <button className="btn ghost sm" onClick={() => setCollapsedMany(keys, !allHidden)}
+              title={allHidden ? 'Show every section' : 'Hide every section, leaving just the titles'}>{allHidden ? 'Expand all' : 'Collapse all'}</button>
+          })()}
+          {editable && <AddSection variant="button" existing={kindsPresent} onAdd={(k, p) => addSection(k, undefined, p)} />}
+        </div>}
       </div>
 
       {tab === 'history' ? <AuditTab expId={exp.id} /> : (
