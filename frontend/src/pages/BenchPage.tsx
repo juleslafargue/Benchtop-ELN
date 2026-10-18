@@ -5,6 +5,8 @@ import { api, displayName, fmt, loadAttachmentImages, type Attachment, type Expe
 import { logLine, parseTimer, startTimer, fmtDuration } from '../bench'
 import { TimerTray } from '../components/BenchTools'
 
+const mass = (mg: number) => (mg >= 1000 ? `${fmt(mg / 1000, 2)} g` : `${fmt(mg, 1)} mg`)
+const vol = (ml: number) => (ml >= 1000 ? `${fmt(ml / 1000, 2)} L` : `${fmt(ml, ml < 1 ? 3 : 1)} mL`)
 const QUICK = ['Started heating', 'Added dropwise', 'TLC taken', 'Colour change', 'Quenched', 'Work-up started']
 const PRESETS = [5, 10, 15, 30, 60]
 
@@ -102,11 +104,11 @@ export default function BenchPage() {
 
       {rx && <section className="bench-card">
         <div className="fld-cap">Reaction</div>
-        <table className="bench-rx"><tbody>
+        <table className="bench-rx"><colgroup><col /><col className="c-eq" /><col className="c-amt" /></colgroup><tbody>
           {rx.rows.map((r: any, i: number) => <tr key={i} className={r.role === 'product' ? 'faint' : ''}>
             <td>{r.name || r.formula}</td><td className="num">{r.equiv != null && r.role !== 'solvent' && r.role !== 'product' ? `${fmt(r.equiv, 2)} eq` : ''}</td>
-            <td className="num">{r.role === 'product' ? (r.theoretical_mass_mg ? `${fmt(r.theoretical_mass_mg, 1)} mg theor.` : '')
-              : r.volume_ml && (r.density || r.role === 'solvent' || r.conc_m) ? `${fmt(r.volume_ml, 3)} mL` : r.mass_mg ? `${fmt(r.mass_mg, 1)} mg` : ''}</td>
+            <td className="num">{r.role === 'product' ? (r.theoretical_mass_mg ? <>{mass(r.theoretical_mass_mg)}<span className="bench-theor">theor.</span></> : '')
+              : r.volume_ml && (r.density || r.role === 'solvent' || r.conc_m) ? vol(r.volume_ml) : r.mass_mg ? mass(r.mass_mg) : ''}</td>
           </tr>)}
         </tbody></table>
       </section>}

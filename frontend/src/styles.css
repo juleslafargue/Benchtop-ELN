@@ -1001,7 +1001,10 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 .bench-presets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .bench-presets .btn { padding: 10px 0; justify-content: center; }
 .bench-page textarea.input { font-size: 16px; }
-.bench-rx { width: 100%; font-size: 14px; border-collapse: collapse; }
+.bench-rx { width: 100%; font-size: 14px; border-collapse: collapse; table-layout: fixed; }
+.bench-rx col.c-eq { width: 4.6em; } .bench-rx col.c-amt { width: 6.4em; }
+.bench-rx td:first-child { overflow-wrap: anywhere; padding-right: 8px; }
+.bench-theor { display: block; font-size: 11.5px; }
 .bench-rx td { padding: 4px 2px; border-bottom: 1px solid var(--rule); }
 .bench-rx td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bench-log { font-size: 15px; }
