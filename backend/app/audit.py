@@ -69,6 +69,8 @@ def record(
     )
     ev.hash = compute_hash(prev, ev)
     session.add(ev)
+    from . import webhooks  # sent after the commit, if any webhook listens for this
+    webhooks.note(session, user, action, object_type, object_id, details)
     return ev
 
 

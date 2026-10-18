@@ -84,6 +84,8 @@ and kept out of the integrals:
 | **Quick navigation** | ⌘K (Ctrl K) finds any experiment, material (by name or CAS), notebook or page, and runs actions such as "New experiment"; press N anywhere for a new experiment. Amount fields accept units: `1.2 g` in a mg cell, `250 µL` in mL, `0.5 mol`, `30 min`, `500 mM`. |
 | **Groups & sharing** | Research groups with leads (a PI, a manager) and members. Each notebook is open to everyone, to one group, or private (plus its group's leads, who see all of their group's notebooks). Share a single experiment with anyone, to view or to edit; only the author signs. Records someone can't open don't appear anywhere for them: lists, search, reactions, compounds, dashboard, spectra and similar-reaction suggestions all respect it. Existing notebooks stay open to everyone until you change them. |
 | **Comments & notifications** | Discuss any experiment or a single section in threads: ask about a peak, request a change, approve. @mention people (autocomplete as you type) and they're notified; replies and comments on your experiments notify you too, via the bell. Resolve threads when done. Comments can be added during review and after signing because they aren't part of the signed record (the signed hash doesn't change), and every comment, edit, deletion and resolution is in the audit trail. Mention someone who can't open the record and Benchtop offers to share it with them. |
+| **Plugins** | Add your lab's own section types and instrument-file readers with a small text file, no code: a glovebox log, a hydrogenation safety checklist, a cell-passage record; fields with units, dropdowns, warnings when a value is out of range, checklists and tables. Items marked *required* must be done before the author can sign. Readers teach Benchtop to open an instrument's CSV or text export (an HPLC trace, a UV-vis spectrum) as a chart. Admins add plugin files from *Users & audit*; each section keeps a copy of its definition, so records stay readable if a plugin changes or is removed. Three examples ship switched off. See [docs/PLUGINS.md](docs/PLUGINS.md). |
+| **API tokens & webhooks** | Personal access tokens (read only, or read & write, with an expiry) for scripts and instrument PCs; they act as you but can never sign records or change settings. Webhooks post to Slack, Teams or your own service when an experiment is signed, witnessed, returned, voided or commented on, signed with HMAC-SHA256, retried in the background, with a delivery history. Only identifiers and titles are sent, never record content. See [docs/API.md](docs/API.md). |
 | **Users & accounts** | Admin, scientist and read-only viewer roles. A fresh install opens on a setup screen where you create your own administrator account (the built-in admin login is then retired). **Single sign-on** with Microsoft 365 / Entra ID, Google Workspace or any OpenID Connect provider: people sign in with their university or company account, optionally limited to your email domains, with accounts created on first sign-in or matched to ones an admin added. Sign-ins can last 30 days. Everyone has an account page to change their name, email, username and password, and preferences (light/dark theme, default notebook, open spectra full-screen) that follow them between computers. Signatures store the printed name at the moment of signing, so later name changes never alter signed records. Admins can edit any account. |
 
 ## Quick start (Mac)
@@ -232,13 +234,13 @@ Design notes:
 
 ## API
 
-Everything the UI does is available over REST with a bearer token; interactive docs at `/docs`.
+Everything the UI does is available over REST; interactive docs at `/docs`. For scripts, make a personal access token under **Account → API tokens** (it starts with `bt_`):
 
 ```bash
-TOKEN=$(curl -s localhost:8000/api/auth/login -H 'content-type: application/json' \
-  -d '{"username":"alice","password":"benchtop123"}' | jq -r .token)
-curl -s localhost:8000/api/search -G -d q='c1ccccc1Br' -d mode=substructure -H "Authorization: Bearer $TOKEN"
+curl -s localhost:8000/api/search -G -d q='c1ccccc1Br' -d mode=substructure -H "Authorization: Bearer bt_…"
 ```
+
+Tokens, webhooks (Slack, Teams, or signed JSON for your own code) and examples in Python: [docs/API.md](docs/API.md). Plugin files: [docs/PLUGINS.md](docs/PLUGINS.md).
 
 ## Security
 
@@ -247,6 +249,7 @@ curl -s localhost:8000/api/search -G -d q='c1ccccc1Br' -d mode=substructure -H "
 - **Sessions live on the server**: Account settings lists every browser you're signed in on and can sign any of them out. Signing out really ends the session, changing your password signs out all your other devices, and admins can sign a person out everywhere (a lost laptop) or deactivate them, which ends their sessions immediately.
 - **Admin-set passwords are temporary**: accounts an admin creates, or whose password an admin resets, must choose their own password at the next sign-in.
 - **First-run safety**: until setup is done, the built-in admin/admin login can't be used, and setup can only be completed from the computer Benchtop runs on, so nobody else on a shared network can claim the admin account.
+- **API tokens and webhooks**: tokens are stored only as SHA-256 hashes, can be read-only and expire, and can never sign records or change accounts or settings; webhook requests are signed (HMAC-SHA256) and carry identifiers, never record content. Plugin files contain no code and are checked before they load.
 - **Browser protections**: a Content Security Policy (only Benchtop's own scripts run; pages can't be framed by other sites), `nosniff`, no referrer leaks, and API responses that aren't cached.
 - Report security problems privately as described in [SECURITY.md](SECURITY.md).
 
@@ -261,7 +264,8 @@ that work.
 
 ## Roadmap ideas
 
-- Next: compound and batch registration with a route view, `.eln` import/export (ELN Consortium format), bench mode with phone photos and barcode scanning; HPLC/LC-MS traces, PDF export, DOI references
+- Next: compound and batch registration with a route view, `.eln` import/export (ELN Consortium format), bench mode with phone photos and barcode scanning; PDF export, DOI references
+- Code plugins (Python packages with hooks, extra pages and widgets), building on today's plugin files
 
 - Plate/sample-set entities and a sample-tracking view
 - Varian/JEOL raw FIDs, 2D NMR, and mzML for MS

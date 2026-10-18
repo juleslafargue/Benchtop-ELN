@@ -3,6 +3,7 @@ import { useApp } from '../App'
 import type { NmrStatus } from '../components/Prediction'
 import { api, when, type AuditEvent, type Role, type User } from '../api'
 import Modal from '../components/Modal'
+import { Plugins, Webhooks } from '../components/Integrations'
 import PasswordField from '../components/PasswordField'
 
 function EditUser({ u, onClose, onSaved }: { u: User; onClose: () => void; onSaved: () => void }) {
@@ -144,7 +145,7 @@ export default function Admin() {
 
   return (
     <div className="stack" style={{ gap: 26 }}>
-      <div><h1 className="page-title">Users &amp; audit</h1><p className="lede">Manage accounts and backups, and check that the audit trail has not been altered.</p></div>
+      <div><h1 className="page-title">Users &amp; audit</h1><p className="lede">Manage accounts, plugins, webhooks and backups, and check that the audit trail has not been altered.</p></div>
       <section className="stack" style={{ gap: 8 }}>
         <div className="spread"><h2 style={{ fontSize: 17 }}>Users</h2><button className="btn sm" onClick={() => setAdding(true)}>Add user</button></div>
         <div className="panel grid-wrap" style={{ border: 0 }}>
@@ -161,6 +162,8 @@ export default function Admin() {
             ))}</tbody></table>
         </div>
       </section>
+      <Plugins />
+      <Webhooks />
       <NmrData />
       <Backups />
       <section className="stack" style={{ gap: 8 }}>

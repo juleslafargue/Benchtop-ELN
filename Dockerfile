@@ -9,11 +9,12 @@ RUN npm run build
 # --- API + static files
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    BENCHTOP_DATA_DIR=/data BENCHTOP_STATIC_DIR=/app/static
+    BENCHTOP_DATA_DIR=/data BENCHTOP_STATIC_DIR=/app/static BENCHTOP_BUNDLED_PLUGINS_DIR=/app/plugins
 WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt "psycopg[binary]>=3.2"
 COPY backend/app ./app
+COPY plugins ./plugins
 COPY --from=web /web/dist ./static
 VOLUME ["/data"]
 EXPOSE 8000

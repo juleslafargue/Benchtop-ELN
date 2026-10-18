@@ -186,11 +186,11 @@ export default function ExperimentPage() {
     catch (e: any) { toast(e.message) }
   }
   // insert before section `before` (an index into exp.entries), or at the end; then bring it into view
-  const addSection = async (kind: EntryKind, before?: number) => {
-    const titles = { text: 'Notes', reaction: 'Reaction', table: 'Data', file: 'Spectra & files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening' }
+  const addSection = async (kind: EntryKind, before?: number, plugin?: string) => {
+    const titles: Record<EntryKind, string> = { text: 'Notes', reaction: 'Reaction', table: 'Data', file: 'Spectra & files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening', custom: '' }
     try {
       const position = before != null && exp.entries[before] ? exp.entries[before].position : undefined
-      const e = await api.post<Entry>(`/api/experiments/${exp.id}/entries`, { kind, title: titles[kind], ...(position != null ? { position } : {}) })
+      const e = await api.post<Entry>(`/api/experiments/${exp.id}/entries`, { kind, title: titles[kind], ...(plugin ? { plugin_section: plugin } : {}), ...(position != null ? { position } : {}) })
       await load()
       requestAnimationFrame(() => {
         const el = document.getElementById(`entry-${e.id}`)
@@ -273,7 +273,7 @@ export default function ExperimentPage() {
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'record'} onClick={() => setTab('record')}>Record</button>
         <button role="tab" aria-selected={tab === 'history'} onClick={() => setTab('history')}>Audit trail</button>
-        {tab === 'record' && editable && <div className="tabs-end"><AddSection variant="button" existing={kindsPresent} onAdd={k => addSection(k)} /></div>}
+        {tab === 'record' && editable && <div className="tabs-end"><AddSection variant="button" existing={kindsPresent} onAdd={(k, p) => addSection(k, undefined, p)} /></div>}
       </div>
 
       {tab === 'history' ? <AuditTab expId={exp.id} /> : (
@@ -288,7 +288,7 @@ export default function ExperimentPage() {
               {exp.entries.map((e, i) => (
                 <Fragment key={`${e.id}-${reloadKey}`}>
                   {i > 0 && (editable
-                    ? <AddSection variant="between" existing={kindsPresent} onAdd={k => addSection(k, i)} label="Add section here" />
+                    ? <AddSection variant="between" existing={kindsPresent} onAdd={(k, p) => addSection(k, i, p)} label="Add section here" />
                     : <div className="entry-gap" />)}
                   <EntryCard entry={e} readOnly={!editable} experimentId={exp.id} context={context}
                     attachments={exp.attachments} onAttachmentsChanged={attachmentsChanged}
@@ -297,7 +297,7 @@ export default function ExperimentPage() {
                 </Fragment>
               ))}
             </div>
-            {editable && <AddSection variant="end" existing={kindsPresent} onAdd={k => addSection(k)} label={exp.entries.length ? 'Add a section' : 'Add the first section'} />}
+            {editable && <AddSection variant="end" existing={kindsPresent} onAdd={(k, p) => addSection(k, undefined, p)} label={exp.entries.length ? 'Add a section' : 'Add the first section'} />}
           </div>
 
           <aside className="rail">

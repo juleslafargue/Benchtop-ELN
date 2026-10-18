@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api, displayName, fmt, when, PURIFICATION_LABELS, type EntryKind, type UserBrief } from '../api'
 import Modal from './Modal'
+import CustomEntry from './CustomEntry'
 
 interface V { version: number; title: string; content: any; deleted: boolean; created_at: string; created_by: UserBrief }
 
 function Preview({ kind, content }: { kind: EntryKind; content: any }) {
+  if (kind === 'custom') return <CustomEntry content={content} onChange={() => {}} readOnly experimentId={0} attachments={[]} onAttachmentsChanged={() => {}}
+    context={{ productFormula: null, productSmiles: null, productMW: null, openAttachmentId: null }} />
   if (kind === 'text') return <div className="prose" style={{ fontSize: 15 }} dangerouslySetInnerHTML={{ __html: content.html || '<p class="faint">(empty)</p>' }} />
   if (kind === 'reaction') return (
     <table className="plain"><thead><tr><th>Role</th><th>Name</th><th>Equiv</th><th>mmol</th><th>Mass (mg)</th><th>Yield</th></tr></thead>

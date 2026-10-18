@@ -31,7 +31,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
-from .. import audit, chem
+from .. import audit, plugins, chem
 from ..config import settings
 from ..models import (
     Attachment, Entry, EntryKind, EntryVersion, Experiment, ExperimentStatus, Notebook, Role,
@@ -413,6 +413,7 @@ class EntryIn(BaseModel):
     title: str = ""
     content: dict[str, Any] = {}
     position: int | None = None
+    plugin_section: str | None = None  # "plugin-id/section-id" for kind == custom
 
 
 def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
@@ -472,6 +473,11 @@ def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
     elif kind == EntryKind.table:
         content.setdefault("columns", [])
         content.setdefault("rows", [])
+    elif kind == EntryKind.custom:
+        try:
+            content = plugins.clean_content(content)
+        except plugins.PluginError as e:
+            raise HTTPException(422, str(e)) from None
     elif kind == EntryKind.file:
         content.setdefault("attachment_ids", [])
         analyses = {str(k): _clean_analysis(v) for k, v in (content.get("analyses") or {}).items()}
@@ -504,8 +510,15 @@ def _add_entry(exp_id: int, body: EntryIn, user, session) -> dict[str, Any]:
         if e.position >= pos:
             e.position += 1
             session.add(e)
-    content = _clean_content(body.kind, body.content or copy.deepcopy(DEFAULT_CONTENT[body.kind]))
-    e = _new_entry(session, exp.id, body.kind, body.title or body.kind.value.title(), content, pos, user)
+    title = body.title
+    if body.kind == EntryKind.custom and not body.content:
+        sec = next((x for x in plugins.enabled_sections(session) if f"{x['plugin']}/{x['id']}" == body.plugin_section), None)
+        if sec is None:
+            raise HTTPException(422, "That section type isn't available; an admin may have switched its plugin off")
+        content, title = plugins.new_content(sec), title or sec["title"]
+    else:
+        content = _clean_content(body.kind, body.content or copy.deepcopy(DEFAULT_CONTENT.get(body.kind, {})))
+    e = _new_entry(session, exp.id, body.kind, title or body.kind.value.title(), content, pos, user)
     exp.updated_at = utcnow()
     session.add(exp)
     audit.record(session, user, "create", "entry", e.id, experiment=exp.eid, kind=e.kind.value, title=e.title)
@@ -679,6 +692,10 @@ def sign_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
         raise HTTPException(409, f"{exp.eid} is already {exp.status.value}")
     if exp.owner_id != user.id:
         raise HTTPException(403, "Only the author can sign as author")
+    missing = [f"{e.title}: {', '.join(m)}" for e in live_entries(session, exp.id) if e.kind == EntryKind.custom
+               for m in [plugins.missing_required(e.content or {})] if m]
+    if missing:
+        raise HTTPException(422, "Fill in the required items before signing — " + "; ".join(missing))
     _check_password(user, body.password, session)
     _sign(session, exp, user, "author", body.comment)
     exp.status = ExperimentStatus.signed
@@ -885,6 +902,21 @@ def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
             h += f"<tr><th>{html.escape(yv)}</th>" + "".join(
                 f"<td>{_fmt((cells.get(f'{i},{j}') or {}).get('value'))}</td>" for j in range(len(xs))) + "</tr>"
         h += "</table>"
+    elif e.kind == EntryKind.custom:
+        sch, vals = c.get("schema") or {}, c.get("values") or {}
+        shown = [(f["label"], vals.get(f["id"]), f) for f in sch.get("fields", [])]
+        h += "<table>" + "".join(
+            f"<tr><th>{html.escape(lab)}</th><td>{'✓' if v is True else '—' if v in (None, '', False) else html.escape(str(v)).replace(chr(10), '<br>')}"
+            f"{(' ' + html.escape(f['unit'])) if f.get('unit') and v not in (None, '', False) else ''}</td></tr>" for lab, v, f in shown) + "</table>"
+        for t in sch.get("tables", []):
+            rows = (c.get("rows") or {}).get(t["id"], [])
+            h += f"<p><b>{html.escape(t['label'])}</b></p><table><tr>" + "".join(
+                f"<th>{html.escape(col['label'])}{(' (' + html.escape(col['unit']) + ')') if col.get('unit') else ''}</th>" for col in t["columns"]) + "</tr>"
+            for r in rows:
+                h += "<tr>" + "".join(f"<td>{'✓' if r.get(col['id']) is True else html.escape(str(r.get(col['id']) if r.get(col['id']) not in (None, False) else ''))}</td>" for col in t["columns"]) + "</tr>"
+            h += "</table>"
+        if sch.get("plugin"):
+            h += f"<p class='meta' style='font-size:11px'>Section type: {html.escape(sch.get('name', ''))} (plugin {html.escape(sch['plugin'])})</p>"
     elif e.kind == EntryKind.table:
         cols = c.get("columns", [])
         h += "<table><tr>" + "".join(

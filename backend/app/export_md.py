@@ -257,6 +257,9 @@ def experiment_markdown(session: Session, exp: Experiment, asset_dir: str = "_as
                 out += ["| " + " | ".join(col.get("name", "") for col in cols) + " |", "|" + "---|" * len(cols)]
                 out += ["| " + " | ".join(str(v).replace("|", "/") for v in r) + " |" for r in c.get("rows", [])]
                 out.append("")
+        elif e.kind == EntryKind.custom:
+            from .plugins import text_of
+            out += [f"- {line}" for line in text_of(c).splitlines()] + [""]
         elif e.kind == EntryKind.file:
             for i in c.get("attachment_ids", []):
                 a = atts.get(i)

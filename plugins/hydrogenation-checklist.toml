@@ -1,0 +1,72 @@
+# Example Benchtop plugin: a pre-run safety checklist.
+# Required items must be filled in or ticked before the author can sign the experiment.
+
+[plugin]
+id = "hydrogenation-checklist"
+name = "Hydrogenation safety checklist"
+version = "1.0.0"
+author = "Benchtop examples"
+description = "Pre-run checks for H₂ balloon or Parr hydrogenations. Required items block signing until they're done."
+api = 1
+
+[[sections]]
+id = "h2-checklist"
+name = "Hydrogenation checklist"
+title = "Hydrogenation safety checklist"
+description = "Pre-run checks for balloon or Parr hydrogenations; blocks signing until complete"
+
+  [[sections.fields]]
+  id = "setup"
+  label = "Set-up"
+  type = "select"
+  options = ["H₂ balloon", "Parr shaker", "H-Cube / flow", "Autoclave"]
+  required = true
+  width = "half"
+
+  [[sections.fields]]
+  id = "pressure"
+  label = "Pressure"
+  type = "number"
+  unit = "bar"
+  min = 0
+  max = 100
+  warn_above = 5
+  help = "Above 5 bar needs the blast shield and a second person present."
+  width = "half"
+
+  [[sections.fields]]
+  id = "catalyst"
+  label = "Catalyst"
+  type = "text"
+  placeholder = "e.g. 10% Pd/C (50% wet), 10 mol%"
+  required = true
+
+  [[sections.fields]]
+  id = "wet_catalyst"
+  label = "Catalyst kept wet / added under N₂ (pyrophoric when dry)"
+  type = "checkbox"
+  required = true
+
+  [[sections.fields]]
+  id = "purged"
+  label = "Vessel purged with N₂ three times before H₂"
+  type = "checkbox"
+  required = true
+
+  [[sections.fields]]
+  id = "no_ignition"
+  label = "No ignition sources in the hood; sash down"
+  type = "checkbox"
+  required = true
+
+  [[sections.fields]]
+  id = "filtration"
+  label = "Filtration plan: Celite pad kept wet, waste catalyst into water under N₂"
+  type = "checkbox"
+  required = true
+
+  [[sections.fields]]
+  id = "buddy"
+  label = "Second person aware (name)"
+  type = "text"
+  width = "half"

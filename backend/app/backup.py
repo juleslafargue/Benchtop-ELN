@@ -81,6 +81,9 @@ def create_backup(reason: str = "manual") -> dict[str, Any]:
             z.write(tmp_db, "benchtop.db")
             for b in blobs:  # attachments are often already compressed; store them as-is
                 z.write(b, f"attachments/{b.relative_to(settings.attachments_dir)}", compress_type=zipfile.ZIP_STORED)
+            plug = settings.data_dir / "plugins"
+            for f in sorted(plug.glob("*.toml")) if plug.is_dir() else []:  # your lab's plugin files
+                z.write(f, f"plugins/{f.name}")
         tmp_zip.rename(final)
     finally:
         tmp_db.unlink(missing_ok=True)
@@ -114,6 +117,10 @@ def restore(zip_path: str) -> Path:
 
         engine.dispose()  # release pooled connections to the file being replaced
         aside = settings.data_dir / f"pre-restore-{datetime.now():%Y%m%d-%H%M%S}"
+        n = 1
+        while aside.exists():  # two restores within the same second
+            n += 1
+            aside = aside.with_name(f"{aside.name.split('~')[0]}~{n}")
         aside.mkdir(parents=True)
         for p in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
             if p.exists():
@@ -129,6 +136,14 @@ def restore(zip_path: str) -> Path:
                     raise BackupError(f"Refusing unsafe path in backup: {n}")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(z.read(n))
+        plug_names = [n for n in names if n.startswith("plugins/") and n.endswith(".toml") and "/" not in n.removeprefix("plugins/")]
+        if plug_names:  # backups from v0.10 on also hold the lab's plugin files
+            plug = settings.data_dir / "plugins"
+            if plug.exists():
+                shutil.move(str(plug), aside / "plugins")
+            plug.mkdir(parents=True)
+            for n in plug_names:
+                (plug / Path(n).name).write_bytes(z.read(n))
     engine.dispose()
     return aside
 

@@ -10,9 +10,10 @@ import CharacterizationEntry from './CharacterizationEntry'
 import VersionsDialog from './VersionsDialog'
 import SafetyEntry from './SafetyEntry'
 import ScreenEntry from './ScreenEntry'
+import CustomEntry from './CustomEntry'
 
 type SaveState = 'saved' | 'dirty' | 'saving' | 'error'
-const KIND_LABEL = { text: 'Text', reaction: 'Reaction & stoichiometry', table: 'Data table', file: 'Files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening grid' }
+const KIND_LABEL = { text: 'Text', reaction: 'Reaction & stoichiometry', table: 'Data table', file: 'Files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening grid', custom: 'Plugin section' }
 
 export interface EntryEditorProps {
   content: any
@@ -94,7 +95,7 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
       <header className="entry-head">
         <input className="entry-title" value={title} disabled={readOnly} aria-label="Section title"
           onChange={e => { edits.current++; setTitle(e.target.value); setState('dirty') }} />
-        <span className="entry-kind"><KindIcon kind={entry.kind} />{KIND_LABEL[entry.kind]}</span>
+        <span className="entry-kind" title={entry.kind === 'custom' && content?.schema?.plugin ? `From the ${content.schema.plugin} plugin` : undefined}><KindIcon kind={entry.kind} />{entry.kind === 'custom' ? (content?.schema?.name || 'Plugin section') : KIND_LABEL[entry.kind]}</span>
         <span className={`save-state${state === 'dirty' || state === 'saving' ? ' dirty' : ''}${state === 'error' ? ' err' : ''}`} title={error}>{stateText}</span>
         {onComment && <button className="btn ghost sm entry-comments" onClick={onComment} aria-label={comments ? `${comments} open comment${comments === 1 ? '' : 's'} on this section` : 'Comment on this section'}
           title="Comment on this section">
@@ -117,6 +118,7 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
         {entry.kind === 'characterization' && <CharacterizationEntry {...props} />}
         {entry.kind === 'safety' && <SafetyEntry {...props} />}
         {entry.kind === 'screen' && <ScreenEntry {...props} />}
+        {entry.kind === 'custom' && <CustomEntry {...props} />}
       </div>
       {showVersions && <VersionsDialog entryId={entry.id} kind={entry.kind} onClose={() => setShowVersions(false)} />}
     </section>

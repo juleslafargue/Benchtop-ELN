@@ -1,8 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import type { EntryKind } from '../api'
+import { api, type EntryKind } from '../api'
+
+export interface PluginSection { key: string; name: string; description: string; plugin: string }
+let pluginCache: Promise<PluginSection[]> | null = null
+/** Section types from switched-on plugins (fetched once per page load). */
+export const pluginSections = () => (pluginCache ??= api.get<PluginSection[]>('/api/plugins/sections').catch(() => []))
+export const resetPluginSections = () => { pluginCache = null }
+
 
 /** Every section kind, grouped, with a one-line description so people can tell them apart. */
-export const SECTION_KINDS: { kind: EntryKind; label: string; hint: string; group: 'Chemistry' | 'Record'; icon: ReactNode }[] = [
+export const SECTION_KINDS: { kind: EntryKind; label: string; hint: string; group: string; icon: ReactNode; plugin?: string }[] = [
   { kind: 'reaction', label: 'Reaction', hint: 'Scheme, conditions and stoichiometry table', group: 'Chemistry',
     icon: <path d="M2 8h9M8.5 5.5 11 8l-2.5 2.5M13 4.5v7" /> },
   { kind: 'purification', label: 'Work-up & purification', hint: 'Method, eluent, Rf, isolated mass', group: 'Chemistry',
@@ -20,23 +27,27 @@ export const SECTION_KINDS: { kind: EntryKind; label: string; hint: string; grou
   { kind: 'file', label: 'Files', hint: 'Attach any file to the record', group: 'Record',
     icon: <path d="M10.5 5.5 6 10a1.4 1.4 0 0 0 2 2l5-5a2.8 2.8 0 0 0-4-4L4 8a4.2 4.2 0 0 0 6 6l3.5-3.5" /> },
 ]
+const PUZZLE = <path d="M6 2.5h2.5a1.25 1.25 0 1 1 2.5 0H13.5V5a1.25 1.25 0 1 1 0 2.5v6H10a1.25 1.25 0 1 0-2.5 0H2.5V10a1.25 1.25 0 1 0 0-2.5V2.5z" />
 
 export function KindIcon({ kind }: { kind: EntryKind }) {
   const k = SECTION_KINDS.find(x => x.kind === kind)
   return <svg className="kind-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor"
-    strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">{k?.icon}</svg>
+    strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">{kind === 'custom' ? PUZZLE : k?.icon}</svg>
 }
 
 /** The menu itself: positioned under (or above) its anchor, keyboard navigable, type to filter. */
 function Menu({ anchor, existing, onPick, onClose, align }: {
-  anchor: HTMLElement; existing: EntryKind[]; onPick: (k: EntryKind) => void; onClose: () => void; align: 'start' | 'center' | 'end'
+  anchor: HTMLElement; existing: EntryKind[]; onPick: (k: EntryKind, plugin?: string) => void; onClose: () => void; align: 'start' | 'center' | 'end'
 }) {
+  const [extra, setExtra] = useState<PluginSection[]>([])
+  useEffect(() => { pluginSections().then(setExtra) }, [])
+  const all = [...SECTION_KINDS, ...extra.map(p => ({ kind: 'custom' as EntryKind, label: p.name, hint: p.description || 'From a plugin', group: 'From plugins', icon: PUZZLE, plugin: p.key }))]
   const ref = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const [q, setQ] = useState('')
   const [active, setActive] = useState(0)
   const [pos, setPos] = useState<{ top: number; left: number; up: boolean } | null>(null)
-  const items = SECTION_KINDS.filter(k => !q || `${k.label} ${k.hint}`.toLowerCase().includes(q.toLowerCase()))
+  const items = all.filter(k => !q || `${k.label} ${k.hint}`.toLowerCase().includes(q.toLowerCase()))
 
   const place = () => {
     const r = anchor.getBoundingClientRect(), m = ref.current
@@ -60,7 +71,7 @@ function Menu({ anchor, existing, onPick, onClose, align }: {
   const key = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => (a + 1) % Math.max(1, items.length)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => (a - 1 + items.length) % Math.max(1, items.length)) }
-    else if (e.key === 'Enter' && items[active]) { e.preventDefault(); onPick(items[active].kind) }
+    else if (e.key === 'Enter' && items[active]) { e.preventDefault(); onPick(items[active].kind, items[active].plugin) }
     else if (e.key === 'Escape') { e.preventDefault(); onClose(); anchor.focus() }
     else if (e.key === 'Tab') onClose()
   }
@@ -70,14 +81,14 @@ function Menu({ anchor, existing, onPick, onClose, align }: {
     <div ref={ref} className={`add-menu${pos?.up ? ' up' : ''}`} role="dialog" aria-label="Add a section"
       style={pos ? { top: pos.top, left: pos.left } : { visibility: 'hidden', top: 0, left: 0 }} onKeyDown={key}>
       <input ref={input} className="add-menu-filter" placeholder="Add a section…" value={q} onChange={e => setQ(e.target.value)}
-        aria-label="Filter section types" aria-controls="add-menu-list" aria-activedescendant={items[active] ? `add-${items[active].kind}` : undefined} />
+        aria-label="Filter section types" aria-controls="add-menu-list" aria-activedescendant={items[active] ? `add-${items[active].plugin || items[active].kind}` : undefined} />
       <ul id="add-menu-list" role="listbox">
         {items.map((k, i) => {
           const head = !q && k.group !== lastGroup ? <li className="add-menu-group" role="presentation">{(lastGroup = k.group)}</li> : null
-          const has = existing.includes(k.kind)
+          const has = !k.plugin && existing.includes(k.kind)
           return [head,
-            <li key={k.kind} id={`add-${k.kind}`} role="option" aria-selected={i === active} className={i === active ? 'on' : ''}
-              onMouseEnter={() => setActive(i)} onMouseDown={e => e.preventDefault()} onClick={() => onPick(k.kind)}>
+            <li key={k.plugin || k.kind} id={`add-${k.plugin || k.kind}`} role="option" aria-selected={i === active} className={i === active ? 'on' : ''}
+              onMouseEnter={() => setActive(i)} onMouseDown={e => e.preventDefault()} onClick={() => onPick(k.kind, k.plugin)}>
               <KindIcon kind={k.kind} />
               <span className="add-menu-text"><b>{k.label}</b><span>{k.hint}</span></span>
               {has && <span className="add-menu-has" title="This experiment already has one">added</span>}
@@ -92,14 +103,14 @@ function Menu({ anchor, existing, onPick, onClose, align }: {
 
 /** A trigger plus its menu. `variant` picks the look: the toolbar button, the between-sections line, or the end tile. */
 export function AddSection({ existing, onAdd, variant, label = 'Add section' }: {
-  existing: EntryKind[]; onAdd: (k: EntryKind) => Promise<void> | void; variant: 'button' | 'between' | 'end'; label?: string
+  existing: EntryKind[]; onAdd: (k: EntryKind, plugin?: string) => Promise<void> | void; variant: 'button' | 'between' | 'end'; label?: string
 }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const btn = useRef<HTMLButtonElement>(null)
-  const pick = async (k: EntryKind) => {
+  const pick = async (k: EntryKind, plugin?: string) => {
     setOpen(false); setBusy(true)
-    try { await onAdd(k) } finally { setBusy(false) }
+    try { await onAdd(k, plugin) } finally { setBusy(false) }
   }
   const trigger = variant === 'between'
     ? <button ref={btn} className="insert-btn" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(o => !o)} disabled={busy}>

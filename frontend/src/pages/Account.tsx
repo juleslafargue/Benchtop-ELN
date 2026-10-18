@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ApiTokens } from '../components/Integrations'
 import { useApp } from '../App'
 import { ago, api, when, type Preferences, type User } from '../api'
 import { initials } from '../components/Layout'
@@ -85,6 +86,9 @@ export default function Account() {
 
         <div><h2>Where you're signed in</h2><p className="help">Each browser you've signed in with. Sign out any you don't recognise, or that you can't get to any more (a lab computer, a lost laptop). Changing your password signs out all the others automatically.</p></div>
         <Sessions />
+
+        <div><h2>API tokens</h2><p className="help">For scripts and other programs (an instrument PC, a data pipeline) that need to read or add to your notebooks. A token acts as you, but can never sign records or change settings.</p></div>
+        <ApiTokens />
 
         <div><h2>Preferences</h2><p className="help">Saved to your account, so they follow you to other computers.</p></div>
         <div className="panel">

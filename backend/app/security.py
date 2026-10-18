@@ -8,6 +8,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import time
 from datetime import timedelta
@@ -190,6 +191,8 @@ def current_user(
 ) -> User:
     if creds is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    if creds.credentials.startswith(TOKEN_PREFIX):
+        return _token_user(request, creds.credentials, session)
     p = decode_payload(creds.credentials)
     sid = p.get("sid") if p else None
     sess = session.get(AuthSession, sid) if sid else None
@@ -207,6 +210,45 @@ def current_user(
     if user.must_change_password and request.url.path not in _RESET_ALLOWED:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Choose a new password first: an administrator reset yours")
     object.__setattr__(user, "_sid", sess.id)
+    return user
+
+
+# ---------------------------------------------------------------- personal access tokens
+TOKEN_PREFIX = "bt_"
+# Things a script never does with a token: sign, witness or void records; change passwords, sessions,
+# tokens or other accounts; administration. Those always need a person signed in.
+_TOKEN_BLOCKED = re.compile(r"^/api/(auth/|users|admin|webhooks|plugins/(?!sections|readers)|setup)|/(sign|witness|reject|withdraw|void)$")
+
+
+def hash_api_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def new_api_token() -> str:
+    return TOKEN_PREFIX + secrets.token_urlsafe(32)
+
+
+def _token_user(request: Request, raw: str, session: Session) -> User:
+    from .models import ApiToken
+    tok = session.exec(select(ApiToken).where(ApiToken.token_hash == hash_api_token(raw))).first()
+    now = utcnow()
+    if tok is None or tok.revoked_at is not None or (tok.expires_at and tok.expires_at < now):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This API token is invalid, expired or revoked")
+    user = session.get(User, tok.user_id)
+    if user is None or not user.active or user.must_change_password:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This API token's account can't be used right now")
+    path, method = request.url.path, request.method.upper()
+    if _TOKEN_BLOCKED.search(path) and not (path == "/api/auth/me" and method == "GET"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "API tokens can't do this; sign in to Benchtop to do it yourself")
+    if tok.scope != "write" and method not in ("GET", "HEAD", "OPTIONS"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This API token is read-only")
+    if tok.last_used_at is None or now - tok.last_used_at > timedelta(minutes=1):
+        tok.last_used_at, tok.last_used_ip = now, client_ip(request)
+        session.add(tok)
+        session.commit()
+        session.refresh(user)
+    object.__setattr__(user, "_sid", None)
+    object.__setattr__(user, "_token", tok.id)
     return user
 
 

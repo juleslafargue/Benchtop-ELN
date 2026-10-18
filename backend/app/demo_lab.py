@@ -20,7 +20,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from . import chem, models
-from .demo_spectra_sim import carbon, proton
+from .demo_spectra_sim import carbon, chromatogram, proton
 
 PW = "demo-lab-password"
 # the story ends "now" (when the demo is loaded) and goes back three months from there
@@ -139,6 +139,16 @@ class Lab:
     def add_section(self, u, exp, kind, title, content):
         r = self.post(u, f"/api/experiments/{exp['id']}/entries", json={"kind": kind, "title": title, "content": content})
         exp["s"][title] = r
+        return r
+
+    def plugin_section(self, u, exp, key, values=None, rows=None, title=None):
+        """A section from a plugin file (the examples are switched on in demo mode)."""
+        r = self.post(u, f"/api/experiments/{exp['id']}/entries", json={"kind": "custom", "plugin_section": key, **({"title": title} if title else {})})
+        c = r["content"]
+        c["values"].update(values or {})
+        c["rows"].update(rows or {})
+        r = self.put(u, f"/api/entries/{r['id']}", json={"content": c})
+        exp["s"][r["title"]] = r
         return r
 
     def html(self, u, exp, title, text):
@@ -503,6 +513,12 @@ def _methods(lab: Lab, NB, tpl):
         lab.row("RuPhos", "catalyst", basis="equiv", equiv=0.02),
         lab.row("Toluene", "solvent", basis="fill"), p], {"temperature_c": 100, "time_h": 14, "atmosphere": "Ar", "target_conc_m": 0.5})
     lab.html("dcho", e2, "Procedure", "<p>Pd loading halved to 1 mol% for the scale-up. Charged solids in the glovebox, added toluene and morpholine outside under Ar.</p>")
+    lab.plugin_section("dcho", e2, "glovebox-log/glovebox", {
+        "box": "MBraun LABstar (Rm 214)", "date": (TODAY - timedelta(days=6)).strftime("%Y-%m-%dT10:40"), "o2": 0.6, "h2o": 1.2, "cycles": 3,
+        "catalyst_ok": True, "notes": "NaOtBu bottle nearly empty; new one ordered."}, {"transfers": [
+            {"direction": "In", "item": "Pd(OAc)2 (MAT lot), RuPhos", "amount": "11 mg, 47 mg"},
+            {"direction": "In", "item": "Sodium tert-butoxide", "amount": "673 mg"},
+            {"direction": "Out", "item": "Sealed 40 mL vial with solids", "amount": "1"}]})
     lab.purification("dcho", e2, method="column", stationary_phase="Silica gel", eluent="10→20% EtOAc/hexanes", rf="0.35", rf_eluent="20% EtOAc/hexanes",
                      isolated_mg=p["actual_mass_mg"], appearance="White crystalline solid")
     lab.characterise("dcho", e2, "COc1ccc(N2CCOCC2)cc1", "4-(4-Methoxyphenyl)morpholine", mp="71–73 °C", seed=11)
@@ -713,7 +729,9 @@ def _process(lab: Lab, NB):
                      notes_html="<p>Pd by ICP-MS: 32 ppm before scavenger, <b>4 ppm after SiliaMetS Thiol</b> (spec ≤ 10 ppm). HPLC purity 99.6%.</p>")
     lab.section("kwatanabe", e2, "Characterisation", {"items": [
         {"technique": "1H NMR", "conditions": "400 MHz, CDCl3", "data": "Conforms to reference"},
-        {"technique": "HPLC", "conditions": "C18, 10→90% MeCN/H2O (0.1% H3PO4), 254 nm", "data": "99.6% area; des-bromo 0.15%, bipyridine < 0.05%"},
+        {"technique": "HPLC", "conditions": "C18, 10→90% MeCN/H2O (0.1% H3PO4), 254 nm", "data": "99.6% area; des-bromo 0.15%, bipyridine < 0.05%",
+         "attachment_id": lab.attach("kwatanabe", e2, "KX-101-ester_10g_HPLC.csv", chromatogram(
+             [(1.05, 9, 0.04), (4.62, 1.6, 0.05), (5.84, 640, 0.06), (7.31, 0.5, 0.06)], seed=7).encode(), "text/csv")["id"]},
         {"technique": "ICP-MS (Pd)", "conditions": "Microwave digestion, HNO3", "data": "32 ppm before scavenger; 4 ppm after SiliaMetS Thiol"},
         {"technique": "KF water", "conditions": "Coulometric", "data": "0.08% w/w"}]})
     lab.html("kwatanabe", e2, "Observations & results", "<p>86% on 10 g, Pd 4 ppm, no dioxane. PMI down from ~130 to ~45. Ready for 50 g.</p>")
@@ -882,6 +900,7 @@ def _students(lab: Lab, NB):
 def main() -> None:
     from . import models as m
     from .config import settings
+    settings.demo = True  # the example plugins are on in the demo
     m.datetime = _SimDatetime  # the simulated clock (models.utcnow reads it)
     try:
         from .main import app

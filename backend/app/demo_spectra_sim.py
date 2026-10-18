@@ -123,3 +123,14 @@ def carbon(smiles: str, title: str, solvent: str = "CDCl3", mhz: float = 101.0, 
     xs, ys = _render(lines, 220.0, -5.0, 65536, 1.2 / mhz, 0.004, seed)
     text = "δ " + ", ".join(f"{s:.1f}" for s in sorted(shifts, reverse=True))
     return _jcamp(xs, ys, title, "13C", mhz, SOLVENTS[solvent]["label"]), text
+
+
+def chromatogram(peaks: list[tuple[float, float, float]], minutes: float = 12.0, seed: int = 3) -> str:
+    """HPLC-style trace as two-column CSV (time in min, signal in mAU): peaks are (tR, height, width)."""
+    rng = np.random.default_rng(seed)
+    t = np.round(np.arange(0, minutes, 0.005), 3)
+    y = 0.8 + 0.15 * t / minutes + rng.normal(0, 0.12, t.size)  # slight gradient drift and detector noise
+    for tr, h, w in peaks:
+        y += h * np.exp(-0.5 * ((t - tr) / w) ** 2) * (1 + 0.25 * (t > tr))  # a touch of tailing
+    lines = ["Time (min),Signal (mAU)"] + [f"{a:.3f},{b:.3f}" for a, b in zip(t, y)]
+    return "\n".join(lines) + "\n"

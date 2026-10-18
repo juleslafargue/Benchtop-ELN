@@ -45,6 +45,7 @@ class EntryKind(str, Enum):
     characterization = "characterization"
     safety = "safety"
     screen = "screen"
+    custom = "custom"  # a section type described by a plugin file
 
 
 class User(SQLModel, table=True):
@@ -305,3 +306,52 @@ class ChemSafety(SQLModel, table=True):
     changed_at: Optional[NaiveDatetime] = None  # last time the classification changed between fetches
     change: Optional[dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
     acknowledged_at: Optional[NaiveDatetime] = None
+
+
+class ApiToken(SQLModel, table=True):
+    """A personal access token for scripts and other programs. Only its SHA-256 is stored."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    name: str = ""
+    token_hash: str = Field(index=True, unique=True)
+    prefix: str = ""  # first characters, so people can tell tokens apart
+    scope: str = "read"  # read | write
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    expires_at: Optional[NaiveDatetime] = None
+    last_used_at: Optional[NaiveDatetime] = None
+    last_used_ip: str = ""
+    revoked_at: Optional[NaiveDatetime] = None
+
+
+class Webhook(SQLModel, table=True):
+    """An address Benchtop calls when something happens (signed, witnessed, commented…)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = ""
+    url: str
+    secret: str = ""
+    events: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    format: str = "json"  # json | slack | teams
+    include_private: bool = False
+    active: bool = True
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+class WebhookDelivery(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    webhook_id: int = Field(foreign_key="webhook.id", index=True)
+    event: str = ""
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    status_code: Optional[int] = None
+    ok: bool = False
+    error: str = ""
+    attempts: int = 0
+    duration_ms: Optional[int] = None
+
+
+class PluginState(SQLModel, table=True):
+    """Which plugin files an admin has switched on."""
+    plugin_id: str = Field(primary_key=True)
+    enabled: bool = False
+    changed_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    changed_at: NaiveDatetime = Field(default_factory=utcnow)

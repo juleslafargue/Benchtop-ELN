@@ -1,0 +1,92 @@
+# Example Benchtop plugin: a glovebox log section.
+# Copy this file, change it to suit your lab, and add it from Admin › Plugins.
+# The full format is described in docs/PLUGINS.md.
+
+[plugin]
+id = "glovebox-log"
+name = "Glovebox log"
+version = "1.0.0"
+author = "Benchtop examples"
+description = "Atmosphere readings and what went in and out of the glovebox, for air-sensitive work."
+api = 1
+
+[[sections]]
+id = "glovebox"
+name = "Glovebox log"
+title = "Glovebox log"
+description = "O₂ and H₂O levels, antechamber cycles and items transferred"
+
+  [[sections.fields]]
+  id = "box"
+  label = "Glovebox"
+  type = "select"
+  options = ["MBraun LABstar (Rm 214)", "Vigor (Rm 220)", "Other"]
+  required = true
+  width = "half"
+
+  [[sections.fields]]
+  id = "date"
+  label = "Date and time"
+  type = "datetime"
+  width = "half"
+
+  [[sections.fields]]
+  id = "o2"
+  label = "O₂"
+  type = "number"
+  unit = "ppm"
+  min = 0
+  warn_above = 5
+  help = "Above 5 ppm: regenerate before handling pyrophorics."
+  required = true
+  width = "third"
+
+  [[sections.fields]]
+  id = "h2o"
+  label = "H₂O"
+  type = "number"
+  unit = "ppm"
+  min = 0
+  warn_above = 5
+  required = true
+  width = "third"
+
+  [[sections.fields]]
+  id = "cycles"
+  label = "Antechamber cycles"
+  type = "number"
+  min = 0
+  decimals = 0
+  default = 3
+  width = "third"
+
+  [[sections.fields]]
+  id = "catalyst_ok"
+  label = "Catalyst/purifier checked this week"
+  type = "checkbox"
+
+  [[sections.tables]]
+  id = "transfers"
+  label = "Items in and out"
+
+    [[sections.tables.columns]]
+    id = "direction"
+    label = "In/out"
+    type = "select"
+    options = ["In", "Out"]
+
+    [[sections.tables.columns]]
+    id = "item"
+    label = "Item"
+    type = "text"
+
+    [[sections.tables.columns]]
+    id = "amount"
+    label = "Amount"
+    type = "text"
+
+  [[sections.fields]]
+  id = "notes"
+  label = "Notes"
+  type = "longtext"
+  placeholder = "Anything unusual: alarms, glove changes, spills…"

@@ -1,0 +1,39 @@
+# Example Benchtop plugin: instrument-file readers.
+# A reader teaches Benchtop to open a CSV or text export from an instrument as a chart in a
+# Characterisation section. Readers are tried when a file's name or contents match.
+# Change the patterns and columns to match what your instruments export.
+
+[plugin]
+id = "instrument-readers"
+name = "Chromatogram and UV-vis readers"
+version = "1.0.0"
+author = "Benchtop examples"
+description = "Opens two-column chromatogram exports (HPLC, GC, LC-MS TIC) and UV-vis CSVs with a wavelength header."
+api = 1
+
+[[readers]]
+id = "chromatogram-csv"
+name = "Chromatogram (time, signal)"
+technique = "HPLC"
+kind = "other"
+extensions = [".csv", ".txt"]
+filename = "(?i)(hplc|uplc|lcms|lc-ms|gc|chrom|tic)"   # used when the file name mentions one of these
+delimiter = "auto"
+x = 1
+y = 2
+x_label = "Retention time (min)"
+y_label = "Signal (mAU)"
+
+[[readers]]
+id = "uv-vis-csv"
+name = "UV-vis spectrum (wavelength header)"
+technique = "UV-vis"
+kind = "uv"
+extensions = [".csv", ".txt"]
+detect = "(?i)wavelength\\s*\\(?nm\\)?\\s*[,;\\t]\\s*(abs|absorbance|a)\\b"
+data_after = "(?i)^\\s*wavelength"
+delimiter = "auto"
+x = 1
+y = 2
+x_label = "Wavelength (nm)"
+y_label = "Absorbance"

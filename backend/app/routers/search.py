@@ -94,6 +94,9 @@ def _section_text(kind: EntryKind, c: dict[str, Any]) -> str:
         return " · ".join(p for p in [*chems, c.get("controls") or "", c.get("waste") or "", c.get("emergency") or ""] if p)
     if kind == EntryKind.file:
         return c.get("caption") or ""
+    if kind == EntryKind.custom:
+        from ..plugins import text_of
+        return text_of(c).replace("\n", " · ")
     return " ".join(_strings(c))
 
 

@@ -15,6 +15,76 @@ export interface Spectrum {
   solvent?: string
   isStick: boolean  // peak table / MS: draw as sticks
   fid?: import('./fid').FidData // present when Benchtop processed a raw FID itself (phase can be adjusted)
+  technique?: string  // set by a plugin file reader (e.g. "HPLC")
+  conditions?: string
+  reader?: string     // which reader opened it
+}
+
+// ---------------------------------------------------------------- plugin file readers
+
+/** An instrument-file reader from a plugin (see docs/PLUGINS.md); the server validates the definition. */
+export interface FileReader {
+  plugin: string; id: string; name: string; technique: string; conditions: string; kind: Spectrum['kind']
+  extensions: string[]; detect: string; filename: string; delimiter: string; decimal: '.' | ','; data_after: string
+  header: boolean; x: number | string; y: number | string; x_label: string; y_label: string
+  x_scale: number; y_scale: number; reversed: boolean; dips: boolean
+}
+let readersP: Promise<FileReader[]> | null = null
+export const resetFileReaders = () => { readersP = null }
+export function fileReaders(): Promise<FileReader[]> {
+  if (!readersP) {
+    let token: string | null = null
+    try { token = localStorage.getItem('benchtop.token') } catch { /* private mode */ }
+    readersP = fetch('/api/plugins/readers', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : [])).catch(() => [])
+  }
+  return readersP
+}
+/** Python-style patterns from plugin files: a leading (?i) becomes JS's i flag; matching is case-insensitive anyway. */
+const rx = (p: string) => { try { return new RegExp(p.replace(/^\(\?i\)/, ''), 'im') } catch { return null } }
+
+export function matchReader(readers: FileReader[], filename: string, head: string): FileReader | null {
+  const ext = (filename.match(/\.[^.]+$/)?.[0] || '').toLowerCase()
+  return readers.find(r => (!r.extensions.length || r.extensions.includes(ext))
+    && (!r.filename || !!rx(r.filename)?.test(filename))
+    && (!r.detect || !!rx(r.detect)?.test(head))) || null
+}
+
+export function parseWithReader(raw: string, filename: string, r: FileReader): Spectrum {
+  let lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/)
+  if (r.data_after) {
+    const re = rx(r.data_after)
+    const i = re ? lines.findIndex(l => re.test(l)) : -1
+    if (i < 0) throw new Error(`${r.name}: couldn't find where the data starts in this file`)
+    lines = lines.slice(r.header || typeof r.x === 'string' || typeof r.y === 'string' ? i : i + 1)
+  }
+  lines = lines.filter(l => l.trim())
+  const sample = lines.slice(0, 5).join('\n')
+  const delim = r.delimiter !== 'auto' ? r.delimiter
+    : sample.includes('\t') ? '\t' : sample.includes(';') ? ';' : r.decimal === '.' && sample.includes(',') ? ',' : 'whitespace'
+  const split = (l: string) => (delim === 'whitespace' ? l.trim().split(/\s+/) : l.split(delim)).map(c => c.trim().replace(/^"(.*)"$/, '$1'))
+  const num = (c: string | undefined) => Number((c ?? '').replace(r.decimal === ',' ? /,/g : /(?!)/, '.'))
+  const needHeader = r.header || typeof r.x === 'string' || typeof r.y === 'string'
+  let start = 0, xi = typeof r.x === 'number' ? r.x - 1 : -1, yi = typeof r.y === 'number' ? r.y - 1 : -1
+  if (needHeader) {
+    const head = split(lines[0] || '').map(h => h.toLowerCase())
+    const find = (want: number | string, fallback: number) => typeof want === 'number' ? want - 1
+      : Math.max(head.findIndex(h => h === String(want).toLowerCase()), head.findIndex(h => h.startsWith(String(want).toLowerCase())), fallback)
+    xi = find(r.x, -1); yi = find(r.y, -1)
+    if (xi < 0 || yi < 0) throw new Error(`${r.name}: column “${xi < 0 ? r.x : r.y}” isn't in this file's header`)
+    start = 1
+  }
+  const xs: number[] = [], ys: number[] = []
+  for (const l of lines.slice(start)) {
+    const c = split(l)
+    const a = num(c[xi]), b = num(c[yi])
+    if (Number.isFinite(a) && Number.isFinite(b)) { xs.push(a * r.x_scale); ys.push(b * r.y_scale) }
+  }
+  if (xs.length < 2) throw new Error(`${r.name}: no numeric data found in columns ${xi + 1} and ${yi + 1}`)
+  return finish({
+    title: filename.replace(/\.[^.]+$/, ''), xLabel: r.x_label, yLabel: r.y_label, kind: r.kind, reversed: r.reversed, dips: r.dips,
+    isStick: r.kind === 'ms', technique: r.technique, conditions: r.conditions, reader: r.name,
+  }, xs, ys)
 }
 export interface FidOptions { lb?: number; ph0?: number; ph1?: number }
 
@@ -438,11 +508,17 @@ function finishPublic(meta: Omit<Spectrum, 'x' | 'y'>, xs: number[], ys: number[
 export async function parseSpectrumBuffer(buf: ArrayBuffer, filename: string, fidOpts: FidOptions = {}): Promise<Spectrum> {
   const head = new Uint8Array(buf, 0, Math.min(4, buf.byteLength))
   if (head[0] === 0x50 && head[1] === 0x4b) return parseBrukerZip(buf, filename, fidOpts) // "PK" = zip
-  return parseSpectrumFile(new TextDecoder().decode(buf), filename)
+  const text = new TextDecoder().decode(buf)
+  if (!/^\s*##/.test(text)) { // not JCAMP: a plugin reader may know this instrument's export
+    const r = matchReader(await fileReaders(), filename, text.slice(0, 4096))
+    if (r) return parseWithReader(text, filename, r)
+  }
+  return parseSpectrumFile(text, filename)
 }
 
 /** Characterisation label for a spectrum: technique + conditions. */
 export function techniqueFor(s: Spectrum): { technique: string; conditions: string } {
+  if (s.technique) return { technique: s.technique, conditions: s.conditions || '' }
   if (s.kind === 'nmr') {
     const nuc = (s.nucleus || '1H').replace(/[^0-9A-Za-z]/g, '')
     const mhz = s.frequency ? `${Math.round(s.frequency)} MHz` : ''
