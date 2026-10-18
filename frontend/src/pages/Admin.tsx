@@ -90,6 +90,8 @@ function NmrData() {
         <dt>Built</dt><dd>{when(m.built_at)}{st?.age_days != null ? ` · ${Math.round(st.age_days)} days ago` : ''}</dd>
         <dt>Structures</dt><dd>{Number(m.molecules).toLocaleString()}</dd>
         <dt>Assigned shifts</dt><dd>{Number(m.assignments_13C).toLocaleString()} ¹³C · {Number(m.assignments_1H).toLocaleString()} ¹H</dd>
+        <dt>Your lab's data</dt><dd>{st?.lab?.shifts ? `${st.lab.shifts.toLocaleString()} confirmed shifts from ${st.lab.experiments} signed experiment${st.lab.experiments === 1 ? '' : 's'}, used on top of NMRShiftDB2` : 'none yet: confirm the assignments on a spectrum, then sign the experiment'}</dd>
+        <dt>Method</dt><dd>{m.method}</dd>
         <dt>Checks for updates</dt><dd>{(st as any)?.auto_update ? `monthly${(st as any)?.last_check ? `, last ${when((st as any).last_check)}` : ''}` : 'off (BENCHTOP_NMR_AUTO_UPDATE=off)'}</dd></dl>
         : st && !st.updating && <p className="faint" style={{ margin: 0 }}>No prediction table found.</p>}
     </section>

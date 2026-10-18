@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../App'
-import { assign, groupLabel, predMult, PredictionPanel, usePrediction, type ObservedSignal, type Prediction } from './Prediction'
+import { applyOverrides, assign, groupLabel, predMult, PredictionPanel, usePrediction, type ConfirmedAssignments, type ObservedSignal, type Prediction } from './Prediction'
 import { baselineCorrect, phased } from '../fid'
 import Modal from './Modal'
 import { api } from '../api'
@@ -16,6 +16,7 @@ export interface SavedAnalysis {
   impurities?: Pick<ImpurityResult, 'short' | 'name' | 'molPct' | 'wtPct' | 'signals'>[]
   overlays?: number[]; overlay_mode?: 'stack' | 'overlay'
   fid?: { ph0: number; ph1: number; lb: number | null }
+  assignments?: ConfirmedAssignments
 }
 interface Overlay { id: number; label: string; spec: Spectrum }
 interface SpectrumListing { id: number; filename: string; eid: string; title: string; same_experiment: boolean; created_at: string }
@@ -117,6 +118,8 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
   const [picking, setPicking] = useState(false)
   const [overlayErr, setOverlayErr] = useState('')
   const [showPred, setShowPred] = useState(true)
+  const [overrides, setOverrides] = useState<Record<number, number | null>>({})
+  const [confirmed, setConfirmed] = useState<ConfirmedAssignments | null>(saved?.assignments || null)
   const bufRef = useRef<ArrayBuffer | null>(null)
   const addOverlay = async (id: number, label: string) => {
     if (overlays.some(o => o.id === id) || overlays.length >= 4) return
@@ -234,8 +237,9 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
       threshold, offset: +offset.toFixed(5), impurities,
       ...(overlays.length ? { overlays: overlays.map(o => o.id), overlay_mode: overlayMode } : {}),
       ...(raw?.fid ? { fid: { ph0: +raw.fid.ph0.toFixed(2), ph1: +raw.fid.ph1.toFixed(2), lb: raw.fid.lb } } : {}),
+      ...(confirmed ? { assignments: confirmed } : {}),
     })
-  }, [regions, labels, refIdx, refH, threshold, offset, impurities, overlays, overlayMode, raw?.fid?.ph0, raw?.fid?.ph1, raw?.fid?.lb]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [regions, labels, refIdx, refH, threshold, offset, impurities, overlays, overlayMode, raw?.fid?.ph0, raw?.fid?.ph1, raw?.fid?.lb, confirmed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------------------------------------------------------------- raw FID: phase and line broadening
   const setPhase = (ph0: number, ph1: number) => setRaw(r => (r?.fid ? { ...r, y: baselineCorrect(phased(r.fid, ph0, ph1)), fid: { ...r.fid, ph0, ph1 } } : r))
@@ -248,7 +252,31 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
   // ---------------------------------------------------------------- prediction (NMRShiftDB2) and assignment
   const nucleus: '1H' | '13C' | null = raw?.kind === 'nmr' ? (is13C(raw) ? '13C' : isProton(raw) ? '1H' : null) : null
   const { pred, status: predStatus, err: predErr, startUpdate } = usePrediction(productSmiles, nucleus)
-  const assignment = useMemo(() => (pred && observed.length ? assign(pred.groups, observed, pred.nucleus) : null), [pred, observed])
+  const auto = useMemo(() => (pred && observed.length ? assign(pred.groups, observed, pred.nucleus) : null), [pred, observed])
+  // a saved confirmation becomes overrides once the prediction for the same structure is back
+  const confirmedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!pred || !confirmed || confirmed.smiles !== pred.smiles || confirmed.nucleus !== pred.nucleus || confirmedFor.current === pred.smiles) return
+    confirmedFor.current = pred.smiles
+    const ov: Record<number, number | null> = {}
+    const used = new Set<number>()
+    pred.groups.forEach((g, gi) => {
+      const k = confirmed.items.findIndex((it, j) => !used.has(j) && it.atoms.join() === g.atoms.join())
+      if (k >= 0) { ov[gi] = confirmed.items[k].shift; used.add(k) } else ov[gi] = null
+    })
+    setOverrides(ov)
+  }, [pred, confirmed])
+  const assignment = useMemo(() => (auto && pred ? applyOverrides(auto, overrides, observed, pred.groups, pred.nucleus) : auto), [auto, overrides, observed, pred])
+  const confirm = () => {
+    if (!pred || !assignment) return
+    const items = pred.groups.map((g, gi) => {
+      const a = assignment.byGroup[gi]
+      const shift = a.manual ?? (a.signal != null ? observed[a.signal]?.center : null)
+      return shift == null ? null : { atoms: g.atoms, shift: +shift.toFixed(3) }
+    }).filter(Boolean) as ConfirmedAssignments['items']
+    confirmedFor.current = pred.smiles
+    setConfirmed({ nucleus: pred.nucleus, smiles: pred.smiles, items, solvent: raw?.solvent || '', confirmed_by: user.full_name || user.username, confirmed_at: new Date().toISOString() })
+  }
 
   // ---------------------------------------------------------------- geometry
   const geom = useCallback((w: number) => {
@@ -800,6 +828,9 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
             ? 'Switch to Integrate and drag across each signal. Multiplicity and J are worked out automatically; type a proton count in any row to set the reference.'
             : 'Peaks above the threshold are listed below. Use Integrate to measure areas.'}</p>}
           {nucleus && <PredictionPanel pred={pred} assignment={assignment} nucleus={nucleus} status={predStatus} err={productSmiles ? predErr : ''}
+            observed={observed} editable={!!onSave} confirmed={confirmed && pred && confirmed.smiles === pred.smiles ? confirmed : null}
+            onOverride={(gi, v) => { setOverrides(o => ({ ...o, [gi]: v })); setConfirmed(null) }} onConfirm={confirm}
+            onUnconfirm={() => setConfirmed(null)}
             onStartUpdate={startUpdate} observedLabel={k => {
               const o = observed[k]; if (!o) return ''
               return nucleus === '1H' ? (o.hi - o.lo > 0.05 && o.center === (o.lo + o.hi) / 2 ? `${o.hi.toFixed(2)}–${o.lo.toFixed(2)}` : o.center.toFixed(2)) : o.center.toFixed(1)

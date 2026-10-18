@@ -131,11 +131,40 @@ def _safe(force: bool) -> None:
         log.warning("NMRShiftDB2 update failed: %s", e)
 
 
+def benchmark(sd: Path) -> dict[str, Any]:
+    """Build a throwaway table with 5% of molecules held out (chosen by a stable hash, so runs are
+    comparable) and print how well the held-out molecules are predicted."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        print(f"Building from {sd} with 5% of molecules held out (a few minutes)…")
+        r = nmrpredict.build([sd], Path(d) / "bench.sqlite", "benchmark", holdout=0.05)
+    nmrpredict.reset_cache()
+    h = r.get("holdout", {})
+    for nuc, unit in (("13C", "ppm"), ("1H", "ppm")):
+        x = h.get(nuc)
+        if not x:
+            continue
+        tol = next(k for k in x if k.startswith("within_"))
+        print(f"\n{nuc}: mean error {x['mae']} {unit} · median {x['median']} · 90% within {x['p90']} · {x[tol]:.0%} {tol.replace('_', ' ')} · "
+              f"{x['coverage']:.1%} of atoms predicted ({x['n']:,} shifts, {x['molecules']:,} molecules)")
+        for c, v in x["by_confidence"].items():
+            print(f"   {c:7s} confidence  mean {v['mae']:<6} median {v['median']:<6} 90% within {v['p90']:<6} n={v['n']}")
+        print("   by kind of atom (worst first):")
+        for c, v in x["by_atom"].items():
+            print(f"     {c:26s} mean {v['mae']:<6} median {v['median']:<6} n={v['n']}")
+    return r
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Update Benchtop's NMR shift table from NMRShiftDB2")
     ap.add_argument("--force", action="store_true", help="rebuild even if NMRShiftDB2 hasn't changed")
     ap.add_argument("--file", type=Path, help="build from an nmrshiftdb2withsignals.sd you downloaded yourself")
+    ap.add_argument("--benchmark", type=Path, metavar="SD_FILE",
+                    help="measure prediction accuracy: build from SD_FILE with 5%% of molecules held out and report the errors on them")
     a = ap.parse_args()
+    if a.benchmark:
+        benchmark(a.benchmark)
+        return
     print("Checking NMRShiftDB2…" if not a.file else f"Building from {a.file}…")
     t0 = datetime.now()
 

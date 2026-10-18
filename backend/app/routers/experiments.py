@@ -32,7 +32,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
-from .. import audit, plugins, chem
+from .. import audit, chem, nmrpredict, plugins
 from ..config import settings
 from ..models import (
     Attachment, Entry, EntryKind, EntryVersion, Experiment, ExperimentStatus, Notebook, Role,
@@ -213,6 +213,20 @@ def _clean_analysis(a) -> dict | None:
         if ph0 is not None and ph1 is not None:
             out["fid"] = {"ph0": round(ph0 % 360, 2), "ph1": round(max(-1440.0, min(1440.0, ph1)), 2),
                           "lb": round(max(0.0, min(50.0, lb)), 2) if lb is not None else None}
+    asg = a.get("assignments")
+    if isinstance(asg, dict) and asg.get("nucleus") in ("1H", "13C"):
+        lo, hi = (-3.0, 17.0) if asg["nucleus"] == "1H" else (-20.0, 240.0)
+        items = []
+        for it in (asg.get("items") or [])[:200]:
+            if not isinstance(it, dict) or _num(it.get("shift")) is None or not lo <= _num(it.get("shift")) <= hi:
+                continue
+            atoms = [int(i) for i in (it.get("atoms") or [])[:40] if isinstance(i, (int, float)) and 0 <= i < 500]
+            if atoms:
+                items.append({"atoms": atoms, "shift": round(_num(it.get("shift")), 3)})
+        if items:
+            out["assignments"] = {"nucleus": asg["nucleus"], "smiles": str(asg.get("smiles") or "")[:500], "items": items,
+                                  "solvent": str(asg.get("solvent") or "")[:20], "confirmed_by": str(asg.get("confirmed_by") or "")[:80],
+                                  "confirmed_at": str(asg.get("confirmed_at") or "")[:30]}
     overlays = [int(v) for v in (a.get("overlays") or [])[:4] if isinstance(v, (int, float))]
     if overlays:
         out["overlays"] = overlays
@@ -716,6 +730,7 @@ def sign_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
         raise HTTPException(422, "Fill in the required items before signing — " + "; ".join(missing))
     _check_password(user, body.password, session)
     _sign(session, exp, user, "author", body.comment)
+    nmrpredict.lab_record(session, exp)  # its confirmed NMR assignments now teach the predictor
     exp.status = ExperimentStatus.signed
     exp.updated_at = utcnow()
     session.add(exp)
@@ -759,6 +774,7 @@ def reject_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
         raise HTTPException(400, "A reason is required")
     _check_password(user, body.password, session)
     _sign(session, exp, user, "rejected", body.comment)
+    nmrpredict.lab_forget(session, exp.id)
     exp.status = ExperimentStatus.open
     exp.updated_at = utcnow()
     session.add(exp)
@@ -774,6 +790,7 @@ def withdraw_signature(exp_id: int, body: SignIn, user: Writer, session: DB):
         raise HTTPException(409, "Only the author can withdraw a record awaiting witness")
     _check_password(user, body.password, session)
     _sign(session, exp, user, "withdrawn", body.comment)
+    nmrpredict.lab_forget(session, exp.id)
     exp.status = ExperimentStatus.open
     session.add(exp)
     session.commit()
@@ -791,6 +808,7 @@ def void_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
         raise HTTPException(400, "A reason is required")
     _check_password(user, body.password, session)
     _sign(session, exp, user, "void", body.comment)
+    nmrpredict.lab_forget(session, exp.id)
     exp.status = ExperimentStatus.voided
     session.add(exp)
     session.commit()

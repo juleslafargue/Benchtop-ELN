@@ -15,7 +15,7 @@ from enum import Enum
 from typing import Any, Optional
 
 from pydantic import NaiveDatetime
-from sqlalchemy import JSON, Column, Text
+from sqlalchemy import JSON, BigInteger, Column, Text
 from sqlmodel import Field, SQLModel
 
 
@@ -355,3 +355,16 @@ class PluginState(SQLModel, table=True):
     enabled: bool = False
     changed_by: Optional[int] = Field(default=None, foreign_key="user.id")
     changed_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+class LabShift(SQLModel, table=True):
+    """A confirmed chemical shift from a signed experiment, keyed by the atom's environment code, so
+    predictions learn from the lab's own assigned spectra."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    experiment_id: int = Field(foreign_key="experiment.id", index=True)
+    nuc: int = Field(index=True)
+    r: int
+    key: int = Field(sa_column=Column(BigInteger, index=True))
+    shift: float
+    solvent: str = ""
+    created_at: NaiveDatetime = Field(default_factory=utcnow)

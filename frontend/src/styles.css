@@ -1027,3 +1027,11 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 @media (prefers-reduced-motion: reduce) { .entry-toggle svg, .side-toggle svg { transition: none; } }
 [hidden] { display: none !important; }
 .tabs-end { display: flex; align-items: center; gap: 6px; }
+
+/* ---------- confirmed NMR assignments */
+.asg-edit { display: inline-flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.asg-edit .select.sm { padding: 1px 22px 1px 6px !important; font-size: 12.5px; max-width: 130px; }
+.asg-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; margin: 8px 0 4px; }
+.conf.lab { background: color-mix(in srgb, var(--witnessed) 16%, transparent); color: var(--witnessed); margin-left: 3px; }
+.asg-check { flex-basis: 100%; border-left: 3px solid var(--signed); background: color-mix(in srgb, var(--signed) 8%, transparent); padding: 8px 10px; border-radius: 0; font-size: 13px; }
+.asg-check ul { margin: 4px 0; padding-left: 18px; }
