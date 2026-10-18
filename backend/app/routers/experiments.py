@@ -20,6 +20,7 @@ _ATTRS.setdefault("ul", set()).add("data-type")
 _ATTRS.setdefault("li", set()).update({"data-type", "data-checked"})
 _ATTRS.setdefault("a", set()).update({"href", "target"})
 _ATTRS.setdefault("th", set()).update({"colspan", "rowspan"})
+_ATTRS.setdefault("img", set()).update({"data-attachment-id", "alt", "width"})
 _ATTRS.setdefault("td", set()).update({"colspan", "rowspan"})
 
 
@@ -571,6 +572,23 @@ def delete_entry(entry_id: int, user: Writer, session: DB):
     return {"ok": True}
 
 
+@router.post("/entries/{entry_id}/restore")
+def restore_entry(entry_id: int, user: Writer, session: DB):
+    """Undo a removal: the section comes back where it was, as a new version."""
+    e = get_or_404(session, Entry, entry_id)
+    exp = read_experiment(session, user, e.experiment_id)
+    require_editable(exp, user)
+    if not e.deleted:
+        return entry_out(e)
+    e.deleted = False
+    e.version += 1
+    e.updated_by, e.updated_at = user.id, utcnow()
+    session.add_all([e, EntryVersion(entry_id=e.id, version=e.version, title=e.title, content=e.content, created_by=user.id)])
+    audit.record(session, user, "restore", "entry", e.id, experiment=exp.eid, title=e.title)
+    session.commit()
+    return entry_out(e)
+
+
 class ReorderIn(BaseModel):
     entry_ids: list[int]
 
@@ -839,11 +857,40 @@ def _fmt(v, nd=3):
     return html.escape(str(v))
 
 
-def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
+_IMG_REF = re.compile(r'<img\b[^>]*?data-attachment-id="(\d+)"[^>]*>')
+
+
+def _inline_images(h: str, atts: dict[int, Attachment], pdf: bool = False) -> str:
+    """Pasted pictures are stored as attachment references; reports carry the picture itself."""
+    import base64
+
+    def sub(m):
+        a = atts.get(int(m.group(1)))
+        if not a or not a.content_type.startswith("image/") or a.size > 8_000_000:
+            return f"<em>[image: {html.escape(a.filename) if a else 'missing'}]</em>"
+        try:
+            data = base64.b64encode(_blob_path(a.sha256).read_bytes()).decode()
+        except OSError:
+            return f"<em>[image: {html.escape(a.filename)}]</em>"
+        if pdf:  # the PDF renderer needs real sizes
+            try:
+                import io
+
+                from PIL import Image
+                w, hh = Image.open(io.BytesIO(base64.b64decode(data))).size
+                k = min(460 / w, 340 / hh, 1.0)
+                return f'<img src="data:{a.content_type};base64,{data}" width="{int(w * k)}" height="{int(hh * k)}">'
+            except Exception:
+                return f"<em>[image: {html.escape(a.filename)}]</em>"
+        return f'<img src="data:{a.content_type};base64,{data}" alt="{html.escape(a.filename)}" style="max-width:100%;max-height:420px">'
+    return _IMG_REF.sub(sub, h)
+
+
+def _render_entry(e: Entry, atts: dict[int, Attachment], pdf: bool = False) -> str:
     c = e.content or {}
     h = f"<section><h2>{html.escape(e.title)}</h2>"
     if e.kind == EntryKind.text:
-        h += f"<div class='rich'>{clean_html(c.get('html', ''))}</div>"
+        h += f"<div class='rich'>{_inline_images(clean_html(c.get('html', '')), atts, pdf)}</div>"
     elif e.kind == EntryKind.reaction:
         cond = c.get("conditions") or {}
         bits = []
@@ -862,14 +909,22 @@ def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
             h += f"<p>{html.escape(cond['notes'])}</p>"
         if c.get("reaction_smiles"):
             try:
-                h += f"<div class='rxn'>{chem.depict_reaction_svg(c['reaction_smiles'])}</div>"
+                if pdf:
+                    import base64
+                    png = base64.b64encode(chem.depict_reaction_png(c["reaction_smiles"])).decode()
+                    h += f"<div class='rxn'><img src='data:image/png;base64,{png}' width='500' height='129'></div>"
+                else:
+                    h += f"<div class='rxn'>{chem.depict_reaction_svg(c['reaction_smiles'])}</div>"
             except chem.ChemError:
                 h += f"<p><code>{html.escape(c['reaction_smiles'])}</code></p>"
         cols = [("role", "Role"), ("name", "Name"), ("formula", "Formula"), ("mw", "MW"),
                 ("equiv", "Equiv"), ("mmol", "mmol"), ("mass_mg", "Mass (mg)"),
                 ("volume_ml", "Vol (mL)"), ("theoretical_mass_mg", "Theor. (mg)"),
                 ("actual_mass_mg", "Actual (mg)"), ("yield_pct", "Yield %")]
-        h += "<table><tr>" + "".join(f"<th>{t}</th>" for _, t in cols) + "</tr>"
+        if pdf:  # an A4 page has no room for the formula column
+            cols = [col for col in cols if col[0] != "formula"]
+        widths = {"role": "11%", "name": "27%"} if pdf else {}
+        h += "<table><tr>" + "".join(f"<th{(' width=' + chr(34) + widths[k] + chr(34)) if k in widths else ''}>{t}</th>" for k, t in cols) + "</tr>"
         for r in c.get("rows", []):
             h += "<tr>" + "".join(
                 f"<td>{_fmt(r.get(k))}{' ★' if k == 'role' and r.get('limiting') else ''}</td>"
@@ -893,7 +948,7 @@ def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
         for k, label in (("controls", "Controls"), ("waste", "Waste"), ("emergency", "Emergency")):
             if c.get(k):
                 h += f"<p><strong>{label}:</strong> {html.escape(c[k])}</p>"
-        h += f"<div class='rich'>{clean_html(c.get('notes_html', ''))}</div>"
+        h += f"<div class='rich'>{_inline_images(clean_html(c.get('notes_html', '')), atts, pdf)}</div>"
     elif e.kind == EntryKind.screen:
         xs, ys, cells = c.get("x_levels") or [], c.get("y_levels") or [], c.get("cells") or {}
         h += f"<p>{html.escape(c.get('response', ''))} by {html.escape(c.get('y_name', ''))} (rows) and {html.escape(c.get('x_name', ''))} (columns)</p>"
@@ -932,7 +987,7 @@ def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
                 ("Isolated", f"{_fmt(c.get('isolated_mg'))} mg" if c.get("isolated_mg") is not None else ""),
                 ("Appearance", c.get("appearance"))]
         h += "<table>" + "".join(f"<tr><th>{k}</th><td>{html.escape(str(v))}</td></tr>" for k, v in rows if v) + "</table>"
-        h += f"<div class='rich'>{clean_html(c.get('notes_html', ''))}</div>"
+        h += f"<div class='rich'>{_inline_images(clean_html(c.get('notes_html', '')), atts, pdf)}</div>"
     elif e.kind == EntryKind.characterization:
         h += "<table><tr><th>Technique</th><th>Conditions</th><th>Data</th><th>File</th></tr>"
         for it in c.get("items", []):
@@ -944,6 +999,8 @@ def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
         h += "<ul>" + "".join(
             f"<li>{html.escape(atts[i].filename)} — {atts[i].size:,} bytes — sha256 <code>{atts[i].sha256}</code></li>"
             for i in c.get("attachment_ids", []) if i in atts) + "</ul>"
+        h += "".join(_inline_images(f'<p><img data-attachment-id="{i}"></p>', atts, pdf)
+                     for i in c.get("attachment_ids", []) if i in atts and atts[i].content_type.startswith("image/"))
         if c.get("caption"):
             h += f"<p>{html.escape(c['caption'])}</p>"
     return h + "</section>"
@@ -961,14 +1018,41 @@ def export_experiment(exp_id: int, user: CurrentUser, session: DB, format: str =
     if format == "json":
         return {"experiment": experiment_summary(session, exp), "snapshot": snapshot(session, exp),
                 "content_hash": content_hash(session, exp), "signatures": signatures_out(session, exp.id)}
+    if format == "pdf":
+        return _pdf_response(session, exp)
+    return HTMLResponse(report_html(session, exp))
+
+
+def _pdf_response(session, exp: Experiment) -> Response:
+    import io
+    try:
+        from xhtml2pdf import pisa
+    except ImportError:
+        raise HTTPException(503, "PDF export needs one more package: stop Benchtop and start it again so it can install it") from None
+    out = io.BytesIO()
+    res = pisa.CreatePDF(report_html(session, exp, pdf=True), dest=out, encoding="utf-8")
+    if res.err:
+        raise HTTPException(500, "Couldn't make the PDF; the printable report (Print) still works")
+    from ..export_md import safe_name
+    name = f"{exp.eid} {safe_name(exp.title)}.pdf".encode("latin-1", "replace").decode("latin-1")
+    return Response(out.getvalue(), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+def report_html(session, exp: Experiment, pdf: bool = False) -> str:
+    """The printable record: every section, signatures and the content hash. pdf=True swaps in
+    rasters and print-safe styles for the PDF renderer."""
     atts = {a.id: a for a in session.exec(select(Attachment).where(Attachment.experiment_id == exp.id))}
     owner = session.get(User, exp.owner_id)
     sigs = signatures_out(session, exp.id)
-    body = "".join(_render_entry(e, atts) for e in live_entries(session, exp.id))
+    body = "".join(_render_entry(e, atts, pdf) for e in live_entries(session, exp.id))
     sig_html = "".join(
         f"<tr><td>{html.escape(s['meaning'])}</td><td>{html.escape(s['signer_name'] or s['user']['username'])}</td>"
         f"<td>{s['signed_at']}</td><td>{html.escape(s['comment'])}</td><td><code>{s['content_hash'][:16]}…</code></td></tr>"
         for s in sigs) or "<tr><td colspan=5>Not signed</td></tr>"
+    pdf_fix = pdf  # glyphs the PDF's built-in fonts lack
+    pdf_css = ("@page{size:a4;margin:1.6cm 1.5cm 1.8cm 1.5cm;@frame footer{-pdf-frame-content:pdffoot;bottom:.6cm;margin-left:1.5cm;margin-right:1.5cm;height:.8cm}}"
+               "body{font-family:Helvetica;font-size:10pt;line-height:1.35} h1{font-size:17pt} h2{font-size:12.5pt;margin:.6em 0 .2em}"
+               "table{font-size:8.5pt} td,th{padding:2px 4px} section{margin:.8em 0} #pdffoot{font-size:7.5pt;color:#666}") if pdf else ""
     doc = f"""<!doctype html><html><head><meta charset="utf-8"><title>{exp.eid} {html.escape(exp.title)}</title>
 <style>body{{font:14px/1.5 system-ui,sans-serif;max-width:900px;margin:2rem auto;color:#111}}
 header{{border-bottom:2px solid #111;margin-bottom:1rem}} h1{{margin:.2rem 0}} .meta{{color:#555}}
@@ -976,14 +1060,17 @@ table{{border-collapse:collapse;width:100%;margin:.5rem 0;font-size:12px}} td,th
 th{{background:#f2f2f2}} section{{margin:1.5rem 0;page-break-inside:avoid}} .rxn svg{{max-width:100%;height:auto}}
 code{{font-size:11px}} ul[data-type=taskList]{{list-style:none;padding-left:.2em}} li[data-type=taskItem]::before{{content:'\\2610  '}}
 li[data-checked=true]::before{{content:'\\2611  '}} li[data-type=taskItem] div,li[data-type=taskItem] p{{display:inline}} blockquote{{border-left:3px solid #999;margin:.5rem 0;padding:.2rem .8rem;background:#f6f6f6}} mark{{background:#fff3a0}}
-footer{{margin-top:2rem;border-top:1px solid #999;font-size:11px;color:#555}}</style></head><body>
+footer{{margin-top:2rem;border-top:1px solid #999;font-size:11px;color:#555}}{pdf_css}</style></head><body>
+{f'<div id="pdffoot">{exp.eid} · {html.escape(exp.title[:80])} · {html.escape(exp.status.value)} · page <pdf:pagenumber> of <pdf:pagecount></div>' if pdf else ''}
 <header><div class="meta">{exp.eid} · {html.escape(exp.status.value.upper())}</div><h1>{html.escape(exp.title)}</h1>
 <div class="meta">Author: {html.escape(owner.full_name or owner.username)} · Created {exp.created_at:%Y-%m-%d %H:%M} UTC · Last modified {exp.updated_at:%Y-%m-%d %H:%M} UTC</div>
 <p>{html.escape(exp.description)}</p></header>{body}
 <section><h2>Signatures</h2><table><tr><th>Meaning</th><th>Signer</th><th>Signed (UTC)</th><th>Comment</th><th>Content hash</th></tr>{sig_html}</table></section>
 <footer>Record content hash (SHA-256): <code>{content_hash(session, exp)}</code><br>Generated by Benchtop ELN {utcnow():%Y-%m-%d %H:%M} UTC</footer>
 </body></html>"""
-    return HTMLResponse(doc)
+    if pdf_fix:
+        doc = doc.replace(" ★", " (limiting)").replace("⏱ ", "").replace("⏱", "")
+    return doc
 
 
 SPECTRUM_RE = re.compile(r"\.(jdx|dx|jcamp|jcm|csv|tsv|txt|xy|zip)$", re.I)

@@ -4,6 +4,8 @@ import { Mol, useDebounced } from './bits'
 import Modal from './Modal'
 import { LookupBox, LookupCard, type LookupResult } from './Safety'
 
+interface Usual { id: number; mid: string; name: string; formula: string; mw: number | null; smiles: string; kind: string; uses: number; role: StoichRow['role']; last_lot_id: number | null; last_used: string }
+
 export default function MaterialPicker({ onPick, onLookup, onClose }: {
   onPick: (m: Material, role: StoichRow['role']) => void; onLookup?: (r: LookupResult, role: StoichRow['role']) => void; onClose: () => void
 }) {
@@ -14,6 +16,8 @@ export default function MaterialPicker({ onPick, onLookup, onClose }: {
   const [items, setItems] = useState<Material[]>([])
   const dq = useDebounced(q, 200)
   useEffect(() => { api.get<Material[]>(`/api/materials?q=${encodeURIComponent(dq)}&limit=40`).then(setItems) }, [dq])
+  const [usual, setUsual] = useState<Usual[]>([])
+  useEffect(() => { api.get<Usual[]>('/api/frequent-materials').then(setUsual).catch(() => {}) }, [])
 
   const pick = async (m: Material) => onPick(await api.get<Material>(`/api/materials/${m.id}`), role)
 
@@ -26,6 +30,13 @@ export default function MaterialPicker({ onPick, onLookup, onClose }: {
           <option value="catalyst">as catalyst</option><option value="solvent">as solvent</option>
         </select>
       </div>
+      {!q && usual.length > 0 && <div className="usual">
+        <div className="fld-cap">Your usual</div>
+        <div className="usual-chips">{usual.map(u => (
+          <button key={u.id} className="usual-chip" title={`${u.mid} · used in ${u.uses} reaction${u.uses === 1 ? '' : 's'}, usually as ${u.role} · adds as ${u.role}${u.last_lot_id ? ', with the lot you used last' : ''}`}
+            onClick={async () => onPick({ ...(await api.get<Material>(`/api/materials/${u.id}`)), preferred_lot_id: u.last_lot_id } as Material, u.role)}>
+            {u.name}<span className="faint"> · {u.role}</span></button>))}</div>
+      </div>}
       <ul className="list" style={{ maxHeight: 360, overflowY: 'auto' }}>
         {items.map(m => (
           <li key={m.id}>

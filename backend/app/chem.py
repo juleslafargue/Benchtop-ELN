@@ -127,6 +127,16 @@ def depict_reaction_svg(rxn_smiles: str, width: int = 700, height: int = 200) ->
     return d.GetDrawingText()
 
 
+def depict_reaction_png(rxn_smiles: str, width: int = 1400, height: int = 360) -> bytes:
+    """A raster scheme for PDFs (which can't take inline SVG)."""
+    rxn = _reaction(rxn_smiles)
+    d = rdMolDraw2D.MolDraw2DCairo(width, height)
+    d.drawOptions().bondLineWidth = 2
+    d.DrawReaction(rxn)
+    d.FinishDrawing()
+    return d.GetDrawingText()
+
+
 def _reaction(text: str):
     text = (text or "").strip()
     try:

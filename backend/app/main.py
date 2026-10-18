@@ -15,7 +15,7 @@ from . import __version__, backup
 from .config import settings
 from .db import engine, init_db
 from .models import Role, User
-from .routers import admin, auth, chemistry, dashboard, experiments, materials, reactions, safety as safety_router, search, nmr as nmr_router, groups, comments, sso, integrations
+from .routers import admin, auth, chemistry, dashboard, experiments, materials, reactions, safety as safety_router, search, nmr as nmr_router, groups, comments, sso, integrations, bench
 from .security import hash_password
 
 
@@ -122,7 +122,7 @@ async def security_headers(request, call_next):
     return resp
 
 
-for r in (auth, experiments, materials, chemistry, search, reactions, admin, dashboard, safety_router, nmr_router, groups, comments, sso, integrations):
+for r in (auth, experiments, materials, chemistry, search, reactions, admin, dashboard, safety_router, nmr_router, groups, comments, sso, integrations, bench):
     app.include_router(r.router)
 
 

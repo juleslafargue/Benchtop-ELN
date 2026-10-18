@@ -51,6 +51,7 @@ class Settings:
         self.oidc_default_role = os.environ.get("BENCHTOP_OIDC_DEFAULT_ROLE", "scientist")
         self.password_login = os.environ.get("BENCHTOP_PASSWORD_LOGIN", "on").lower() not in ("0", "off", "false", "no")
         self.public_url = os.environ.get("BENCHTOP_PUBLIC_URL", "").rstrip("/")  # e.g. https://eln.mylab.ca
+        self.lan_url = os.environ.get("BENCHTOP_LAN_URL", "").rstrip("/")  # set by ./benchtop lab: this computer's address on the network
         # demo mode (./benchtop demo): the sign-in page lists the demo lab's accounts; set only for demo data
         self.demo = os.environ.get("BENCHTOP_DEMO", "").lower() in ("1", "on", "true", "yes")
         self.data_dir.mkdir(parents=True, exist_ok=True)

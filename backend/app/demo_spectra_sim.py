@@ -134,3 +134,33 @@ def chromatogram(peaks: list[tuple[float, float, float]], minutes: float = 12.0,
         y += h * np.exp(-0.5 * ((t - tr) / w) ** 2) * (1 + 0.25 * (t > tr))  # a touch of tailing
     lines = ["Time (min),Signal (mAU)"] + [f"{a:.3f},{b:.3f}" for a, b in zip(t, y)]
     return "\n".join(lines) + "\n"
+
+
+def tlc_plate(lanes: list[tuple[str, list[tuple[float, float]]]], title: str = "", seed: int = 5) -> bytes:
+    """A photo-like drawing of a TLC plate under UV: lanes of (label, [(Rf, intensity)]). PNG bytes."""
+    import io
+
+    from PIL import Image, ImageDraw, ImageFilter
+    rng = np.random.default_rng(seed)
+    w, h = 360, 520
+    img = Image.new("RGB", (w, h), (36, 38, 48))
+    plate = Image.new("RGB", (220, 420), (196, 214, 120))  # silica F254 glowing green under 254 nm
+    d = ImageDraw.Draw(plate)
+    base, front = 380, 40
+    d.line([(14, base), (206, base)], fill=(120, 130, 90), width=1)
+    d.line([(14, front), (206, front)], fill=(120, 130, 90), width=1)
+    xs = np.linspace(45, 175, len(lanes))
+    for x, (label, spots) in zip(xs, lanes):
+        for rf, inten in spots:
+            y = base - rf * (base - front)
+            r = 7 + 5 * inten
+            dark = int(150 * inten)
+            d.ellipse([x - r, y - r * 0.7, x + r, y + r * 0.7], fill=(196 - dark, 214 - dark, 120 - min(dark, 110)))
+        d.text((x - 8, base + 10), label, fill=(70, 80, 50))
+    plate = plate.filter(ImageFilter.GaussianBlur(1.2))
+    img.paste(plate, (70, 50))
+    noise = (rng.normal(0, 6, (h, w, 3))).astype(np.int16)
+    arr = np.clip(np.asarray(img).astype(np.int16) + noise, 0, 255).astype(np.uint8)
+    out = io.BytesIO()
+    Image.fromarray(arr).save(out, "PNG")
+    return out.getvalue()

@@ -9,6 +9,7 @@ import ShareDialog from '../components/ShareDialog'
 import { AudienceBadge } from '../components/Audience'
 import SignDialog, { type SignAction } from '../components/SignDialog'
 import WriteupDialog from '../components/WriteupDialog'
+import { BenchBar, PhoneDialog } from '../components/BenchTools'
 import ScaleDialog from '../components/ScaleDialog'
 import { useBackTarget } from '../components/BackButton'
 import { parseSpectrumBuffer, techniqueFor } from '../spectra'
@@ -113,11 +114,39 @@ export default function ExperimentPage() {
   const [focusEntry, setFocusEntry] = useState<number | null>(null)
   const [commentCounts, setCommentCounts] = useState<Record<number, number>>({})
   const dragDepth = useRef(0)
+  const [bench, setBench] = useState<null | 'log' | 'timer'>(null)
+  const [phone, setPhone] = useState(false)
 
   const load = useCallback(async () => {
     try { setExp(await api.get<Experiment>(`/api/experiments/${id}`)); setErr('') } catch (e: any) { setErr(e.message) }
   }, [id])
-  useEffect(() => { load(); setVerify(null); setTab('record') }, [load])
+  useEffect(() => { load(); setVerify(null); setTab('record'); setBench(null) }, [load])
+  // pick up changes made elsewhere (the bench log, your phone, a colleague) when you come back to the tab
+  useEffect(() => {
+    const again = () => { if (document.visibilityState === 'visible') load() }
+    const logged = (e: Event) => { if ((e as CustomEvent).detail?.experimentId === Number(id)) load() }
+    document.addEventListener('visibilitychange', again)
+    window.addEventListener('focus', again)
+    window.addEventListener('benchtop:logged', logged)
+    return () => { document.removeEventListener('visibilitychange', again); window.removeEventListener('focus', again); window.removeEventListener('benchtop:logged', logged) }
+  }, [id, load])
+  // L: log a note · T: timer · P: phone · ⌘S: save every section now
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault(); window.dispatchEvent(new Event('benchtop:save-now')); return
+      }
+      const el = e.target as HTMLElement
+      if (/INPUT|TEXTAREA|SELECT/.test(el.tagName) || el.isContentEditable || e.metaKey || e.ctrlKey || e.altKey || document.querySelector('dialog[open]')) return
+      const ed = !!exp && canWrite && exp.status === 'open' && (exp.can_edit ?? exp.owner.id === user.id)
+      const k = e.key.toLowerCase()
+      if (k === 'l' && ed) { e.preventDefault(); setBench('log') }
+      else if (k === 't' && ed) { e.preventDefault(); setBench('timer') }
+      else if (k === 'p' && exp && !exp.is_template) { e.preventDefault(); setPhone(true) }
+    }
+    window.addEventListener('keydown', on)
+    return () => window.removeEventListener('keydown', on)
+  }, [exp, canWrite, user.id])
   // opening an experiment clears its notifications
   useEffect(() => { if (id) api.post('/api/notifications/read', { experiment_id: Number(id) }).catch(() => {}) }, [id])
 
@@ -249,8 +278,11 @@ export default function ExperimentPage() {
             {exp.notebook_id && <Link className="faint" to={`/notebooks/${exp.notebook_id}`}>{exp.notebook_name}</Link>}
             {exp.is_template && <span className="tag">Template</span>}
           </div>
-          <input className="exp-title-input" aria-label="Experiment title" disabled={!editable} defaultValue={exp.title} key={`t${exp.id}`}
-            onBlur={e => e.target.value.trim() && e.target.value !== exp.title && patch({ title: e.target.value })} />
+          <textarea className="exp-title-input" aria-label="Experiment title" disabled={!editable} defaultValue={exp.title} key={`t${exp.id}-${exp.title}`} rows={1}
+            ref={el => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` } }}
+            onInput={e => { const el = e.currentTarget; el.value = el.value.replace(/\n/g, ' '); el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` }}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
+            onBlur={e => { const v = e.target.value.trim(); if (v && v !== exp.title) patch({ title: v }) }} />
           <div className="meta-line">
             <span>Author: {displayName(exp.owner)}</span>
             <span>Created {when(exp.created_at)}</span>
@@ -292,7 +324,12 @@ export default function ExperimentPage() {
                     : <div className="entry-gap" />)}
                   <EntryCard entry={e} readOnly={!editable} experimentId={exp.id} context={context}
                     attachments={exp.attachments} onAttachmentsChanged={attachmentsChanged}
-                    onDeleted={load} onMove={d => move(i, d)} isFirst={i === 0} isLast={i === exp.entries.length - 1}
+                    onDeleted={async () => {
+                      await load()
+                      toast(`Removed “${e.title}”`, { label: 'Undo', run: async () => {
+                        try { await api.post(`/api/entries/${e.id}/restore`); await load(); setReloadKey(k => k + 1) } catch (er: any) { toast(er.message) }
+                      } })
+                    }} onMove={d => move(i, d)} isFirst={i === 0} isLast={i === exp.entries.length - 1}
                     comments={commentCounts[e.id] || 0} onComment={() => setFocusEntry(e.id)} />
                 </Fragment>
               ))}
@@ -319,6 +356,12 @@ export default function ExperimentPage() {
                 {verify.intact ? 'Content matches the latest signature.' : 'Content does not match the signature. The record may have been altered outside the app.'}
                 <span className="hash" style={{ display: 'block' }}>{verify.content_hash}</span></p>}
             </div>}
+            {!exp.is_template && <div className="stack bench-tools" style={{ gap: 6 }}>
+              <h3>At the bench</h3>
+              {editable && <button className="btn sm" onClick={() => setBench('log')} title="Shortcut: L">Log a note <kbd>L</kbd></button>}
+              {editable && <button className="btn sm" onClick={() => setBench('timer')} title="Shortcut: T">Start a timer <kbd>T</kbd></button>}
+              <button className="btn sm" onClick={() => setPhone(true)} title="Shortcut: P">Open on your phone <kbd>P</kbd></button>
+            </div>}
             <Discussion experimentId={exp.id} entries={exp.entries} focusEntry={focusEntry} onFocusDone={() => setFocusEntry(null)}
               onCountsChange={per => setCommentCounts(per)} canShare={isOwner || user.role === 'admin'} onShare={us => setSharing(us)} />
             <div className="stack" style={{ gap: 6 }}>
@@ -332,6 +375,7 @@ export default function ExperimentPage() {
                 }}>{pinned ? 'Pinned to dashboard' : 'Pin to dashboard'}</button>
               })()}
               {!exp.is_template && <button className="btn sm" onClick={() => setWriteup(true)}>Draft write-up</button>}
+              <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export?format=pdf`, `${exp.eid} ${exp.title.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').slice(0, 80)}.pdf`).catch(e => toast(e.message))}>Download PDF</button>
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export`, `${exp.eid}.html`, true)}>Open printable report</button>
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export?format=md`, `${exp.eid} ${exp.title.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').slice(0, 80)}.md`)}>Download Markdown</button>
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export?format=json`, `${exp.eid}.json`)}>Download JSON</button>
@@ -345,6 +389,8 @@ export default function ExperimentPage() {
         </div>
       )}
 
+      {bench && editable && <BenchBar key={bench} experimentId={exp.id} eid={exp.eid} initialTimer={bench === 'timer'} onClose={() => setBench(null)} />}
+      {phone && <PhoneDialog experimentId={exp.id} onClose={() => setPhone(false)} />}
       {sharing && <ShareDialog experimentId={exp.id} eid={exp.eid} preselect={sharing} onClose={() => { setSharing(null); load() }} />}
       {scaling && (() => {
         const rx = exp.entries.find(e => e.kind === 'reaction')?.content

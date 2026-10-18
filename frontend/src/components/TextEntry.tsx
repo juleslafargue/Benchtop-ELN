@@ -16,6 +16,8 @@ import TableRow from '@tiptap/extension-table-row'
 import TableCell from '@tiptap/extension-table-cell'
 import TableHeader from '@tiptap/extension-table-header'
 import Placeholder from './placeholder'
+import { AttachmentImage, PastePictures, RecordLinks, RefPreview, uploadPictures } from './editorExtras'
+import { useApp } from '../App'
 import type { EntryEditorProps } from './EntryCard'
 
 // Colours that stay readable on paper and in dark mode; text keeps the theme's ink by default.
@@ -99,7 +101,10 @@ const ICONS = {
   alignR: 'M2 4h12M6 7h8M2 10h12M6 13h8',
 }
 
-export default function TextEntry({ content, onChange, readOnly }: EntryEditorProps) {
+export default function TextEntry({ content, onChange, readOnly, experimentId, onAttachmentsChanged }: EntryEditorProps) {
+  const { toast } = useApp()
+  const wrap = useRef<HTMLDivElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
   const editor = useEditor({
     extensions: [
       StarterKit, Subscript, Superscript, Underline, Highlight, TextStyle, Color,
@@ -107,6 +112,7 @@ export default function TextEntry({ content, onChange, readOnly }: EntryEditorPr
       Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' } }),
       TaskList, TaskItem.configure({ nested: true }),
       Table.configure({ resizable: false }), TableRow, TableCell, TableHeader,
+      AttachmentImage, RecordLinks, PastePictures(experimentId, () => onAttachmentsChanged(), m => toast(m)),
       Placeholder('Write here. Ctrl+, for subscript, Ctrl+. for superscript, “[ ] ” for a checklist.'),
     ],
     content: content.html || '',
@@ -175,6 +181,7 @@ export default function TextEntry({ content, onChange, readOnly }: EntryEditorPr
               <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); close() }}>▦ Table</button>
               <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { c().toggleBlockquote().run(); close() }}><Icon d={ICONS.quote} /> Note / quote</button>
               <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { c().setHorizontalRule().run(); close() }}><Icon d={ICONS.rule} /> Divider</button>
+              <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { picker.current?.click(); close() }}>🖼 Picture… <span className="faint">(or paste one)</span></button>
               <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { c().insertContent(`<p><strong>${stamp()}</strong> </p>`).run(); close() }}><Icon d={ICONS.clock} /> Date &amp; time stamp</button>
             </>}
           </Menu>
@@ -219,7 +226,13 @@ export default function TextEntry({ content, onChange, readOnly }: EntryEditorPr
           </div>}
         </div>
       )}
-      <div className="prose"><EditorContent editor={editor} /></div>
+      <div className="prose" ref={wrap}><EditorContent editor={editor} /></div>
+      <RefPreview root={wrap} />
+      {!readOnly && <input ref={picker} type="file" accept="image/*" multiple hidden onChange={e => {
+        const files = Array.from(e.target.files || []); e.target.value = ''
+        editor.commands.focus()
+        uploadPictures(editor.view, files, experimentId, () => onAttachmentsChanged(), m => toast(m))
+      }} />}
     </div>
   )
 }

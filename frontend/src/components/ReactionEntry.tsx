@@ -57,7 +57,8 @@ export default function ReactionEntry({ content, onChange, readOnly, experimentI
   const removeRow = (i: number) => recompute(rows.filter((_, j) => j !== i))
 
   const fromMaterial = (m: Material, role: StoichRow['role']) => {
-    const lot = m.lots?.find(l => l.status === 'available')
+    const pref = (m as any).preferred_lot_id
+    const lot = m.lots?.find(l => l.id === pref && l.status === 'available') || m.lots?.find(l => l.status === 'available')
     const row: StoichRow = {
       ...blank(m.kind === 'solvent' ? 'solvent' : role), name: m.name, smiles: m.smiles, mw: m.mw, formula: m.formula,
       material_id: m.id, lot_id: lot?.id ?? null, density: m.density, purity: lot?.purity ?? 100,

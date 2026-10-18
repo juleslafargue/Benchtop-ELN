@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { api, getToken, setToken, setUnauthorizedHandler, type Group, type Notebook, type User } from './api'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -17,14 +17,17 @@ import Admin from './pages/Admin'
 import Account from './pages/Account'
 import Groups from './pages/Groups'
 import PasswordDialog from './components/PasswordDialog'
+import BenchPage from './pages/BenchPage'
+import { Shortcuts } from './components/Shortcuts'
 
+export interface ToastAction { label: string; run: () => void }
 interface Ctx {
   user: User
   notebooks: Notebook[]
   refreshNotebooks: () => Promise<void>
   groups: Group[]
   refreshGroups: () => Promise<void>
-  toast: (msg: string) => void
+  toast: (msg: string, action?: ToastAction) => void
   logout: () => void
   canWrite: boolean
   setUser: (u: User) => void
@@ -35,9 +38,11 @@ export const useApp = () => useContext(AppCtx)
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [booting, setBooting] = useState(!!getToken())
+  const [handoffErr, setHandoffErr] = useState('')
+  const loc = useLocation()
   const [notebooks, setNotebooks] = useState<Notebook[]>([])
   const [groups, setGroups] = useState<Group[]>([])
-  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [toastMsg, setToastMsg] = useState<{ msg: string; action?: ToastAction } | null>(null)
 
   const logout = useCallback(() => {
     if (getToken()) api.post('/api/auth/logout').catch(() => {})  // end the session on the server too
@@ -54,6 +59,16 @@ export default function App() {
       history.replaceState(null, '', location.pathname + location.search)
       setBooting(true)
     }
+    const h = /[#&]handoff=([^&]+)/.exec(location.hash)
+    if (h) {
+      history.replaceState(null, '', location.pathname + location.search)
+      setBooting(true)
+      api.post<{ token: string; user: User }>('/api/auth/handoff', { code: decodeURIComponent(h[1]) })
+        .then(r => { setToken(r.token); setUser(r.user) })
+        .catch(e => { setHandoffErr(e.message); if (getToken()) api.get<User>('/api/auth/me').then(setUser).catch(() => setToken(null)) })
+        .finally(() => setBooting(false))
+      return
+    }
     if (!getToken()) return
     api.get<User>('/api/auth/me').then(setUser).catch(() => setToken(null)).finally(() => setBooting(false))
   }, [])
@@ -66,10 +81,13 @@ export default function App() {
   }, [])
   useEffect(() => { if (user && !user.must_change_password) { refreshNotebooks(); refreshGroups() } }, [user?.id, user?.must_change_password, refreshNotebooks, refreshGroups]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toast = useCallback((msg: string) => {
-    setToastMsg(msg)
-    window.setTimeout(() => setToastMsg(m => (m === msg ? null : m)), 2800)
+  const toast = useCallback((msg: string, action?: ToastAction) => {
+    const t = { msg, action }
+    setToastMsg(t)
+    window.setTimeout(() => setToastMsg(m => (m === t ? null : m)), action ? 7000 : 2800)
   }, [])
+  const toastEl = toastMsg && <div className="toast" role="status">{toastMsg.msg}
+    {toastMsg.action && <button className="toast-action" onClick={() => { toastMsg.action!.run(); setToastMsg(null) }}>{toastMsg.action.label}</button>}</div>
 
   useEffect(() => {
     const t = user?.preferences?.theme
@@ -78,19 +96,20 @@ export default function App() {
   }, [user?.preferences?.theme])
 
   if (booting) return null
-  if (!user) return <Login onLogin={(t, u) => { setToken(t); setUser(u) }} />
+  if (!user) return <>{handoffErr && <div className="handoff-err" role="alert">{handoffErr}</div>}<Login onLogin={(t, u) => { setToken(t); setUser(u) }} /></>
 
   // an admin set this password: choose your own before anything else loads
   if (user.must_change_password) return (
     <AppCtx.Provider value={{ user, notebooks, refreshNotebooks, groups, refreshGroups, toast, logout, canWrite: user.role !== 'viewer', setUser }}>
       <div className="login" />
       <PasswordDialog onClose={() => {}} />
-      {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
+      {toastEl}
     </AppCtx.Provider>
   )
 
   return (
     <AppCtx.Provider value={{ user, notebooks, refreshNotebooks, groups, refreshGroups, toast, logout, canWrite: user.role !== 'viewer', setUser }}>
+      {loc.pathname.startsWith('/bench/') ? <Routes><Route path="/bench/:id" element={<BenchPage />} /></Routes> : <>
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -109,7 +128,9 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Layout>
-      {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
+      <Shortcuts />
+      </>}
+      {toastEl}
     </AppCtx.Provider>
   )
 }

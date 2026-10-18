@@ -164,3 +164,25 @@ export const ago = (iso: string) => {
   if (s < 172800) return 'yesterday'
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: s > 300 * 86400 ? 'numeric' : undefined })
 }
+
+// ---------------------------------------------------------------- pictures inside text
+// Pasted pictures are stored as <img data-attachment-id="12">: the file needs the sign-in token, so it is
+// fetched here and shown from a blob URL (cached for the page's lifetime).
+const blobUrls = new Map<number, Promise<string>>()
+export function attachmentUrl(id: number): Promise<string> {
+  let p = blobUrls.get(id)
+  if (!p) {
+    p = api.raw(`/api/attachments/${id}?inline=true`).then(r => r.blob()).then(b => URL.createObjectURL(b))
+    p.catch(() => blobUrls.delete(id))
+    blobUrls.set(id, p)
+  }
+  return p
+}
+/** Fill in every <img data-attachment-id> inside an element that hasn't got a picture yet. */
+export function loadAttachmentImages(root: HTMLElement | null) {
+  root?.querySelectorAll<HTMLImageElement>('img[data-attachment-id]').forEach(img => {
+    if (img.getAttribute('src')) return
+    const id = Number(img.dataset.attachmentId)
+    if (id) attachmentUrl(id).then(u => { img.src = u }).catch(() => { img.alt = `${img.alt || 'picture'} (couldn't load)` })
+  })
+}

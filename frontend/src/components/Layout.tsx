@@ -9,6 +9,7 @@ import BackButton, { BackProvider } from './BackButton'
 import { AudIcon } from './Audience'
 import Notifications from './Notifications'
 import MainNav from './MainNav'
+import { TimerTray } from './BenchTools'
 
 export const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'
 
@@ -49,6 +50,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <span>Find or do anything…</span><kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
         </button>
         <MainNav />
+        <TimerTray />
         <div>
           <div className="side-heading">
             <span>Notebooks</span>

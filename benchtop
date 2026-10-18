@@ -127,6 +127,7 @@ case "$cmd" in
     ensure_ui
     host="$(scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || hostname)"
     ip="$( (ipconfig getifaddr en0 || ipconfig getifaddr en1 || hostname -I 2>/dev/null | awk '{print $1}') 2>/dev/null | head -1)"
+    [ -n "$ip" ] && export BENCHTOP_LAN_URL="http://$ip:$PORT"  # so phone QR codes point somewhere a phone can reach
     say "Starting Benchtop for your lab on port $PORT  (data: $BENCHTOP_DATA_DIR)"
     say "Labmates on the same network can open:  http://${host}.local:$PORT${ip:+   or   http://$ip:$PORT}"
     say "Give each person their own account (Users & audit) and put them in a group (Groups)."

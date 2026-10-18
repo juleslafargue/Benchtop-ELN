@@ -317,7 +317,10 @@ dialog.modal.wide { max-width: min(1100px, 96vw); }
 .modal-head { padding: 16px 20px 0; }
 .modal-body { padding: 14px 20px; }
 .modal-foot { padding: 12px 20px 16px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--rule); }
-.ketcher-host { height: min(640px, 72vh); position: relative; }
+.ketcher-host { height: min(640px, 72vh); position: relative; overscroll-behavior: contain; touch-action: none; }
+html.modal-open body { padding-right: var(--scrollbar-gap, 0); overflow: hidden; }
+dialog.modal { overscroll-behavior: contain; }
+dialog.modal .modal-body { overscroll-behavior: contain; }
 
 /* login */
 .login { min-height: 100%; display: grid; place-items: center; padding: 20px; }
@@ -338,7 +341,10 @@ table.plain td { padding: 7px 10px; border-bottom: 1px solid var(--rule); }
 table.plain td.num { text-align: right; }
 
 .empty { text-align: center; padding: 40px 20px; color: var(--ink-2); }
-.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 9px 16px; border-radius: 8px; font-size: 14px; z-index: 50; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 9px 16px; border-radius: 8px; font-size: 14px; z-index: 50; display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 32px); }
+.toast-action { background: none; border: 0; color: color-mix(in srgb, var(--accent) 55%, var(--paper)); font-weight: 700; cursor: pointer; padding: 2px 4px; font-size: 14px; }
+.toast-action:hover { text-decoration: underline; }
+.handoff-err { position: fixed; top: 0; left: 0; right: 0; z-index: 60; background: var(--danger); color: #fff; padding: 10px 16px; font-size: 14px; text-align: center; }
 
 @media (max-width: 900px) {
   .shell { grid-template-columns: minmax(0, 1fr); }
@@ -935,3 +941,68 @@ table.grid select:disabled { background-image: none; padding-right: 4px !importa
 @media (max-width: 700px) { .cf-field, .cf-field.w-third { grid-column: 1 / -1; } }
 .panel.integ > .section { padding: 12px 16px; }
 .panel.integ > .section + .section { border-top: 1px solid var(--rule); }
+
+/* ---------- v0.11: bench tools */
+textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-height: 1.18; font: inherit; font-family: var(--serif); font-size: 32px; font-weight: 500; color: var(--ink); }
+@media (max-width: 900px) { textarea.exp-title-input { font-size: 25px; } }
+.bench-tools .btn { justify-content: space-between; display: flex; }
+.bench-tools kbd, .btn kbd { font-size: 10.5px; padding: 0 5px; border: 1px solid var(--rule-strong); border-radius: 4px; color: var(--ink-3); background: var(--paper); font-family: inherit; }
+.bench-bar { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 45; width: min(760px, calc(100vw - 32px)); display: flex; gap: 8px; align-items: center;
+  background: var(--paper); border: 1px solid var(--rule-strong); border-radius: 12px; padding: 8px 8px 8px 12px; box-shadow: 0 14px 40px rgba(0,0,0,.22); }
+.bench-bar .input { flex: 1; min-width: 0; font-size: 15px; }
+.bench-clock { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent); font-size: 14px; }
+.timer-tray { display: flex; flex-direction: column; gap: 4px; }
+.timer { --p: 0; position: relative; display: flex; align-items: center; border-radius: 8px; border: 1px solid var(--rule); overflow: hidden;
+  background: linear-gradient(90deg, var(--accent-soft) calc(var(--p) * 100%), var(--paper) 0); }
+.timer.done { border-color: var(--witnessed); background: color-mix(in srgb, var(--witnessed) 14%, var(--paper)); animation: timer-pulse 1.2s ease-in-out 3; }
+@keyframes timer-pulse { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--witnessed) 35%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .timer.done { animation: none; } }
+.timer-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 5px 8px; text-decoration: none; color: var(--ink); }
+.timer-time { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 15px; }
+.timer-label { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timer-x { border: 0; background: none; color: var(--ink-3); cursor: pointer; font-size: 16px; padding: 4px 8px; }
+.timer-x:hover { color: var(--ink); }
+.phone-qr { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: start; }
+.phone-qr .notice { grid-column: 1 / -1; margin: 0; }
+.qr { background: #fff; padding: 6px; border-radius: 8px; border: 1px solid var(--rule); line-height: 0; }
+.qr svg { width: 200px; height: 200px; }
+.qr.expired { opacity: .25; }
+@media (max-width: 600px) { .phone-qr { grid-template-columns: 1fr; justify-items: center; } }
+.shortcut-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px 28px; }
+.shortcut-grid h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); margin: 0 0 6px; }
+.shortcut-grid dl { margin: 0; display: flex; flex-direction: column; gap: 5px; }
+.shortcut-grid dl > div { display: grid; grid-template-columns: 140px 1fr; gap: 10px; font-size: 14px; align-items: baseline; }
+.shortcut-grid dd { margin: 0; color: var(--ink-2); }
+.shortcut-grid kbd { font-family: inherit; font-size: 12.5px; padding: 1px 6px; border: 1px solid var(--rule-strong); border-bottom-width: 2px; border-radius: 5px; background: var(--paper-2); white-space: nowrap; }
+.ref-link { color: var(--accent); border-bottom: 1px dotted currentColor; cursor: pointer; }
+.ref-card { position: fixed; z-index: 70; width: 290px; background: var(--paper); border: 1px solid var(--rule-strong); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.22);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; font-family: var(--sans); font-size: 14px; }
+.ref-title { font-weight: 600; line-height: 1.3; }
+.ref-mol { background: #fff; border-radius: 6px; display: block; }
+.ref-mol img { width: 100%; height: auto; display: block; }
+.ref-card .btn { align-self: flex-start; }
+.att-img { margin: .4em 0 .8em; }
+.att-img img, .prose img[data-attachment-id] { max-width: 100%; max-height: 480px; border-radius: 6px; border: 1px solid var(--rule); display: block; }
+.att-img.ProseMirror-selectednode img { outline: 2px solid var(--accent); }
+.att-img.missing { color: var(--ink-3); font-size: 13px; }
+.stale-note { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin: 0; }
+.usual { margin-bottom: 12px; }
+.usual-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.usual-chip { font-size: 13px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--rule-strong); background: var(--paper); cursor: pointer; color: var(--ink); }
+.usual-chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+/* ---------- phone bench view */
+.bench-page { max-width: 560px; margin: 0 auto; padding: 14px 14px 40px; display: flex; flex-direction: column; gap: 12px; }
+.bench-head h1 { font-family: var(--serif); font-size: 23px; font-weight: 500; line-height: 1.2; margin: 2px 0 6px; }
+.bench-card { background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.bench-big { font-size: 17px; padding: 13px; width: 100%; justify-content: center; }
+.bench-preview { width: 100%; max-height: 50vh; object-fit: contain; border-radius: 8px; background: #000; }
+.bench-presets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.bench-presets .btn { padding: 10px 0; justify-content: center; }
+.bench-page textarea.input { font-size: 16px; }
+.bench-rx { width: 100%; font-size: 14px; border-collapse: collapse; }
+.bench-rx td { padding: 4px 2px; border-bottom: 1px solid var(--rule); }
+.bench-rx td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bench-log { font-size: 15px; }
+.bench-log h3 { font-size: 13px; color: var(--ink-3); margin: .8em 0 .2em; font-family: var(--sans); }
+.timer-tray.compact .timer-main { padding: 9px 10px; }

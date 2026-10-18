@@ -12,7 +12,7 @@ import YieldChart, { type YieldPoint } from '../components/YieldChart'
 
 const Grid = WidthProvider(GridLayout)
 
-type ListKind = 'recent' | 'open' | 'awaiting' | 'returned' | 'pinned'
+type ListKind = 'recent' | 'open' | 'awaiting' | 'returned' | 'pinned' | 'stale'
 type WType = 'list' | 'actions' | 'note' | 'header' | 'yield' | 'month' | 'spectra' | 'inventory'
 export interface Widget { i: string; type: WType; x: number; y: number; w: number; h: number; list?: ListKind; text?: string; title?: string }
 
@@ -20,17 +20,18 @@ interface DashData {
   lists: Record<ListKind, (ExperimentSummary & { reason?: string; returned_by?: string })[]>
   stats: { this_month: number; last_month: number; witnessed_this_month: number; yields: YieldPoint[] }
   spectra: { id: number; filename: string; experiment_id: number; eid: string; title: string; created_at: string }[]
+  stale_days?: number
   inventory: { low: InvRow[]; expiring: (InvRow & { expires_at: string; expired: boolean })[]; safety_changes?: { material_id: number | null; material: string; changed_at: string; change: { added: string[]; removed: string[] } | null }[]; low_fraction: number; expiry_days: number }
 }
 interface InvRow { lot_id: number; barcode: string; material_id: number; material: string; amount: number; unit: string; location: string; fraction?: number }
 
 const LIST_TITLES: Record<ListKind, string> = {
   recent: 'Recently edited', open: 'My open experiments', awaiting: 'Waiting for my witness signature',
-  returned: 'Returned to me', pinned: 'Pinned',
+  returned: 'Returned to me', pinned: 'Pinned', stale: 'Drafts gone quiet',
 }
 const LIST_EMPTY: Record<ListKind, string> = {
   recent: 'Nothing yet. Start an experiment.', open: 'No open experiments.', awaiting: 'Nothing waiting for you.',
-  returned: 'Nothing returned. Good.', pinned: 'Pin experiments from their page to keep them here.',
+  returned: 'Nothing returned. Good.', pinned: 'Pin experiments from their page to keep them here.', stale: 'No drafts left untouched for two weeks.',
 }
 const CATALOG: { type: WType; list?: ListKind; label: string; w: number; h: number }[] = [
   { type: 'actions', label: 'Quick actions', w: 4, h: 4 },
@@ -39,6 +40,7 @@ const CATALOG: { type: WType; list?: ListKind; label: string; w: number; h: numb
   { type: 'list', list: 'open', label: 'My open experiments', w: 4, h: 5 },
   { type: 'list', list: 'recent', label: 'Recently edited', w: 6, h: 5 },
   { type: 'list', list: 'pinned', label: 'Pinned experiments', w: 6, h: 4 },
+  { type: 'list', list: 'stale', label: 'Drafts gone quiet (untouched for 2+ weeks)', w: 4, h: 4 },
   { type: 'yield', label: 'Yield trend', w: 8, h: 7 },
   { type: 'month', label: 'This month', w: 4, h: 3 },
   { type: 'spectra', label: 'Recent spectra', w: 6, h: 5 },
@@ -86,6 +88,7 @@ export default function Dashboard() {
   const { user, setUser, canWrite, toast } = useApp()
   const nav = useNavigate()
   const [data, setData] = useState<DashData | null>(null)
+  const [quietDismissed, setQuietDismissed] = useState(() => { try { return !!sessionStorage.getItem('benchtop.quiet-dismissed') } catch { return false } })
   const [editing, setEditing] = useState(false)
   const saved = (user.preferences as any)?.dashboard?.widgets as Widget[] | undefined
   const [widgets, setWidgets] = useState<Widget[]>(saved?.length ? saved : DEFAULT_WIDGETS)
@@ -197,6 +200,12 @@ export default function Dashboard() {
           </div>
         ) : <button className="btn" onClick={() => setEditing(true)}>Customise</button>)}
       </div>
+      {(data?.lists.stale?.length ?? 0) > 0 && !quietDismissed && <div className="notice stale-note" role="status">
+        <span><b>{data!.lists.stale.length} draft{data!.lists.stale.length === 1 ? '' : 's'}</b> untouched for {data!.stale_days ?? 14}+ days: {data!.lists.stale.slice(0, 3).map((e, i) =>
+          <span key={e.id}>{i > 0 && ', '}<Link to={`/experiments/${e.id}`}>{e.eid}</Link> <span className="faint">{e.title.length > 40 ? e.title.slice(0, 40) + '…' : e.title}</span></span>)}
+          {data!.lists.stale.length > 3 && ` and ${data!.lists.stale.length - 3} more`}. Finish and sign them, or void the ones that went nowhere.</span>
+        <button className="btn ghost sm" onClick={() => { setQuietDismissed(true); try { sessionStorage.setItem('benchtop.quiet-dismissed', '1') } catch { /* ok */ } }}>Not now</button>
+      </div>}
       {user.has_password === false && <p className="notice" style={{ margin: 0 }}>
         {sessionStorage.getItem('benchtop.welcome') ? 'Welcome to Benchtop! ' : ''}You sign in with single sign-on. To sign records you'll also need a signing password: <Link to="/account">set one in Account settings</Link>.</p>}
       {editing && <p className="notice" style={{ margin: 0 }}>Drag a widget by its title to move it, drag the bottom-right corner to resize it, and use Remove or Add widget to change what's shown. Click Done to save.</p>}

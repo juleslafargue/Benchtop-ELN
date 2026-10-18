@@ -20,7 +20,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from . import chem, models
-from .demo_spectra_sim import carbon, chromatogram, proton
+from .demo_spectra_sim import carbon, chromatogram, proton, tlc_plate
 
 PW = "demo-lab-password"
 # the story ends "now" (when the demo is loaded) and goes back three months from there
@@ -150,6 +150,13 @@ class Lab:
         r = self.put(u, f"/api/entries/{r['id']}", json={"content": c})
         exp["s"][r["title"]] = r
         return r
+
+    def log(self, u, exp, text, minutes_later=0, attachment_id=None):
+        """A bench-log line at the simulated time."""
+        later(minutes_later)
+        n = CLOCK["now"]
+        return self.post(u, f"/api/experiments/{exp['id']}/log", json={"text": text, "time": n.strftime("%H:%M"), "day": n.strftime("%a %-d %b %Y"),
+                                                                     **({"attachment_id": attachment_id} if attachment_id else {})})
 
     def html(self, u, exp, title, text):
         return self.section(u, exp, title, {"html": text})
@@ -826,6 +833,14 @@ def _sophie(lab: Lab, NB):
         lab.row("tert-Butanol", "solvent", basis="volume", volume_ml=2), lab.row("Water (deionised)", "solvent", basis="volume", volume_ml=2), p],
         {"temperature_label": "rt", "time_h": 6, "atmosphere": "air"})
     lab.html("slaurent", e, "Procedure", "<p>Alkyne and benzyl azide solution in <i>t</i>BuOH/water (1:1); freshly made sodium ascorbate solution then CuSO<sub>4</sub> solution added (yellow → brown suspension). Stirred 6 h at rt; white precipitate formed.</p>")
+    lab.log("slaurent", e, f"Azide solution from {azide['eid']} (0.94 M) measured by syringe; alkyne in tBuOH/water")
+    lab.log("slaurent", e, "Ascorbate then CuSO4 added: yellow, then brown suspension", 6)
+    lab.log("slaurent", e, "⏱ Started 1 h timer: TLC check", 1)
+    plate = lab.attach("slaurent", e, "TLC_1h_CuAAC.png", tlc_plate([("SM", [(0.78, 0.9)]), ("co", [(0.78, 0.6), (0.31, 0.5)]), ("rxn", [(0.78, 0.25), (0.31, 0.95)])], seed=8), "image/png")
+    lab.log("slaurent", e, "⏱ TLC check: 1 h done", 59)
+    lab.log("slaurent", e, "TLC after 1 h (3:1 hexanes/EtOAc, UV): alkyne nearly gone, triazole at Rf 0.31", 3, attachment_id=plate["id"])
+    lab.log("slaurent", e, "White precipitate forming; left stirring", 50)
+    lab.log("slaurent", e, "Filtered, washed with dilute NH4OH (blue filtrate = Cu out) and water", 250)
     lab.purification("slaurent", e, method="trituration", isolated_mg=p["actual_mass_mg"], appearance="White solid",
                      notes_html="<p>Product precipitated; diluted with water, filtered, washed with dilute NH<sub>4</sub>OH (removes Cu) and water.</p>")
     lab.characterise("slaurent", e, "c1ccc(Cn2cc(-c3ccccc3)nn2)cc1", "1-Benzyl-4-phenyltriazole", mp="127–129 °C", seed=63)

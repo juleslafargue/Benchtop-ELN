@@ -81,11 +81,28 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
 
   const change = (c: any) => { edits.current++; setContent(c); setState('dirty') }
 
+  // no "are you sure?": the page offers Undo for a few seconds, and the section stays in the history anyway
   const remove = async () => {
-    if (!confirm(`Remove "${title}"? It stays in the version history.`)) return
     await api.del(`/api/entries/${entry.id}`)
     onDeleted()
   }
+
+  // a newer version arrived from elsewhere (bench log, phone, a colleague): take it if nothing is unsaved here
+  useEffect(() => {
+    if (entry.version > versionRef.current && state === 'saved') {
+      versionRef.current = entry.version
+      setVersion(entry.version)
+      setContent(entry.content)
+      setTitle(entry.title)
+    }
+  }, [entry.version]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ⌘S: save now instead of waiting for the pause
+  useEffect(() => {
+    const now = () => { if (state === 'dirty') save() }
+    window.addEventListener('benchtop:save-now', now)
+    return () => window.removeEventListener('benchtop:save-now', now)
+  }, [state, save])
 
   const props: EntryEditorProps = { content, onChange: change, readOnly, experimentId, attachments, onAttachmentsChanged, context }
   const stateText = { saved: `v${version}`, dirty: 'Unsaved', saving: 'Saving…', error: 'Not saved' }[state]

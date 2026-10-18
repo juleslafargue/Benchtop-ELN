@@ -19,6 +19,7 @@ router = APIRouter(prefix="/api", tags=["dashboard"])
 SPECTRUM_RE = re.compile(r"\.(jdx|dx|jcamp|jcm|csv|tsv|xy|zip)$", re.I)
 LOW_STOCK_FRACTION = 0.2
 EXPIRY_DAYS = 30
+STALE_DAYS = 14
 
 
 @router.get("/dashboard")
@@ -96,7 +97,11 @@ def dashboard(user: CurrentUser, session: DB):
             "awaiting": [summ(e) for e in exps if e.status == ExperimentStatus.signed and e.owner_id != user.id][:10],
             "returned": returned[:10],
             "pinned": pinned,
+            # drafts nobody has touched for two weeks (returned ones are already listed above)
+            "stale": [summ(e) for e in mine if e.status == ExperimentStatus.open and e.updated_at < now - timedelta(days=STALE_DAYS)
+                      and e.id not in {r["id"] for r in returned}][:10],
         },
+        "stale_days": STALE_DAYS,
         "stats": {"this_month": this_month, "last_month": last_month, "witnessed_this_month": witnessed_month,
                   "yields": yields[:200]},
         "spectra": spectra,
