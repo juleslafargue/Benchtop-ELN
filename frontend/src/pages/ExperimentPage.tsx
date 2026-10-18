@@ -14,15 +14,41 @@ import { useBackTarget } from '../components/BackButton'
 import { parseSpectrumBuffer, techniqueFor } from '../spectra'
 import type { Attachment, Entry, User, UserBrief } from '../api'
 
-const STAMP_WORD = { open: 'Draft', signed: 'Signed', witnessed: 'Witnessed', voided: 'Void' }
+const STATUS_WORD = { open: 'Draft', signed: 'Signed', witnessed: 'Witnessed', voided: 'Voided' }
+const STEPS = ['Draft', 'Signed', 'Witnessed'] as const
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 
-function Stamp({ exp, fresh }: { exp: Experiment; fresh: boolean }) {
-  const sigs = exp.signatures.filter(s => ['author', 'witness', 'void'].includes(s.meaning))
-  const last = sigs[sigs.length - 1]
+const StatusIcon = ({ status }: { status: Experiment['status'] }) => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {status === 'open' && <path d="M10.5 2.5l3 3L6 13H3v-3z" />}
+    {status === 'signed' && <><rect x="3" y="7" width="10" height="7" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 015 0v2" /></>}
+    {status === 'witnessed' && <><path d="M8 1.8l5 2v4c0 3.2-2.2 5.4-5 6.4-2.8-1-5-3.2-5-6.4v-4z" /><path d="M5.6 8.2l1.7 1.7 3.2-3.4" /></>}
+    {status === 'voided' && <><circle cx="8" cy="8" r="5.5" /><path d="M4.2 11.8l7.6-7.6" /></>}
+  </svg>
+)
+
+/** The record's state: a quiet pill, where it is in draft → signed → witnessed, and who did the last step. */
+function StatusCard({ exp, fresh }: { exp: Experiment; fresh: boolean }) {
+  const lastOf = (m: string) => [...exp.signatures].reverse().find(s => s.meaning === m)
+  const who = (s?: Signature) => s ? `${s.signer_name || displayName(s.user)} · ${shortDate(s.signed_at)}` : ''
+  const author = lastOf('author'), witness = lastOf('witness'), voided = lastOf('void')
+  const step = { open: 0, signed: 1, witnessed: 2, voided: -1 }[exp.status]
+  const line = exp.status === 'open' ? 'Editable until signed'
+    : exp.status === 'signed' ? <>Signed by {who(author)}<br /><span className="faint">Waiting for a witness</span></>
+      : exp.status === 'witnessed' ? <>Witnessed by {who(witness)}</>
+        : <>Voided by {who(voided)}</>
   return (
-    <div className={`stamp ${exp.status}${fresh ? ' fresh' : ''}`} role="img" aria-label={`Status: ${exp.status}`}>
-      <span className="word">{STAMP_WORD[exp.status]}</span>
-      <span className="by">{exp.status === 'open' ? 'editable' : last ? `${last.signer_name || displayName(last.user)} · ${new Date(last.signed_at).toLocaleDateString()}` : ''}</span>
+    <div className={`status-card ${exp.status}${fresh ? ' fresh' : ''}`} role="group" aria-label={`Status: ${STATUS_WORD[exp.status]}`}>
+      <span className="sc-pill"><StatusIcon status={exp.status} />{STATUS_WORD[exp.status]}</span>
+      {step >= 0 && <ol className="sc-steps" aria-label="Signing progress">
+        {STEPS.map((label, i) => (
+          <li key={label} className={i < step ? 'done' : i === step ? 'now' : ''} aria-current={i === step ? 'step' : undefined}
+            title={i === 1 && author ? `Signed by ${who(author)}` : i === 2 && witness ? `Witnessed by ${who(witness)}` : undefined}>
+            <i />{label}
+          </li>
+        ))}
+      </ol>}
+      <div className="sc-by">{line}</div>
     </div>
   )
 }
@@ -241,7 +267,7 @@ export default function ExperimentPage() {
               onKeyDown={e => { const v = (e.target as HTMLInputElement).value.trim(); if (e.key === 'Enter' && v) { patch({ tags: [...exp.tags, v] }); (e.target as HTMLInputElement).value = '' } }} />}
           </div>
         </div>
-        {!exp.is_template && <Stamp exp={exp} fresh={fresh} />}
+        {!exp.is_template && <StatusCard exp={exp} fresh={fresh} />}
       </header>
 
       <div className="tabs" role="tablist">

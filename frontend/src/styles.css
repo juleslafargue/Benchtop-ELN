@@ -119,25 +119,23 @@ a.list-row:hover { background: var(--paper-2); }
 .status.open { color: var(--open); } .status.signed { color: var(--signed); }
 .status.witnessed { color: var(--witnessed); } .status.voided { color: var(--voided); }
 
-/* The one loud element: a record's signing state as an ink stamp */
-.stamp {
-  --c: var(--open);
-  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
-  border: 2.5px solid var(--c); color: var(--c); border-radius: 8px; padding: 6px 14px 5px;
-  transform: rotate(-4deg); font-weight: 700; letter-spacing: 0.06em; line-height: 1.05;
-  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c) 35%, transparent);
-  background: color-mix(in srgb, var(--c) 5%, transparent); min-width: 128px; text-align: center;
-  mask-image: radial-gradient(circle at 30% 40%, #000 60%, rgba(0,0,0,.82) 100%);
-}
-.stamp .word { font-size: 20px; text-transform: uppercase; }
-.stamp .by { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; opacity: .9; margin-top: 2px; }
-.stamp.open { --c: var(--open); border-style: dashed; transform: none; }
-.stamp.signed { --c: var(--signed); }
-.stamp.witnessed { --c: var(--witnessed); }
-.stamp.voided { --c: var(--voided); }
+/* A record's signing state: pill + draft → signed → witnessed progress */
+.status-card { --c: var(--open); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 210px; text-align: right; }
+.status-card.signed { --c: var(--signed); } .status-card.witnessed { --c: var(--witnessed); } .status-card.voided { --c: var(--voided); }
+.sc-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px 3px 9px; border-radius: 99px; font-size: 14px; font-weight: 600;
+  color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); }
+.sc-steps { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; margin: 0; padding: 0; list-style: none; font-size: 11.5px; color: var(--ink-3, var(--ink-2)); }
+.sc-steps li { display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; text-align: center; }
+.sc-steps li i { width: 9px; height: 9px; border-radius: 50%; background: var(--paper); border: 1.5px solid var(--rule-strong); position: relative; z-index: 1; }
+.sc-steps li + li::before { content: ''; position: absolute; top: 4px; right: 50%; width: 100%; height: 1.5px; background: var(--rule-strong); }
+.sc-steps li.done i, .sc-steps li.now i { background: var(--c); border-color: var(--c); }
+.sc-steps li.done + li::before, .sc-steps li.now::before { background: var(--c); }
+.sc-steps li.now { color: var(--ink); font-weight: 600; }
+.sc-steps li.now i { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent); }
+.sc-by { font-size: 12.5px; color: var(--ink-2); line-height: 1.4; }
 @media (prefers-reduced-motion: no-preference) {
-  .stamp.fresh { animation: thunk .38s cubic-bezier(.2,1.6,.4,1); }
-  @keyframes thunk { from { transform: rotate(-4deg) scale(1.6); opacity: 0; } to { transform: rotate(-4deg) scale(1); opacity: 1; } }
+  .status-card.fresh .sc-pill { animation: sc-pop .45s cubic-bezier(.2,1.4,.4,1); }
+  @keyframes sc-pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 }
 
 /* ---------- experiment page */
@@ -308,7 +306,7 @@ table.plain td.num { text-align: right; }
   .layout-2 { grid-template-columns: minmax(0, 1fr); }
   .rail { position: static; }
   .exp-head { grid-template-columns: minmax(0, 1fr); }
-  .exp-head .stamp { justify-self: start; }
+  .exp-head .status-card { justify-self: start; align-items: flex-start; text-align: left; min-width: 0; width: min(100%, 300px); }
   .exp-title, .exp-title-input { font-size: 25px; }
   .mat-row { grid-template-columns: 72px minmax(0, 1fr) auto; }
   .mat-row > span { min-width: 0; overflow-wrap: anywhere; }
