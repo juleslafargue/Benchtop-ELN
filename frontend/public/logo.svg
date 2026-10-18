@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-34 -64 120 132" role="img" aria-label="Benchtop">
+  <style>.i{stroke:#1f2a36;fill:none}.a{fill:#b8336a}@media (prefers-color-scheme:dark){.i{stroke:#e9eef3}.a{fill:#e8739f}}</style>
+  <line class="i" x1="0" y1="-52" x2="0" y2="36" stroke-width="10" stroke-linecap="round"/>
+  <polygon class="i" points="0,12 26,-3 52,12 52,42 26,57 0,42" stroke-width="10" stroke-linejoin="round"/>
+  <rect class="a" x="10" y="21.5" width="32" height="11" rx="5.5" transform="rotate(-30 26 27)"/>
+</svg>

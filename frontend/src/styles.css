@@ -54,7 +54,8 @@ code { font-family: var(--mono); font-size: 0.85em; }
   position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: 22px;
 }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 17px; text-decoration: none; padding: 0 6px; }
-.brand img { width: 24px; height: 24px; }
+.brand img, .brand .logo { flex: none; }
+.logo { display: block; color: var(--ink); }
 .nav { display: flex; flex-direction: column; gap: 1px; }
 .nav a, .nb-link {
   display: flex; justify-content: space-between; align-items: center; gap: 8px;

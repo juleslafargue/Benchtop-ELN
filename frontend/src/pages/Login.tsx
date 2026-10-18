@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, type User } from '../api'
 import PasswordField from '../components/PasswordField'
+import Logo from '../components/Logo'
 
 function Setup({ onLogin }: { onLogin: (token: string, user: User) => void }) {
   const [f, setF] = useState({ full_name: '', username: '', email: '', password: '', confirm: '', load_demo: true })
@@ -24,7 +25,7 @@ function Setup({ onLogin }: { onLogin: (token: string, user: User) => void }) {
   return (
     <div className="login">
       <form className="panel panel-pad login-card stack" style={{ width: 'min(460px, 100%)' }} onSubmit={submit}>
-        <img src="/flask.svg" alt="" width={36} height={36} />
+        <Logo size={40} />
         <div>
           <h1>Welcome to Benchtop</h1>
           <p className="muted" style={{ margin: 0 }}>Create your account. You'll be the administrator of this notebook.</p>
@@ -98,7 +99,7 @@ export default function Login({ onLogin }: { onLogin: (token: string, user: User
         <p className="faint" style={{ margin: 0 }}>Or type a username below; every demo account's password is <code>{demo.password}</code>.</p>
       </div>}
       <form className="panel panel-pad login-card stack" onSubmit={submit}>
-        <img src="/flask.svg" alt="" width={36} height={36} />
+        <Logo size={40} />
         <div>
           <h1>Benchtop</h1>
           <p className="muted" style={{ margin: 0 }}>Sign in to your lab notebook.</p>

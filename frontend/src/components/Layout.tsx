@@ -9,6 +9,7 @@ import BackButton, { BackProvider } from './BackButton'
 import { AudIcon } from './Audience'
 import Notifications from './Notifications'
 import MainNav from './MainNav'
+import Logo from './Logo'
 import { TimerTray } from './BenchTools'
 import { useCollapsed } from '../collapse'
 
@@ -47,7 +48,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     <BackProvider>
     <div className="shell">
       <aside className={`side${open ? ' open' : ''}`} aria-label="Main navigation">
-        <div className="brand-row"><NavLink to="/" className="brand"><img src="/flask.svg" alt="" />Benchtop{demo && <span className="demo-badge" title="Demo data: nothing here is real">Demo</span>}</NavLink>{!narrow && <Notifications />}</div>
+        <div className="brand-row"><NavLink to="/" className="brand"><Logo size={26} />Benchtop{demo && <span className="demo-badge" title="Demo data: nothing here is real">Demo</span>}</NavLink>{!narrow && <Notifications />}</div>
         <button className="palette-trigger" onClick={() => setPalette(true)}>
           <span>Find or do anything…</span><kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
         </button>

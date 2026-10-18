@@ -1,3 +1,5 @@
+<p><img src="docs/logo.svg" alt="" width="56" align="left"></p>
+
 # Benchtop ELN
 
 An open-source, self-hosted electronic lab notebook for synthetic chemistry. It covers the core
