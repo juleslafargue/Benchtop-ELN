@@ -206,10 +206,37 @@ a.list-row:hover { background: var(--paper-2); }
 @media (hover: none) { .add-menu-foot { display: none; } }
 
 /* rich text */
-.rt-toolbar { display: flex; gap: 2px; flex-wrap: wrap; margin-bottom: 8px; }
-.rt-toolbar button { border: 1px solid transparent; background: none; border-radius: 5px; padding: 2px 8px; cursor: pointer; font-size: 13px; color: var(--ink-2); min-width: 30px; }
-.rt-toolbar button:hover { background: var(--paper-2); }
+.rt-toolbar { display: flex; gap: 1px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; padding: 3px; border: 1px solid var(--rule); border-radius: 8px;
+  background: var(--paper); position: sticky; top: 0; z-index: 6; }
+.rt-toolbar button { border: 1px solid transparent; background: none; border-radius: 5px; padding: 3px 7px; cursor: pointer; font-size: 13px; color: var(--ink-2);
+  min-width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.rt-toolbar button:hover:not(:disabled) { background: var(--paper-2); color: var(--ink); }
 .rt-toolbar button.on { background: var(--accent-soft); color: var(--ink); }
+.rt-toolbar button:disabled { opacity: .35; cursor: default; }
+.rt-sep { width: 1px; height: 18px; background: var(--rule); margin: 0 4px; }
+.rt-menu { position: relative; display: inline-flex; }
+.rt-caret { font-size: 9px; opacity: .6; }
+.rt-style { min-width: 72px; text-align: left; }
+.rt-formula { font-size: 12.5px; }
+.rt-hl { background: color-mix(in srgb, #f5d000 45%, transparent); padding: 0 3px; border-radius: 2px; color: var(--ink); }
+.rt-colour { font-weight: 700; border-bottom: 3px solid; line-height: 1; padding: 0 2px 1px; }
+.rt-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; min-width: 170px; background: var(--paper); border: 1px solid var(--rule-strong);
+  border-radius: 9px; box-shadow: 0 10px 28px rgba(0,0,0,.2); padding: 4px; display: flex; flex-direction: column; }
+.rt-pop.wide { width: 300px; }
+.rt-toolbar .rt-pop .rt-item { justify-content: flex-start; width: 100%; height: auto; padding: 6px 8px; font-size: 13.5px; color: var(--ink); gap: 8px; }
+.rt-item.st-h2 { font-family: var(--serif); font-size: 18px !important; font-weight: 600; }
+.rt-item.st-h3 { font-family: var(--serif); font-size: 16px !important; font-weight: 600; }
+.rt-item.st-code { font-family: ui-monospace, Menlo, monospace; }
+.rt-swatches { display: flex; gap: 2px; padding: 2px; }
+.rt-toolbar .rt-swatch { font-weight: 700; font-size: 15px; width: 30px; }
+.rt-swatch.on { outline: 2px solid var(--accent); }
+.rt-symgroup + .rt-symgroup { margin-top: 4px; }
+.rt-symhead { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); padding: 4px 6px 2px; }
+.rt-syms { display: flex; flex-wrap: wrap; }
+.rt-toolbar .rt-syms button { min-width: 34px; color: var(--ink); font-size: 14px; }
+.rt-link { display: flex; flex-direction: column; gap: 6px; padding: 4px; width: 290px; }
+.rt-table-tools { display: flex; align-items: center; gap: 1px; flex-basis: 100%; border-top: 1px solid var(--rule); margin-top: 3px; padding-top: 3px; font-size: 12.5px; }
+.rt-table-tools .faint { padding: 0 6px; }
 .prose { font-family: var(--serif); font-size: 17px; line-height: 1.6; max-width: 76ch; }
 .prose .ProseMirror { outline: none; min-height: 3.2em; }
 .prose .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--ink-3); float: left; height: 0; pointer-events: none; }
@@ -217,6 +244,22 @@ a.list-row:hover { background: var(--paper-2); }
 .prose ol, .prose ul { padding-left: 1.4em; margin: 0 0 .6em; }
 .prose table { border-collapse: collapse; font-family: var(--sans); font-size: 14px; }
 .prose td, .prose th { border: 1px solid var(--rule-strong); padding: 4px 8px; min-width: 60px; }
+.prose th { background: var(--paper-2); font-weight: 600; text-align: left; }
+.prose .selectedCell { background: var(--accent-soft); }
+.prose h2 { font-size: 1.3em; margin: .8em 0 .3em; } .prose h3 { font-size: 1.1em; margin: .7em 0 .3em; }
+.prose blockquote { margin: 0 0 .6em; padding: 6px 12px; border-left: 3px solid var(--accent); background: var(--paper-2); border-radius: 0 6px 6px 0; }
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose hr { border: 0; border-top: 1px solid var(--rule-strong); margin: 1em 0; }
+.prose mark { background: color-mix(in srgb, #f5d000 45%, transparent); color: inherit; padding: 0 1px; border-radius: 2px; }
+.prose a { color: var(--accent); }
+.prose pre { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--paper-2); padding: 8px 10px; border-radius: 6px; overflow-x: auto; }
+.prose code { font-family: ui-monospace, Menlo, monospace; font-size: .85em; }
+.prose ul[data-type=taskList] { list-style: none; padding-left: .2em; }
+.prose ul[data-type=taskList] li { display: flex; gap: 8px; align-items: flex-start; }
+.prose ul[data-type=taskList] li > label { flex: none; margin-top: .3em; }
+.prose ul[data-type=taskList] li > div { flex: 1; min-width: 0; }
+.prose ul[data-type=taskList] li[data-checked=true] > div { color: var(--ink-3); text-decoration: line-through; }
+.prose ul[data-type=taskList] input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); }
 
 /* stoichiometry grid */
 .rxn-scheme { display: flex; align-items: center; justify-content: center; min-height: 120px; background: var(--paper-2); border-radius: 8px; margin-bottom: 12px; overflow-x: auto; }
@@ -501,6 +544,10 @@ kbd { font: 11px var(--sans); border: 1px solid var(--rule-strong); border-botto
 .ychart .tick { fill: var(--ink-3); font-size: 11px; font-family: var(--sans); }
 .ychart .dot { fill: var(--witnessed); stroke: var(--paper); stroke-width: 2; }
 .ytip { position: absolute; transform: translate(-50%, calc(-100% - 12px)); background: var(--ink); color: var(--paper); font-size: 12.5px; padding: 6px 9px; border-radius: 7px; pointer-events: none; white-space: nowrap; }
+.ytip.below { transform: translate(-50%, 12px); }
+.ytip.left { transform: translate(-14px, calc(-100% - 12px)); } .ytip.left.below { transform: translate(-14px, 12px); }
+.ytip.right { transform: translate(calc(-100% + 14px), calc(-100% - 12px)); } .ytip.right.below { transform: translate(calc(-100% + 14px), 12px); }
+.ytip { z-index: 5; }
 .ytip .faint { color: color-mix(in srgb, var(--paper) 70%, transparent); }
 .react-grid-item.react-grid-placeholder { background: var(--accent) !important; opacity: .15 !important; border-radius: 10px; }
 .react-grid-item > .react-resizable-handle { opacity: 0; }

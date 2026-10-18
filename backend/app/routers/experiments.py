@@ -10,6 +10,22 @@ import html
 from typing import Any
 
 import nh3
+
+# Rich text allowed in procedure/notes sections: nh3's safe defaults, plus what the editor needs for
+# checklists, alignment, text colour and links. Styles are limited to colour and alignment.
+_ATTRS = {k: set(v) for k, v in nh3.ALLOWED_ATTRIBUTES.items()}
+for _t in ("p", "h1", "h2", "h3", "h4", "span", "mark"):
+    _ATTRS.setdefault(_t, set()).add("style")
+_ATTRS.setdefault("ul", set()).add("data-type")
+_ATTRS.setdefault("li", set()).update({"data-type", "data-checked"})
+_ATTRS.setdefault("a", set()).update({"href", "target"})
+_ATTRS.setdefault("th", set()).update({"colspan", "rowspan"})
+_ATTRS.setdefault("td", set()).update({"colspan", "rowspan"})
+
+
+def clean_html(html: str) -> str:
+    return nh3.clean(html or "", tags=nh3.ALLOWED_TAGS | {"label"}, attributes=_ATTRS,
+                     filter_style_properties={"color", "text-align", "background-color"}, link_rel="noopener noreferrer")
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
@@ -402,7 +418,7 @@ class EntryIn(BaseModel):
 def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
     content = dict(content or {})
     if kind == EntryKind.text:
-        content["html"] = nh3.clean(content.get("html", "") or "")
+        content["html"] = clean_html(content.get("html", ""))
     elif kind == EntryKind.reaction:
         cond = {k: (content.get("conditions") or {}).get(k) for k in CONDITION_FIELDS}
         for k in ("temperature_c", "time_h", "target_conc_m"):
@@ -414,7 +430,7 @@ def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
             content["rows"], content["totals"] = calc["rows"], calc["totals"]
             content["warnings"] = calc["warnings"]
     elif kind == EntryKind.purification:
-        content["notes_html"] = nh3.clean(content.get("notes_html", "") or "")
+        content["notes_html"] = clean_html(content.get("notes_html", ""))
         content["isolated_mg"] = _num(content.get("isolated_mg"))
     elif kind == EntryKind.characterization:
         items = []
@@ -429,7 +445,7 @@ def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
     elif kind == EntryKind.safety:
         for k in ("controls", "waste", "emergency"):
             content[k] = str(content.get(k) or "")[:4000]
-        content["notes_html"] = nh3.clean(content.get("notes_html", "") or "")
+        content["notes_html"] = clean_html(content.get("notes_html", ""))
         snap = content.get("snapshot")
         content["snapshot"] = snap if isinstance(snap, dict) and len(json.dumps(snap)) < 200_000 else None
     elif kind == EntryKind.screen:
@@ -810,7 +826,7 @@ def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
     c = e.content or {}
     h = f"<section><h2>{html.escape(e.title)}</h2>"
     if e.kind == EntryKind.text:
-        h += f"<div class='rich'>{nh3.clean(c.get('html', ''))}</div>"
+        h += f"<div class='rich'>{clean_html(c.get('html', ''))}</div>"
     elif e.kind == EntryKind.reaction:
         cond = c.get("conditions") or {}
         bits = []
@@ -860,7 +876,7 @@ def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
         for k, label in (("controls", "Controls"), ("waste", "Waste"), ("emergency", "Emergency")):
             if c.get(k):
                 h += f"<p><strong>{label}:</strong> {html.escape(c[k])}</p>"
-        h += f"<div class='rich'>{nh3.clean(c.get('notes_html', ''))}</div>"
+        h += f"<div class='rich'>{clean_html(c.get('notes_html', ''))}</div>"
     elif e.kind == EntryKind.screen:
         xs, ys, cells = c.get("x_levels") or [], c.get("y_levels") or [], c.get("cells") or {}
         h += f"<p>{html.escape(c.get('response', ''))} by {html.escape(c.get('y_name', ''))} (rows) and {html.escape(c.get('x_name', ''))} (columns)</p>"
@@ -884,7 +900,7 @@ def _render_entry(e: Entry, atts: dict[int, Attachment]) -> str:
                 ("Isolated", f"{_fmt(c.get('isolated_mg'))} mg" if c.get("isolated_mg") is not None else ""),
                 ("Appearance", c.get("appearance"))]
         h += "<table>" + "".join(f"<tr><th>{k}</th><td>{html.escape(str(v))}</td></tr>" for k, v in rows if v) + "</table>"
-        h += f"<div class='rich'>{nh3.clean(c.get('notes_html', ''))}</div>"
+        h += f"<div class='rich'>{clean_html(c.get('notes_html', ''))}</div>"
     elif e.kind == EntryKind.characterization:
         h += "<table><tr><th>Technique</th><th>Conditions</th><th>Data</th><th>File</th></tr>"
         for it in c.get("items", []):
@@ -926,7 +942,9 @@ def export_experiment(exp_id: int, user: CurrentUser, session: DB, format: str =
 header{{border-bottom:2px solid #111;margin-bottom:1rem}} h1{{margin:.2rem 0}} .meta{{color:#555}}
 table{{border-collapse:collapse;width:100%;margin:.5rem 0;font-size:12px}} td,th{{border:1px solid #bbb;padding:3px 6px;text-align:left}}
 th{{background:#f2f2f2}} section{{margin:1.5rem 0;page-break-inside:avoid}} .rxn svg{{max-width:100%;height:auto}}
-code{{font-size:11px}} footer{{margin-top:2rem;border-top:1px solid #999;font-size:11px;color:#555}}</style></head><body>
+code{{font-size:11px}} ul[data-type=taskList]{{list-style:none;padding-left:.2em}} li[data-type=taskItem]::before{{content:'\\2610  '}}
+li[data-checked=true]::before{{content:'\\2611  '}} li[data-type=taskItem] div,li[data-type=taskItem] p{{display:inline}} blockquote{{border-left:3px solid #999;margin:.5rem 0;padding:.2rem .8rem;background:#f6f6f6}} mark{{background:#fff3a0}}
+footer{{margin-top:2rem;border-top:1px solid #999;font-size:11px;color:#555}}</style></head><body>
 <header><div class="meta">{exp.eid} · {html.escape(exp.status.value.upper())}</div><h1>{html.escape(exp.title)}</h1>
 <div class="meta">Author: {html.escape(owner.full_name or owner.username)} · Created {exp.created_at:%Y-%m-%d %H:%M} UTC · Last modified {exp.updated_at:%Y-%m-%d %H:%M} UTC</div>
 <p>{html.escape(exp.description)}</p></header>{body}

@@ -171,3 +171,12 @@ def test_sidebar_order_is_saved_and_cleaned(client, admin):
     p = r.json()["preferences"]
     assert p["nav"] == ["compounds", "dashboard"] and p["nav_hidden"] == ["groups"]
     client.patch("/api/auth/me", headers=admin, json={"preferences": {"nav": [], "nav_hidden": []}})
+
+
+def test_rich_text_keeps_formatting_but_not_scripts():
+    from app.routers.experiments import clean_html
+    out = clean_html('<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><div><p style="text-align:center;position:fixed">'
+                     '<span style="color:#c0392b">Dry</span> <mark>MgSO4</mark></p></div></li></ul>'
+                     '<a href="javascript:alert(1)" onclick="x">bad</a><img src=x onerror=alert(1)><script>alert(1)</script>')
+    assert 'data-checked="true"' in out and 'text-align:center' in out and 'color:#c0392b' in out and "<mark>" in out
+    assert "position" not in out and "javascript" not in out and "onerror" not in out and "onclick" not in out and "<script" not in out

@@ -49,8 +49,9 @@ export default function YieldChart({ points }: { points: YieldPoint[] }) {
         <text x={W - m.r} y={y(median) - 5} textAnchor="end" className="tick">median {median.toFixed(0)}%</text>
         {pts.map((p, i) => <circle key={`${p.experiment_id}-${i}`} cx={x(t[i])} cy={y(p.yield_pct)} r={hover === i ? 6 : 4.5} className="dot" />)}
       </svg>
-      {h && <div className="ytip" style={{ left: `${x(t[hover!]) / W * 100}%`, top: `${y(h.yield_pct) / H * 100}%` }}>
-        <b>{h.yield_pct.toFixed(1)}%</b> {h.product || ''}<br /><span className="faint">{h.eid} · {new Date(h.date).toLocaleDateString()}</span>
+      {h && <div className={`ytip${y(h.yield_pct) < H * 0.35 ? ' below' : ''}${x(t[hover!]) < W * 0.2 ? ' left' : x(t[hover!]) > W * 0.8 ? ' right' : ''}`}
+        style={{ left: `${x(t[hover!]) / W * 100}%`, top: `${y(h.yield_pct) / H * 100}%` }}>
+        <b>{h.yield_pct.toFixed(1)}%</b> {h.product || ''}<br /><span className="faint">{h.eid} · {new Date(h.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
       </div>}
     </div>
   )
