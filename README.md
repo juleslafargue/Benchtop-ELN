@@ -269,14 +269,13 @@ that work.
 
 ## Roadmap ideas
 
-- Next: compound and batch registration with a route view, `.eln` import/export (ELN Consortium format), bench mode with phone photos and barcode scanning; PDF export, DOI references
+- Next: compound and batch registration with a route view, `.eln` import/export (ELN Consortium format), barcode scanning for lots and samples, DOI references
 - Code plugins (Python packages with hooks, extra pages and widgets), building on today's plugin files
-
 - Plate/sample-set entities and a sample-tracking view
 - Varian/JEOL raw FIDs, 2D NMR, and mzML for MS
 - Instrument file drop-folders that auto-attach to experiments
 - Email notifications and witness assignment
-- PDF/A export with embedded signature manifest
+- PDF/A archiving with an embedded signature manifest (today's PDF export is a regular PDF)
 
 ## Licence
 
