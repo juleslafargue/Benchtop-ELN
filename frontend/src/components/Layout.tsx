@@ -8,6 +8,7 @@ import CommandPalette from './CommandPalette'
 import BackButton, { BackProvider } from './BackButton'
 import { AudIcon } from './Audience'
 import Notifications from './Notifications'
+import MainNav from './MainNav'
 
 export const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'
 
@@ -47,17 +48,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         <button className="palette-trigger" onClick={() => setPalette(true)}>
           <span>Find or do anything…</span><kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
         </button>
-        <nav className="nav">
-          <NavLink to="/" end>Dashboard</NavLink>
-          <NavLink to="/reactions">Reactions</NavLink>
-          <NavLink to="/compounds">Compounds</NavLink>
-          <NavLink to="/search">Search</NavLink>
-          <NavLink to="/materials">Materials</NavLink>
-          <NavLink to="/inventory">Inventory</NavLink>
-          <NavLink to="/templates">Templates</NavLink>
-          <NavLink to="/groups">Groups</NavLink>
-          {user.role === 'admin' && <NavLink to="/admin">Users &amp; audit</NavLink>}
-        </nav>
+        <MainNav />
         <div>
           <div className="side-heading">
             <span>Notebooks</span>

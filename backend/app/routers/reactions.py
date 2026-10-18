@@ -156,7 +156,8 @@ def compounds(user: CurrentUser, session: DB):
             if row is None:
                 continue
             if r["experiment_id"] not in [e["id"] for e in row["experiments"]]:
-                row["experiments"].append({"id": r["experiment_id"], "eid": r["eid"]})
+                row["experiments"].append({"id": r["experiment_id"], "eid": r["eid"], "title": r["title"], "status": r["status"],
+                                           "date": r["date"], "yield_pct": pd["yield_pct"]})
             if pd["yield_pct"] is not None:
                 row["best_yield"] = max(row["best_yield"] or 0, pd["yield_pct"])
     for m in session.exec(select(Material).where(Material.kind.in_(["product", "sample"]))).all():
@@ -164,6 +165,8 @@ def compounds(user: CurrentUser, session: DB):
             row = add(m.smiles, m.name)
             if row is not None:
                 row["material"] = {"id": m.id, "mid": m.mid}
+    for row in seen.values():
+        row["experiments"].sort(key=lambda e: e["date"] or "", reverse=True)  # newest first
     return sorted(seen.values(), key=lambda r: r["name"].lower())
 
 

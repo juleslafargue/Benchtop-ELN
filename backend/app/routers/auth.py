@@ -36,6 +36,7 @@ def user_out(u: User) -> dict:
 
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
+NAV_KEYS = ("dashboard", "reactions", "compounds", "search", "materials", "inventory", "templates", "groups", "admin")
 PREF_KEYS = {"theme": ("system", "light", "dark"), "default_notebook_id": None, "spectrum_expanded": (True, False)}
 
 
@@ -89,6 +90,9 @@ def _clean_prefs(p: dict[str, Any]) -> dict[str, Any]:
             continue
         if k == "pinned":
             out[k] = [int(i) for i in (v or [])[:100] if isinstance(i, (int, float))] if isinstance(v, list) else []
+            continue
+        if k in ("nav", "nav_hidden"):  # sidebar order and hidden items, as known keys
+            out[k] = list(dict.fromkeys(i for i in v if i in NAV_KEYS)) if isinstance(v, list) else []
             continue
         if k not in PREF_KEYS:
             continue

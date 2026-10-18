@@ -164,3 +164,10 @@ def test_default_admin_cannot_be_used_before_setup(tmp_path, monkeypatch):
     finally:
         with Session(engine) as s:
             a = s.exec(select(User).where(User.username == "admin")).one(); a.password_hash = saved; s.add(a); s.commit()
+
+
+def test_sidebar_order_is_saved_and_cleaned(client, admin):
+    r = client.patch("/api/auth/me", headers=admin, json={"preferences": {"nav": ["compounds", "dashboard", "compounds", "<script>"], "nav_hidden": ["groups", 7]}})
+    p = r.json()["preferences"]
+    assert p["nav"] == ["compounds", "dashboard"] and p["nav_hidden"] == ["groups"]
+    client.patch("/api/auth/me", headers=admin, json={"preferences": {"nav": [], "nav_hidden": []}})

@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { api, fmt } from '../api'
+import { ago, api, fmt, type Status } from '../api'
 import { Mol } from '../components/bits'
 
+interface MadeIn { id: number; eid: string; title: string; status: Status; date: string; yield_pct: number | null }
 interface Compound {
   name: string; smiles: string; formula: string; mw: number; logp: number; tpsa: number; hbd: number; hba: number
   rotatable_bonds: number; heavy_atoms: number; aromatic_rings: number; fsp3: number; qed: number | null
-  lipinski_violations: string[]; veber_violations: string[]; experiments: { id: number; eid: string }[]
+  lipinski_violations: string[]; veber_violations: string[]; experiments: MadeIn[]
   best_yield: number | null; material: { id: number; mid: string } | null
 }
-type Key = 'name' | 'mw' | 'logp' | 'tpsa' | 'hbd' | 'hba' | 'rotatable_bonds' | 'fsp3' | 'qed' | 'best_yield'
+type Key = 'name' | 'made' | 'mw' | 'logp' | 'tpsa' | 'hbd' | 'hba' | 'rotatable_bonds' | 'fsp3' | 'qed' | 'best_yield'
 const COLS: [Key, string, string][] = [
   ['mw', 'MW', 'Molecular weight of the largest fragment'], ['logp', 'cLogP', 'Crippen calculated logP'], ['tpsa', 'TPSA', 'Topological polar surface area (Å²)'],
   ['hbd', 'HBD', 'H-bond donors'], ['hba', 'HBA', 'H-bond acceptors'], ['rotatable_bonds', 'RotB', 'Rotatable bonds'],
@@ -26,7 +28,8 @@ export default function Compounds() {
   const shown = useMemo(() => {
     const r = (rows || []).filter(c => !onlyRo5 || (c.lipinski_violations.length <= 1 && !c.veber_violations.length))
     return [...r].sort((a, b) => {
-      const x = a[sort.key], y = b[sort.key]
+      const val = (c: Compound) => sort.key === 'made' ? c.experiments.length : c[sort.key]
+      const x = val(a), y = val(b)
       if (typeof x === 'string' || typeof y === 'string') return String(x).localeCompare(String(y)) * sort.dir
       return ((x ?? -Infinity) as number) > ((y ?? -Infinity) as number) ? sort.dir : -sort.dir
     })
@@ -46,7 +49,7 @@ export default function Compounds() {
       {err && <p className="error">{err}</p>}
       <div className="panel grid-wrap" style={{ border: 0 }}>
         <table className="plain">
-          <thead><tr>{th('name', 'Compound')}<th>Structure</th>{COLS.map(([k, l, t]) => th(k, l, t))}<th>Rules</th><th>Made in</th></tr></thead>
+          <thead><tr>{th('name', 'Compound')}<th>Structure</th>{COLS.map(([k, l, t]) => th(k, l, t))}<th>Rules</th>{th('made', 'Made in', 'Experiments that made this compound')}</tr></thead>
           <tbody>
             {shown.map(c => <tr key={c.smiles}>
               <td><b style={{ fontWeight: 600 }}>{c.name || c.formula}</b><div className="faint">{c.formula}{c.material ? <> · <Link to={`/materials/${c.material.id}`}>{c.material.mid}</Link></> : null}</div></td>
@@ -57,7 +60,7 @@ export default function Compounds() {
               <td className="num">{c.best_yield !== null ? `${fmt(c.best_yield, 1)}%` : '—'}</td>
               <td style={{ fontSize: 12.5 }}>{!c.lipinski_violations.length && !c.veber_violations.length ? <span className="faint">Passes Lipinski & Veber</span>
                 : [...c.lipinski_violations, ...c.veber_violations].map(v => <div key={v}>{v}</div>)}</td>
-              <td style={{ fontSize: 13 }}>{c.experiments.map(e => <div key={e.id}><Link to={`/experiments/${e.id}`}>{e.eid}</Link></div>)}</td>
+              <td className="made-in"><MadeInCell exps={c.experiments} name={c.name || c.formula} /></td>
             </tr>)}
             {rows && !shown.length && <tr><td colSpan={13} className="empty">No compounds yet. Products from your reaction tables appear here.</td></tr>}
             {!rows && !err && <tr><td colSpan={13} className="empty">Calculating…</td></tr>}
@@ -66,4 +69,48 @@ export default function Compounds() {
       </div>
     </div>
   )
+}
+
+/** One experiment links straight to it; more than one shows a count that opens a scrollable list,
+ *  so a compound made a hundred times keeps a normal-sized row. */
+function MadeInCell({ exps, name }: { exps: MadeIn[]; name: string }) {
+  const [open, setOpen] = useState(false)
+  const btn = useRef<HTMLButtonElement>(null)
+  const pop = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!open || !btn.current) return
+    const r = btn.current.getBoundingClientRect(), w = 340
+    const below = window.innerHeight - r.bottom > 300
+    setPos({ left: Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)), top: below ? r.bottom + 6 : Math.max(8, r.top - 6 - Math.min(320, 52 + exps.length * 52)) })
+  }, [open, exps.length])
+  useEffect(() => {
+    if (!open) return
+    const close = (e: Event) => { if (!pop.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setOpen(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(false); btn.current?.focus() } }
+    const away = (e: Event) => { if (!pop.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', close); document.addEventListener('keydown', esc); window.addEventListener('scroll', away, true)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); window.removeEventListener('scroll', away, true) }
+  }, [open])
+  if (!exps.length) return <span className="faint">—</span>
+  if (exps.length === 1) return <Link to={`/experiments/${exps[0].id}`} className="eid-link">{exps[0].eid}</Link>
+  return <>
+    <button ref={btn} className="made-btn" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(o => !o)}
+      title={`Made in ${exps.length} experiments; latest ${exps[0].eid}`}>
+      <span className="made-n">{exps.length}</span> experiments <span aria-hidden>▾</span>
+    </button>
+    {open && createPortal(
+      <div ref={pop} className="made-pop" role="dialog" aria-label={`Experiments that made ${name}`} style={pos ? { top: pos.top, left: pos.left } : { visibility: 'hidden' }}>
+        <div className="made-head">{name} <span className="faint">· {exps.length} experiments, newest first</span></div>
+        <ul>
+          {exps.map(e => <li key={e.id}>
+            <Link to={`/experiments/${e.id}`}>
+              <span className={`status ${e.status}`} aria-label={e.status} />
+              <span className="made-main"><b>{e.eid}</b> <span className="made-title">{e.title}</span></span>
+              <span className="made-meta">{e.yield_pct !== null ? `${fmt(e.yield_pct, 1)}%` : ''}<span className="faint">{ago(e.date)}</span></span>
+            </Link>
+          </li>)}
+        </ul>
+      </div>, document.body)}
+  </>
 }
