@@ -183,6 +183,11 @@ export function loadAttachmentImages(root: HTMLElement | null) {
   root?.querySelectorAll<HTMLImageElement>('img[data-attachment-id]').forEach(img => {
     if (img.getAttribute('src')) return
     const id = Number(img.dataset.attachmentId)
+    // size and place it as chosen in the editor; click to see it full size
+    const w = Math.round(Number(img.dataset.width)), wrapped = img.dataset.align === 'wrap-left' || img.dataset.align === 'wrap-right'
+    if ((w >= 10 && w <= 100) || wrapped) { img.style.width = `${w >= 10 && w <= 100 ? w : 40}%`; img.classList.add('pic-sized') }
+    img.style.cursor = 'zoom-in'
+    img.addEventListener('click', () => window.dispatchEvent(new CustomEvent('benchtop:view-picture', { detail: { id, alt: img.alt } })))
     if (id) attachmentUrl(id).then(u => { img.src = u }).catch(() => { img.alt = `${img.alt || 'picture'} (couldn't load)` })
   })
 }

@@ -9,7 +9,8 @@ const GROUPS: [string, [string, string][]][] = [
   ['On an experiment', [['L', 'Log a note to the bench log (with the time)'], ['T', 'Start a timer'], [`${M} S`, 'Save now (sections also save by themselves)'],
     ['P', 'Open on your phone'], ['30 min stir', 'Typed in the bench log: starts a timer']]],
   ['In a text section', [[`${M} B / I / U`, 'Bold, italic, underline'], [`${M} ,`, 'Subscript'], [`${M} .`, 'Superscript'], [`${M} ${isMac ? '⇧' : 'Shift'} H`, 'Highlight'],
-    ['[ ] then space', 'Start a checklist'], ['EXP-00025', 'Typed anywhere: becomes a link with a preview'], [`${M} V`, 'Paste a picture (screenshot, photo)']]],
+    ['[ ] then space', 'Start a checklist'], ['EXP-00025', 'Typed anywhere: becomes a link with a preview'], [`${M} V`, 'Paste a picture (screenshot, photo)'],
+    ['Click a picture', 'Place it, size it, or wrap text around it; drag a corner to resize'], ['Double-click a picture', 'See it full size']]],
   ['In the spectrum viewer', [['Z / I', 'Zoom or integrate mode'], ['F', 'Fit to the window'], ['Double-click', 'Reset the zoom']]],
 ]
 

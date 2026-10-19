@@ -87,6 +87,8 @@ const Icon = ({ d, fill }: { d: string; fill?: boolean }) => (
   <svg width="15" height="15" viewBox="0 0 16 16" fill={fill ? 'currentColor' : 'none'} stroke={fill ? 'none' : 'currentColor'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
 )
 const ICONS = {
+  table: 'M2.5 3.5h11v9h-11zM2.5 6.5h11M2.5 9.5h11M6.2 3.5v9M9.8 3.5v9',
+  picture: 'M2.5 3.5h11v9h-11zM2.5 10.5l3-3 2.5 2.5 2-2 3.5 3.5M10.5 6.2h.01',
   undo: 'M5.5 4L2.5 7l3 3M2.5 7h7a4 4 0 010 8h-2',
   redo: 'M10.5 4l3 3-3 3M13.5 7h-7a4 4 0 000 8h2',
   bullet: 'M6 4h8M6 8h8M6 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01',
@@ -135,7 +137,10 @@ export default function TextEntry({ content, onChange, readOnly, experimentId, o
   const style = editor.isActive('heading', { level: 2 }) ? 'Heading' : editor.isActive('heading', { level: 3 }) ? 'Subheading' : editor.isActive('codeBlock') ? 'Code' : 'Text'
   const inTable = editor.isActive('table')
   const colour = editor.getAttributes('textStyle').color as string | undefined
-  const align = (['center', 'right'] as const).find(a => editor.isActive({ textAlign: a })) || 'left'
+  const picture = editor.isActive('attachmentImage')  // a selected picture: the alignment menu lines it up instead of text
+  const pa = picture ? editor.getAttributes('attachmentImage').align : null
+  const align = picture ? (pa === 'center' || pa === 'right' ? pa : 'left')
+    : (['center', 'right'] as const).find(a => editor.isActive({ textAlign: a })) || 'left'
 
   return (
     <div>
@@ -170,18 +175,18 @@ export default function TextEntry({ content, onChange, readOnly, experimentId, o
           <B label={<Icon d={ICONS.bullet} />} title="Bulleted list" on={editor.isActive('bulletList')} cmd={() => c().toggleBulletList().run()} />
           <B label="1." title="Numbered steps" on={editor.isActive('orderedList')} cmd={() => c().toggleOrderedList().run()} />
           <B label={<Icon d={ICONS.check} />} title="Checklist" on={editor.isActive('taskList')} cmd={() => c().toggleTaskList().run()} />
-          <Menu title="Alignment" label={<Icon d={align === 'center' ? ICONS.alignC : align === 'right' ? ICONS.alignR : ICONS.alignL} />}>
+          <Menu title={picture ? 'Picture alignment' : 'Alignment'} label={<Icon d={align === 'center' ? ICONS.alignC : align === 'right' ? ICONS.alignR : ICONS.alignL} />}>
             {close => <>{([['left', 'Left', ICONS.alignL], ['center', 'Centre', ICONS.alignC], ['right', 'Right', ICONS.alignR]] as const).map(([a, l, d]) =>
               <button key={a} role="menuitem" className={`rt-item${align === a ? ' on' : ''}`} onMouseDown={e => e.preventDefault()}
-                onClick={() => { c().setTextAlign(a).run(); close() }}><Icon d={d} /> {l}</button>)}</>}
+                onClick={() => { (picture ? c().updateAttributes('attachmentImage', { align: a === 'left' ? null : a }) : c().setTextAlign(a)).run(); close() }}><Icon d={d} /> {l}</button>)}</>}
           </Menu>
           <Sep />
           <Menu title="Insert" label="Insert">
             {close => <>
-              <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); close() }}>▦ Table</button>
+              <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); close() }}><Icon d={ICONS.table} /> Table</button>
               <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { c().toggleBlockquote().run(); close() }}><Icon d={ICONS.quote} /> Note / quote</button>
               <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { c().setHorizontalRule().run(); close() }}><Icon d={ICONS.rule} /> Divider</button>
-              <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { picker.current?.click(); close() }}>🖼 Picture… <span className="faint">(or paste one)</span></button>
+              <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { picker.current?.click(); close() }} title="You can also paste or drop a picture straight into the text"><Icon d={ICONS.picture} /> Picture…</button>
               <button role="menuitem" className="rt-item" onMouseDown={e => e.preventDefault()} onClick={() => { c().insertContent(`<p><strong>${stamp()}</strong> </p>`).run(); close() }}><Icon d={ICONS.clock} /> Date &amp; time stamp</button>
             </>}
           </Menu>

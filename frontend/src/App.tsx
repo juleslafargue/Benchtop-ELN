@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { PictureViewer } from './components/editorExtras'
 import { applyPalette } from './theme'
 import ErrorBoundary from './components/ErrorBoundary'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
@@ -135,6 +136,7 @@ export default function App() {
       </Layout>
       <Shortcuts />
       </>}
+      <PictureViewer />
       {toastEl}
     </AppCtx.Provider>
   )

@@ -20,7 +20,7 @@ _ATTRS.setdefault("ul", set()).add("data-type")
 _ATTRS.setdefault("li", set()).update({"data-type", "data-checked"})
 _ATTRS.setdefault("a", set()).update({"href", "target"})
 _ATTRS.setdefault("th", set()).update({"colspan", "rowspan"})
-_ATTRS.setdefault("img", set()).update({"data-attachment-id", "alt", "width"})
+_ATTRS.setdefault("img", set()).update({"data-attachment-id", "alt", "width", "data-align", "data-width"})
 _ATTRS.setdefault("td", set()).update({"colspan", "rowspan"})
 
 
@@ -972,28 +972,47 @@ _IMG_REF = re.compile(r'<img\b[^>]*?data-attachment-id="(\d+)"[^>]*>')
 
 
 def _inline_images(h: str, atts: dict[int, Attachment], pdf: bool = False) -> str:
-    """Pasted pictures are stored as attachment references; reports carry the picture itself."""
+    """Pasted pictures are stored as attachment references; reports carry the picture itself, at the size and
+    place chosen in the editor (data-width = % of the text width; data-align = center, right, wrap-left, wrap-right)."""
     import base64
 
     def sub(m):
+        tag = m.group(0)
         a = atts.get(int(m.group(1)))
         if not a or not a.content_type.startswith("image/") or a.size > 8_000_000:
             return f"<em>[image: {html.escape(a.filename) if a else 'missing'}]</em>"
         try:
-            data = base64.b64encode(_blob_path(a.sha256).read_bytes()).decode()
+            raw = _blob_path(a.sha256).read_bytes()
         except OSError:
             return f"<em>[image: {html.escape(a.filename)}]</em>"
-        if pdf:  # the PDF renderer needs real sizes
+        data = base64.b64encode(raw).decode()
+        am = re.search(r'data-align="(center|right|wrap-left|wrap-right)"', tag)
+        align = am.group(1) if am else None
+        wm = re.search(r'data-width="(\d{1,3})"', tag)
+        width = int(wm.group(1)) if wm and 10 <= int(wm.group(1)) <= 100 else None
+        wrap = align in ("wrap-left", "wrap-right")
+        if wrap and width is None:
+            width = 40
+        src = f"data:{a.content_type};base64,{data}"
+        if pdf:  # the PDF renderer needs real sizes, and has no text wrapping: wrapped pictures sit left/right
             try:
                 import io
 
                 from PIL import Image
-                w, hh = Image.open(io.BytesIO(base64.b64decode(data))).size
-                k = min(460 / w, 340 / hh, 1.0)
-                return f'<img src="data:{a.content_type};base64,{data}" width="{int(w * k)}" height="{int(hh * k)}">'
+                w, hh = Image.open(io.BytesIO(raw)).size
+                k = min(460 * width / 100 / w, 600 / hh) if width else min(460 / w, 340 / hh, 1.0)
+                img = f'<img src="{src}" width="{max(1, int(w * k))}" height="{max(1, int(hh * k))}">'
             except Exception:
                 return f"<em>[image: {html.escape(a.filename)}]</em>"
-        return f'<img src="data:{a.content_type};base64,{data}" alt="{html.escape(a.filename)}" style="max-width:100%;max-height:420px">'
+            side = {"center": "center", "right": "right", "wrap-right": "right"}.get(align or "")
+            return f'<div style="text-align:{side}">{img}</div>' if side else img
+        style = f"width:{width}%;height:auto" if width else "max-width:100%;max-height:420px"
+        if wrap:
+            side = align[5:]
+            margin = "0.2em 1.1em 0.6em 0" if side == "left" else "0.2em 0 0.6em 1.1em"
+            return f'<img src="{src}" alt="{html.escape(a.filename)}" style="float:{side};{style};margin:{margin}">'
+        img = f'<img src="{src}" alt="{html.escape(a.filename)}" style="max-width:100%;{style}">'
+        return f'<div style="text-align:{align}">{img}</div>' if align in ("center", "right") else img
     return _IMG_REF.sub(sub, h)
 
 
@@ -1180,7 +1199,7 @@ def report_html(session, exp: Experiment, pdf: bool = False) -> str:
 <style>body{{font:14px/1.5 system-ui,sans-serif;max-width:900px;margin:2rem auto;color:#111}}
 header{{border-bottom:2px solid #111;margin-bottom:1rem}} h1{{margin:.2rem 0}} .meta{{color:#555}}
 table{{border-collapse:collapse;width:100%;margin:.5rem 0;font-size:12px}} td,th{{border:1px solid #bbb;padding:3px 6px;text-align:left}}
-th{{background:#f2f2f2}} section{{margin:1.5rem 0;page-break-inside:avoid}} .rxn svg{{max-width:100%;height:auto}}
+th{{background:#f2f2f2}} section{{margin:1.5rem 0;page-break-inside:avoid}} .rich::after{{content:"";display:block;clear:both}} .rxn svg{{max-width:100%;height:auto}}
 code{{font-size:11px}} ul[data-type=taskList]{{list-style:none;padding-left:.2em}} li[data-type=taskItem]::before{{content:'\\2610  '}}
 li[data-checked=true]::before{{content:'\\2611  '}} li[data-type=taskItem] div,li[data-type=taskItem] p{{display:inline}} blockquote{{border-left:3px solid #999;margin:.5rem 0;padding:.2rem .8rem;background:#f6f6f6}} mark{{background:#fff3a0}}
 footer{{margin-top:2rem;border-top:1px solid #999;font-size:11px;color:#555}}{pdf_css}</style></head><body>
