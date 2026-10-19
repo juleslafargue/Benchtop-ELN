@@ -37,7 +37,8 @@ def user_out(u: User) -> dict:
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
 NAV_KEYS = ("dashboard", "reactions", "compounds", "search", "materials", "inventory", "templates", "groups", "admin")
-PREF_KEYS = {"theme": ("system", "light", "dark"), "default_notebook_id": None, "spectrum_expanded": (True, False)}
+PALETTES = ("benchtop", "notebook", "steel", "litmus", "contrast")  # frontend/scripts/themes.py
+PREF_KEYS = {"theme": ("system", "light", "dark"), "palette": PALETTES, "default_notebook_id": None, "spectrum_expanded": (True, False)}
 
 
 def _check_email(email: str) -> str:

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { applyPalette } from './theme'
 import ErrorBoundary from './components/ErrorBoundary'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { api, getToken, setToken, setUnauthorizedHandler, type Group, type Notebook, type User } from './api'
@@ -95,6 +96,7 @@ export default function App() {
     if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t
     else delete document.documentElement.dataset.theme
   }, [user?.preferences?.theme])
+  useEffect(() => { if (user) applyPalette(user.preferences?.palette ?? null) }, [user, user?.preferences?.palette])
 
   if (booting) return null
   if (!user) return <>{handoffErr && <div className="handoff-err" role="alert">{handoffErr}</div>}<Login onLogin={(t, u) => { setToken(t); setUser(u) }} /></>

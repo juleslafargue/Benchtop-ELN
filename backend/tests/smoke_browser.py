@@ -89,9 +89,16 @@ def sweep(sync_playwright) -> list[tuple[str, str, str, str]]:
             ("phone", "slaurent", {"width": 390, "height": 844}, "light", pages),
             ("dark", "slaurent", {"width": 1400, "height": 900}, "dark", pages[:12]),
             ("admin", "hweiss", {"width": 1400, "height": 900}, "light", ["/admin", "/"])]
+    # every colour theme, light and dark, on a few busy pages (the phone run covers narrow screens)
+    themed = ["/", pages[10 + len(nbs)] if len(pages) > 10 + len(nbs) else "/", "/account", "/reactions"]
+    for palette in ("notebook", "steel", "litmus", "contrast"):
+        for scheme in ("light", "dark"):
+            runs.append((f"theme {palette} {scheme}", "slaurent", {"width": 1300, "height": 850}, scheme, themed, palette))
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        for label, user, viewport, scheme, paths in runs:
+        for label, user, viewport, scheme, paths, *rest in runs:
+            palette = rest[0] if rest else "benchtop"
+            httpx.patch(B + "/api/auth/me", headers={"Authorization": "Bearer " + tok[user]}, json={"preferences": {"palette": palette}})
             phone = viewport["width"] < 600
             ctx = browser.new_context(viewport=viewport, color_scheme=scheme, is_mobile=phone, has_touch=phone)
             pg = ctx.new_page()
@@ -116,6 +123,9 @@ def sweep(sync_playwright) -> list[tuple[str, str, str, str]]:
                 pg.wait_for_timeout(300)
                 if not pg.inner_text("body").strip():
                     note("blank page", "nothing was displayed")
+                shown = pg.evaluate("document.documentElement.dataset.palette || 'benchtop'")
+                if shown != palette:
+                    note("theme", f"expected the {palette} theme, page shows {shown}")
                 over = pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
                 if over > 2:
                     note("too wide", f"page is {over}px wider than the screen")

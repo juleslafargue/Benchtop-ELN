@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { THEMES } from '../themeList'
+import { applyPalette } from '../theme'
 import { ApiTokens } from '../components/Integrations'
 import { useApp } from '../App'
 import { ago, api, when, type Preferences, type User } from '../api'
@@ -93,12 +95,16 @@ export default function Account() {
         <div><h2>Preferences</h2><p className="help">Saved to your account, so they follow you to other computers.</p></div>
         <div className="panel">
           <div className="section">
-            <div className="faint" style={{ marginBottom: 6 }}>Appearance</div>
-            <div className="choice" role="group" aria-label="Appearance">
+            <div className="faint" style={{ marginBottom: 6 }}>Light or dark</div>
+            <div className="choice" role="group" aria-label="Light or dark">
               {(['system', 'light', 'dark'] as const).map(t => (
                 <button key={t} aria-pressed={theme === t} onClick={() => setPref({ theme: t })}>{{ system: 'Match system', light: 'Light', dark: 'Dark' }[t]}</button>
               ))}
             </div>
+          </div>
+          <div className="section">
+            <div className="faint" style={{ marginBottom: 8 }}>Theme</div>
+            <ThemePicker value={user.preferences?.palette || 'benchtop'} onChange={id => { applyPalette(id); setPref({ palette: id }) }} />
           </div>
           <div className="section">
             <label className="field" style={{ maxWidth: 360 }}>Default notebook for new experiments
@@ -151,6 +157,37 @@ function Sessions() {
         </div>
       ))}
       {rows.length > 1 && <div className="section"><button className="btn sm" onClick={others}>Sign out all other devices</button></div>}
+    </div>
+  )
+}
+
+
+/** A miniature Benchtop window in a theme's colours. */
+function ThemePreview({ c }: { c: Record<string, string> }) {
+  return (
+    <span className="tp-win" style={{ background: c.ground }} aria-hidden>
+      <span className="tp-side">{[70, 52, 60].map((w, i) => <span key={i} style={{ width: `${w}%`, background: i === 0 ? c.accent : c['ink-3'] }} />)}</span>
+      <span className="tp-card" style={{ background: c.paper, borderColor: c.rule }}>
+        <span className="tp-title" style={{ background: c.ink }} />
+        <span className="tp-line" style={{ background: c['ink-3'] }} />
+        <span className="tp-line short" style={{ background: c['ink-3'] }} />
+        <span className="tp-row"><span className="tp-chip" style={{ background: c.witnessed }} /><span className="tp-chip" style={{ background: c.signed }} />
+          <span className="tp-btn" style={{ background: c.accent }}><span style={{ background: c['accent-ink'] }} /></span></span>
+      </span>
+    </span>
+  )
+}
+
+function ThemePicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  return (
+    <div className="theme-grid" role="radiogroup" aria-label="Theme">
+      {THEMES.map(t => (
+        <button key={t.id} type="button" role="radio" aria-checked={value === t.id} className="theme-opt" onClick={() => onChange(t.id)}>
+          <span className="tp-pair"><ThemePreview c={t.preview.light} /><ThemePreview c={t.preview.dark} /></span>
+          <span className="theme-name">{t.label}</span>
+          <span className="theme-desc">{t.description}</span>
+        </button>
+      ))}
     </div>
   )
 }
