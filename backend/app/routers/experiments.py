@@ -22,6 +22,26 @@ _ATTRS.setdefault("a", set()).update({"href", "target"})
 _ATTRS.setdefault("th", set()).update({"colspan", "rowspan"})
 _ATTRS.setdefault("img", set()).update({"data-attachment-id", "alt", "width", "data-align", "data-width"})
 _ATTRS.setdefault("td", set()).update({"colspan", "rowspan"})
+_ATTRS.setdefault("mark", set()).add("data-hl")  # highlighter colour by name: green, blue, pink, orange, purple (none = yellow)
+HIGHLIGHT_COLOURS = {"yellow": "#fff3a3", "green": "#c8f2d6", "blue": "#cfe6ff", "pink": "#ffd3e6", "orange": "#ffe0bf", "purple": "#e6d9ff"}
+_FONT_SIZE = re.compile(r"font-size\s*:\s*([^;\"']*);?", re.I)
+
+
+def _font_size(m: re.Match) -> str:
+    """Keep font sizes between 6 and 72 pt (in pt or px); drop anything else."""
+    v = re.fullmatch(r"\s*([\d.]+)\s*(pt|px)\s*", m.group(1), re.I)
+    if not v:
+        return ""
+    pt = float(v.group(1)) * (0.75 if v.group(2).lower() == "px" else 1)
+    return f"font-size: {round(pt)}pt;" if 6 <= pt <= 72 else ""
+
+
+def _marks_inline(h: str) -> str:
+    """Reports and PDFs: give highlights a solid, print-friendly colour inline."""
+    def sub(m):
+        hl = re.search(r'data-hl="(\w+)"', m.group(0))
+        return f'<mark style="background-color:{HIGHLIGHT_COLOURS.get(hl.group(1) if hl else "yellow", HIGHLIGHT_COLOURS["yellow"])}">'
+    return re.sub(r"<mark\b[^>]*>", sub, h)
 
 
 _TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)[^>]*?(/?)>")
@@ -41,8 +61,9 @@ def nesting_depth(html: str) -> int:
 
 
 def clean_html(html: str) -> str:
-    return nh3.clean(html or "", tags=nh3.ALLOWED_TAGS | {"label"}, attributes=_ATTRS,
-                     filter_style_properties={"color", "text-align", "background-color"}, link_rel="noopener noreferrer")
+    out = nh3.clean(html or "", tags=nh3.ALLOWED_TAGS | {"label"}, attributes=_ATTRS,
+                    filter_style_properties={"color", "text-align", "background-color", "font-size"}, link_rel="noopener noreferrer")
+    return _FONT_SIZE.sub(_font_size, out) if "font-size" in out else out
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
@@ -1028,7 +1049,7 @@ def _render_entry(e: Entry, atts: dict[int, Attachment], pdf: bool = False) -> s
     c = e.content or {}
     h = f"<section><h2>{html.escape(e.title)}</h2>"
     if e.kind == EntryKind.text:
-        h += f"<div class='rich'>{_inline_images(clean_html(c.get('html', '')), atts, pdf)}</div>"
+        h += f"<div class='rich'>{_marks_inline(_inline_images(clean_html(c.get('html', '')), atts, pdf))}</div>"
     elif e.kind == EntryKind.reaction:
         cond = c.get("conditions") or {}
         bits = []
@@ -1086,7 +1107,7 @@ def _render_entry(e: Entry, atts: dict[int, Attachment], pdf: bool = False) -> s
         for k, label in (("controls", "Controls"), ("waste", "Waste"), ("emergency", "Emergency")):
             if c.get(k):
                 h += f"<p><strong>{label}:</strong> {html.escape(c[k])}</p>"
-        h += f"<div class='rich'>{_inline_images(clean_html(c.get('notes_html', '')), atts, pdf)}</div>"
+        h += f"<div class='rich'>{_marks_inline(_inline_images(clean_html(c.get('notes_html', '')), atts, pdf))}</div>"
     elif e.kind == EntryKind.screen:
         xs, ys, cells = c.get("x_levels") or [], c.get("y_levels") or [], c.get("cells") or {}
         h += f"<p>{html.escape(c.get('response', ''))} by {html.escape(c.get('y_name', ''))} (rows) and {html.escape(c.get('x_name', ''))} (columns)</p>"
@@ -1126,7 +1147,7 @@ def _render_entry(e: Entry, atts: dict[int, Attachment], pdf: bool = False) -> s
                 ("Isolated", f"{_fmt(c.get('isolated_mg'))} mg" if c.get("isolated_mg") is not None else ""),
                 ("Appearance", c.get("appearance"))]
         h += "<table>" + "".join(f"<tr><th>{k}</th><td>{html.escape(str(v))}</td></tr>" for k, v in rows if v) + "</table>"
-        h += f"<div class='rich'>{_inline_images(clean_html(c.get('notes_html', '')), atts, pdf)}</div>"
+        h += f"<div class='rich'>{_marks_inline(_inline_images(clean_html(c.get('notes_html', '')), atts, pdf))}</div>"
     elif e.kind == EntryKind.characterization:
         h += "<table><tr><th>Technique</th><th>Conditions</th><th>Data</th><th>File</th></tr>"
         for it in c.get("items", []):

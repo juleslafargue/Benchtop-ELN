@@ -226,7 +226,18 @@ a.list-row:hover { background: var(--paper-2); }
 .rt-caret { font-size: 9px; opacity: .6; }
 .rt-style { min-width: 72px; text-align: left; }
 .rt-formula { font-size: 12.5px; }
-.rt-hl { background: color-mix(in srgb, #f5d000 45%, transparent); padding: 0 3px; border-radius: 2px; color: var(--ink); }
+.rt-hl { background: color-mix(in srgb, var(--hl, #f5d000) 45%, transparent); padding: 0 3px; border-radius: 2px; color: var(--ink); }
+/* highlighter colours: translucent, so text stays readable in light and dark themes */
+[data-hl='green'] { --hl: #2ecc71; } [data-hl='blue'] { --hl: #3aa0ff; } [data-hl='pink'] { --hl: #ff5fa2; }
+[data-hl='orange'] { --hl: #ff9a2e; } [data-hl='purple'] { --hl: #a66bff; }
+.rt-split { display: inline-flex; align-items: center; }
+.rt-split .rt-drop { padding-left: 2px; padding-right: 3px; min-width: 0; }
+.rt-split .rt-drop:empty, .rt-split .rt-drop > :first-child:empty { display: none; }
+.rt-toolbar .rt-hl-swatch { width: 34px; }
+.rt-hl-swatch .rt-hl { font-weight: 600; }
+.rt-size .rt-drop { min-width: 44px; justify-content: center; }
+.rt-size-n { font-variant-numeric: tabular-nums; font-size: 13px; }
+.rt-size-list { display: grid; grid-template-columns: 1fr; min-width: 92px; max-height: 340px; overflow-y: auto; }
 .rt-colour { font-weight: 700; border-bottom: 3px solid; line-height: 1; padding: 0 2px 1px; }
 .rt-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; min-width: 170px; background: var(--paper); border: 1px solid var(--rule-strong);
   border-radius: 9px; box-shadow: 0 10px 28px rgba(0,0,0,.2); padding: 4px; display: flex; flex-direction: column; }
@@ -258,7 +269,7 @@ a.list-row:hover { background: var(--paper-2); }
 .prose blockquote { margin: 0 0 .6em; padding: 6px 12px; border-left: 3px solid var(--accent); background: var(--paper-2); border-radius: 0 6px 6px 0; }
 .prose blockquote p:last-child { margin-bottom: 0; }
 .prose hr { border: 0; border-top: 1px solid var(--rule-strong); margin: 1em 0; }
-.prose mark { background: color-mix(in srgb, #f5d000 45%, transparent); color: inherit; padding: 0 1px; border-radius: 2px; }
+.prose mark { background: color-mix(in srgb, var(--hl, #f5d000) 45%, transparent); color: inherit; padding: 0 1px; border-radius: 2px; }
 .prose a { color: var(--accent); }
 .prose pre { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--paper-2); padding: 8px 10px; border-radius: 6px; overflow-x: auto; }
 .prose code { font-family: ui-monospace, Menlo, monospace; font-size: .85em; }

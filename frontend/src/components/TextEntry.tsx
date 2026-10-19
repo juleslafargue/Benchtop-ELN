@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
+import { Extension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
@@ -21,6 +22,54 @@ import { useApp } from '../App'
 import type { EntryEditorProps } from './EntryCard'
 
 // Colours that stay readable on paper and in dark mode; text keeps the theme's ink by default.
+// highlighter colours, like Word / Docs; stored by name (data-hl) so each theme can show them readably in light and dark
+const HIGHLIGHTS: [string, string][] = [['yellow', 'Yellow'], ['green', 'Green'], ['blue', 'Blue'], ['pink', 'Pink'], ['orange', 'Orange'], ['purple', 'Purple']]
+const Highlighter = Highlight.extend({
+  addAttributes() {
+    return {
+      color: {
+        default: null,  // null = yellow, the classic highlighter
+        parseHTML: (el: HTMLElement) => { const v = el.getAttribute('data-hl'); return v && v !== 'yellow' && HIGHLIGHTS.some(([k]) => k === v) ? v : null },
+        renderHTML: (a: { color?: string | null }) => (a.color ? { 'data-hl': a.color } : {}),
+      },
+    }
+  },
+}).configure({ multicolor: true })
+
+// font sizes in points, as in Word / Docs; "Default" follows the section's normal text size
+export const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36]
+const toPt = (v: string) => {
+  const m = /^([\d.]+)(pt|px)$/.exec((v || '').trim())
+  if (!m) return null
+  const pt = m[2] === 'px' ? Number(m[1]) * 0.75 : Number(m[1])
+  return pt >= 6 && pt <= 72 ? Math.round(pt) : null
+}
+const FontSize = Extension.create({
+  name: 'fontSize',
+  addGlobalAttributes() {
+    return [{ types: ['textStyle'], attributes: { fontSize: {
+      default: null,
+      parseHTML: (el: HTMLElement) => toPt(el.style.fontSize),
+      renderHTML: (a: { fontSize?: number | null }) => (a.fontSize ? { style: `font-size: ${a.fontSize}pt` } : {}),
+    } } }]
+  },
+  addKeyboardShortcuts() {
+    // Word's grow / shrink font (⌘⇧> and ⌘⇧<)
+    const step = (dir: 1 | -1) => () => { setFontSize(this.editor, nextSize(this.editor.getAttributes('textStyle').fontSize ?? null, dir)); return true }
+    return { 'Mod-Shift-.': step(1), 'Mod-Shift->': step(1), 'Mod-Shift-,': step(-1), 'Mod-Shift-<': step(-1) }
+  },
+})
+const BODY_PT = 13  // a text section's normal size (17 px), for stepping up or down from "Default"
+function nextSize(cur: number | null, dir: 1 | -1) {
+  const from = cur ?? BODY_PT
+  const pick = dir > 0 ? FONT_SIZES.find(s => s > from) : [...FONT_SIZES].reverse().find(s => s < from)
+  return pick ?? (dir > 0 ? FONT_SIZES[FONT_SIZES.length - 1] : FONT_SIZES[0])
+}
+function setFontSize(editor: Editor, pt: number | null) {
+  const ch = editor.chain().focus().setMark('textStyle', { fontSize: pt })
+  ;(pt ? ch : ch.removeEmptyTextStyle()).run()
+}
+
 const COLOURS: [string, string | null][] = [['Default', null], ['Red', '#c0392b'], ['Orange', '#c46a12'], ['Green', '#2e8540'], ['Blue', '#2f6fb5'], ['Purple', '#7d4cad']]
 const SYMBOLS: [string, string[]][] = [
   ['Common', ['°C', '±', '×', '÷', '≈', '≠', '≤', '≥', '~', '‰', '½', '¼', '·', '…', '§', '‡']],
@@ -107,9 +156,10 @@ export default function TextEntry({ content, onChange, readOnly, experimentId, o
   const { toast } = useApp()
   const wrap = useRef<HTMLDivElement>(null)
   const picker = useRef<HTMLInputElement>(null)
+  const [lastHl, setLastHl] = useState<string>(() => { try { return localStorage.getItem('benchtop.highlight') || 'yellow' } catch { return 'yellow' } })
   const editor = useEditor({
     extensions: [
-      StarterKit, Subscript, Superscript, Underline, Highlight, TextStyle, Color,
+      StarterKit, Subscript, Superscript, Underline, Highlighter, TextStyle, Color, FontSize,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' } }),
       TaskList, TaskItem.configure({ nested: true }),
@@ -137,6 +187,15 @@ export default function TextEntry({ content, onChange, readOnly, experimentId, o
   const style = editor.isActive('heading', { level: 2 }) ? 'Heading' : editor.isActive('heading', { level: 3 }) ? 'Subheading' : editor.isActive('codeBlock') ? 'Code' : 'Text'
   const inTable = editor.isActive('table')
   const colour = editor.getAttributes('textStyle').color as string | undefined
+  const size = (editor.getAttributes('textStyle').fontSize as number | null | undefined) ?? null
+  const hlOn = editor.isActive('highlight')
+  const hlNow = hlOn ? ((editor.getAttributes('highlight').color as string | null) || 'yellow') : null
+  const applyHl = (name: string) => {
+    setLastHl(name)
+    try { localStorage.setItem('benchtop.highlight', name) } catch { /* private mode */ }
+    if (hlNow === name) c().unsetHighlight().run()
+    else c().setHighlight({ color: name === 'yellow' ? null : name } as any).run()
+  }
   const picture = editor.isActive('attachmentImage')  // a selected picture: the alignment menu lines it up instead of text
   const pa = picture ? editor.getAttributes('attachmentImage').align : null
   const align = picture ? (pa === 'center' || pa === 'right' ? pa : 'left')
@@ -163,7 +222,29 @@ export default function TextEntry({ content, onChange, readOnly, experimentId, o
           <B label="x₂" title="Subscript (⌘,)" on={editor.isActive('subscript')} cmd={() => c().toggleSubscript().run()} />
           <B label="x²" title="Superscript (⌘.)" on={editor.isActive('superscript')} cmd={() => c().toggleSuperscript().run()} />
           <B label={<span className="rt-formula">H₂O</span>} title="Format as chemical formula: subscripts the numbers in the selection or word (CH2Cl2 → CH₂Cl₂)" cmd={() => formatFormula(editor)} />
-          <B label={<span className="rt-hl">ab</span>} title="Highlight (⌘⇧H)" on={editor.isActive('highlight')} cmd={() => c().toggleHighlight().run()} />
+          <span className="rt-split">
+            <B label={<span className="rt-hl" data-hl={lastHl}>ab</span>} title={`Highlight in ${lastHl} (⌘⇧H for yellow)`} on={hlOn} cmd={() => applyHl(lastHl)} />
+            <Menu title="Highlight colour" on={false} label={null}>
+              {close => <div className="stack" style={{ gap: 4, padding: 2 }}>
+                <div className="rt-swatches">
+                  {HIGHLIGHTS.map(([k, n]) => <button key={k} role="menuitem" title={n} aria-label={`Highlight ${n.toLowerCase()}`} className={`rt-swatch rt-hl-swatch${hlNow === k ? ' on' : ''}`}
+                    onMouseDown={e => e.preventDefault()} onClick={() => { applyHl(k); close() }}><span className="rt-hl" data-hl={k}>ab</span></button>)}
+                </div>
+                <button role="menuitem" className="rt-item" disabled={!hlOn} onMouseDown={e => e.preventDefault()} onClick={() => { c().unsetHighlight().run(); close() }}>No highlight</button>
+              </div>}
+            </Menu>
+          </span>
+          <span className="rt-split rt-size" role="group" aria-label="Font size">
+            <B label="−" title="Smaller text (⌘⇧<)" cmd={() => setFontSize(editor, nextSize(size, -1))} disabled={size === FONT_SIZES[0]} />
+            <Menu title="Font size" on={size !== null} label={<span className="rt-size-n">{size ?? 'Size'}</span>}>
+              {close => <div className="rt-size-list">
+                <button role="menuitem" className={`rt-item${size === null ? ' on' : ''}`} onMouseDown={e => e.preventDefault()} onClick={() => { setFontSize(editor, null); close() }}>Default</button>
+                {FONT_SIZES.map(pt => <button key={pt} role="menuitem" className={`rt-item${size === pt ? ' on' : ''}`} onMouseDown={e => e.preventDefault()}
+                  onClick={() => { setFontSize(editor, pt); close() }}><span style={{ fontSize: `${Math.min(pt, 20)}pt`, lineHeight: 1.1 }}>{pt}</span></button>)}
+              </div>}
+            </Menu>
+            <B label="+" title="Larger text (⌘⇧>)" cmd={() => setFontSize(editor, nextSize(size, 1))} disabled={size === FONT_SIZES[FONT_SIZES.length - 1]} />
+          </span>
           <Menu title="Text colour" on={!!colour} label={<span className="rt-colour" style={{ borderBottomColor: colour || 'currentColor' }}>A</span>}>
             {close => <div className="rt-swatches">
               {COLOURS.map(([n, v]) => <button key={n} role="menuitem" title={n} aria-label={n} className={`rt-swatch${(colour || null) === v ? ' on' : ''}`}
