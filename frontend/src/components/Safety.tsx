@@ -79,7 +79,9 @@ export function Provenance({ s }: { s: SafetySummary }) {
 
 /** Full GHS block: pictograms, signal word, statements, extras from other sources, flags and provenance. */
 export function GhsDetails({ s, compact = false }: { s: SafetySummary; compact?: boolean }) {
-  const d = s.data
+  // lists may be missing in data cached by older versions
+  const d = s.data && { ...s.data, pictograms: s.data.pictograms || [], hazards: s.data.hazards || [], precautions: s.data.precautions || [],
+    other_hazards: s.data.other_hazards || [], flags: s.data.flags || [], sources: s.data.sources || [] }
   if (s.status === 'pending') return <p className="faint">Fetching safety data…</p>
   if (s.status === 'not_found') return <p className="faint">PubChem has no entry for this chemical. Check the supplier's SDS.</p>
   if (!d) return <p className="error">{s.error || 'No safety data yet.'}</p>

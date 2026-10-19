@@ -581,6 +581,12 @@ kbd { font: 11px var(--sans); border: 1px solid var(--rule-strong); border-botto
 /* ---------- safety */
 .ghs { display: inline-block; flex: none; }
 .ghs-fallback { flex: none; }
+/* GHS pictograms are black on white inside a red diamond, by regulation and on every bottle. PubChem's
+   images leave the inside transparent, so in dark mode they sit on a white tile, like the label. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) :is(.ghs, .ghs-fallback) { background: #fff; border-radius: 5px; padding: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .25); }
+}
+:root[data-theme='dark'] :is(.ghs, .ghs-fallback) { background: #fff; border-radius: 5px; padding: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .25); }
 .safety-badge { display: inline-flex; gap: 2px; align-items: center; flex-wrap: wrap; }
 .signal { font-weight: 700; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; }
 .signal.danger { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--ink); }
