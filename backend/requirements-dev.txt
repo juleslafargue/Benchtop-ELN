@@ -1,0 +1,4 @@
+# For running the tests (not needed to use Benchtop)
+-r requirements.txt
+pytest>=8
+playwright>=1.45

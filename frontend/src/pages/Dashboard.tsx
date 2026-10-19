@@ -21,6 +21,7 @@ interface DashData {
   stats: { this_month: number; last_month: number; witnessed_this_month: number; yields: YieldPoint[] }
   spectra: { id: number; filename: string; experiment_id: number; eid: string; title: string; created_at: string }[]
   stale_days?: number
+  system?: { backup_warnings: string[] }
   inventory: { low: InvRow[]; expiring: (InvRow & { expires_at: string; expired: boolean })[]; safety_changes?: { material_id: number | null; material: string; changed_at: string; change: { added: string[]; removed: string[] } | null }[]; low_fraction: number; expiry_days: number }
 }
 interface InvRow { lot_id: number; barcode: string; material_id: number; material: string; amount: number; unit: string; location: string; fraction?: number }
@@ -200,6 +201,8 @@ export default function Dashboard() {
           </div>
         ) : <button className="btn" onClick={() => setEditing(true)}>Customise</button>)}
       </div>
+      {(data?.system?.backup_warnings?.length ?? 0) > 0 && <div className="notice dash-warning" role="status">
+        <b>Backups:</b> {data!.system!.backup_warnings.join(' ')} <Link to="/admin">Open Admin → Backups</Link></div>}
       {(data?.lists.stale?.length ?? 0) > 0 && !quietDismissed && <div className="notice stale-note" role="status">
         <span><b>{data!.lists.stale.length} draft{data!.lists.stale.length === 1 ? '' : 's'}</b> untouched for {data!.stale_days ?? 14}+ days: {data!.lists.stale.slice(0, 3).map((e, i) =>
           <span key={e.id}>{i > 0 && ', '}<Link to={`/experiments/${e.id}`}>{e.eid}</Link> <span className="faint">{e.title.length > 40 ? e.title.slice(0, 40) + '…' : e.title}</span></span>)}

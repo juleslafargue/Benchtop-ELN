@@ -110,6 +110,7 @@ Needs Python 3.11+ (python.org); Node is only needed if the bundled interface ha
 ./benchtop lab                  # share it with labmates on the same network
 ./benchtop upgrade NEW.zip      # backs up, swaps in the new version, keeps your data
 ./benchtop backup | backups | restore FILE
+./benchtop check                # is everything intact? (database, audit trail, signed records, files)
 ./benchtop seed                 # demo data
 ./benchtop export-obsidian ~/Documents/Vault/Benchtop
 ./benchtop update-nmr-data      # rebuild the NMR shift table from the latest NMRShiftDB2 export
@@ -117,8 +118,11 @@ Needs Python 3.11+ (python.org); Node is only needed if the bundled interface ha
 ```
 
 Backups are automatic: one on start-up if the newest is more than a day old, then daily while running,
-keeping the newest 14. Each is a single zip with a consistent database snapshot and every attachment.
-Set `BENCHTOP_BACKUP_DIR` to a folder in iCloud Drive or Dropbox to keep copies off your Mac.
+keeping the newest 14. Each is a single zip with a consistent database snapshot, every attachment, and the
+audit trail's latest fingerprint. In **Admin → Backups**, choose a *second copy* folder (iCloud Drive or
+an external drive) and every backup is copied there too. Once a week Benchtop unpacks the newest backup
+into a temporary folder and checks it as if it had been restored, so you know your backups actually work;
+problems show on the admin's dashboard.
 
 **Want to explore with realistic data first?** `./benchtop demo` opens a demo lab on
 http://localhost:8001, kept completely apart from your own notebook: the fictional Ruiz group
@@ -156,10 +160,11 @@ nginx, Tailscale) before anyone uses it over a network.
 ```bash
 # API (Python 3.11+)
 cd backend
-pip install -r requirements.txt pytest
+pip install -r requirements-dev.txt
 python -m app.seed                       # creates ./data with demo content
 uvicorn app.main:app --reload            # http://localhost:8000/docs for the OpenAPI explorer
 pytest -q
+python tests/smoke_browser.py            # opens every page in a browser (needs: playwright install chromium, built frontend)
 
 # Web app (Node 20+)
 cd frontend
@@ -169,6 +174,15 @@ npm run dev                              # http://localhost:5173, proxies /api t
 
 To serve the built app from the API (what the Docker image does):
 `npm run build`, then start uvicorn with `BENCHTOP_STATIC_DIR=../frontend/dist`.
+
+**Automatic tests on GitHub.** `.github/workflows/tests.yml` runs on every push: the server tests, a
+type-check and build of the app, and a browser pass over every page of the demo lab on desktop, phone and
+dark mode. Results are in the repository's *Actions* tab. The workflow's source is
+`deploy/github-tests.yml`; `./benchtop` keeps the copy in `.github/` up to date.
+
+**Database upgrades** live in `backend/app/migrations.py` as numbered steps; the database records which
+it has had. A step must also work on an empty database and must never change content that a signature
+covers. A Benchtop that finds data from a newer version refuses to start rather than misread it.
 
 ### Configuration
 
@@ -184,6 +198,7 @@ To serve the built app from the API (what the Docker image does):
 | `BENCHTOP_BACKUP_DIR` | `<data dir>/backups` | Where backups are written |
 | `BENCHTOP_BACKUP_KEEP` | `14` | Number of backups kept |
 | `BENCHTOP_BACKUP_INTERVAL_HOURS` | `24` | `0` turns automatic backups off |
+| `BENCHTOP_BACKUP_COPY_DIR` | (set in Admin → Backups) | Second folder every backup is copied to |
 | `BENCHTOP_PORT` | `8000` | Port used by `./benchtop` |
 | `BENCHTOP_OBSIDIAN_DIR` | unset | Vault folder to sync Markdown notes into every hour |
 | `BENCHTOP_PUBCHEM` | `on` | `off` stops all PubChem lookups (works fully offline with whatever was fetched before) |
@@ -213,7 +228,9 @@ backend/   FastAPI + SQLModel + RDKit
                     Material, Lot, LotTransaction, AuditEvent, User
   app/chem.py       structure parsing, depiction, reaction → rows, stoichiometry engine, search
   app/audit.py      hash-chained audit log + verifier
-  app/backup.py     snapshot/zip backups, pruning, restore (also a CLI)
+  app/backup.py     snapshot/zip backups, second copy, weekly backup test, restore (also a CLI)
+  app/check.py      health check: database, audit trail, signed records, files (./benchtop check)
+  app/migrations.py numbered database upgrade steps
   app/writeup.py    SI-style experimental paragraph composer
   app/export_md.py  Markdown/Obsidian export and vault sync (also a CLI)
   app/nmrpredict.py NMR shift prediction: atom environments, table builder, lookup
@@ -232,7 +249,7 @@ Design notes:
   so stored numbers can't drift from what the engine would produce.
 - **Saves are versioned and conflict-checked.** Each section save sends the version it was based
   on; a stale save returns 409 instead of silently overwriting a colleague's edit.
-- **Upgrades are in place.** On start-up, columns added by newer versions are added to an existing database automatically (always nullable, so existing rows are untouched).
+- **Upgrades are in place and versioned.** On start-up, new tables and columns are added, then any numbered upgrade steps the database hasn't had run in order (`app/migrations.py`). `./benchtop upgrade` backs up first, and an older Benchtop refuses data from a newer one.
 - **Nothing is hard-deleted.** Sections are soft-deleted with a final version; lots go to
   `empty`/`disposed`; experiments are voided.
 

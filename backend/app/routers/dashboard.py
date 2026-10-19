@@ -9,7 +9,7 @@ from fastapi import APIRouter
 from sqlmodel import select
 
 from .. import safety
-from ..models import Attachment, ChemSafety, Experiment, ExperimentStatus, Lot, LotTransaction, Material, Signature, utcnow
+from ..models import Attachment, ChemSafety, Experiment, ExperimentStatus, Lot, LotTransaction, Material, Role, Signature, utcnow
 from ..security import DB, CurrentUser
 from ..services import experiment_summary
 from .reactions import _collect
@@ -109,5 +109,19 @@ def dashboard(user: CurrentUser, session: DB):
         "stats": {"this_month": this_month, "last_month": last_month, "witnessed_this_month": witnessed_month,
                   "yields": yields[:200]},
         "spectra": spectra,
+        # admins see backup problems where they'll notice them
+        "system": {"backup_warnings": _backup_warnings() if user.role == Role.admin else []},
         "inventory": {"low": low[:10], "expiring": expiring[:10], "safety_changes": safety_changes[:10], "low_fraction": LOW_STOCK_FRACTION, "expiry_days": EXPIRY_DAYS},
     }
+
+
+def _backup_warnings() -> list[str]:
+    from .. import backup
+    try:
+        backup._sqlite_path()
+    except backup.BackupError:
+        return []  # Postgres servers back up with their own tools
+    try:
+        return backup.health()["warnings"]
+    except Exception:  # noqa: BLE001 - a dashboard must load even if the backup folder is odd
+        return []

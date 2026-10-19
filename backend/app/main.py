@@ -57,6 +57,12 @@ async def _housekeeping_loop() -> None:
         except Exception:  # never let a backup problem take the server down
             log.exception("Automatic backup failed")
         try:
+            tested = await asyncio.to_thread(backup.maybe_test_backup)
+            if tested:
+                (log.info if tested["ok"] else log.warning)("Backup test of %s: %s", tested["name"], "passed" if tested["ok"] else "PROBLEMS")
+        except Exception:
+            log.exception("Backup test failed to run")
+        try:
             synced = await asyncio.to_thread(_sync_obsidian)
             if synced and synced["written"]:
                 log.info("Obsidian sync: %s notes updated", synced["written"])
@@ -80,7 +86,12 @@ async def _housekeeping_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    init_db()
+    from .migrations import TooNew
+    try:
+        init_db()
+    except TooNew as exc:
+        log.error("\n\n  Benchtop can't open this data.\n  %s\n", exc)
+        raise
     ensure_admin()
     task = asyncio.create_task(_housekeeping_loop())
     yield

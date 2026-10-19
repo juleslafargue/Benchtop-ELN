@@ -81,11 +81,17 @@ def test_sign_witness_lock_and_tamper(client, users, notebook):
     # simulate out-of-band DB tampering
     with Session(engine) as s:
         e = s.get(Entry, entry_id)
+        original = e.content
         e.content = {"html": "<p>forged</p>"}
         s.add(e)
         s.commit()
     assert not client.get(f"/api/experiments/{eid}/verify", headers=a).json()["intact"]
     assert client.post(f"/api/experiments/{eid}/witness", headers=b, json={"password": "lab-bench-pw-2026"}).status_code == 409
+    with Session(engine) as s:  # put it back so later tests (the health check) see intact records
+        e = s.get(Entry, entry_id)
+        e.content = original
+        s.add(e)
+        s.commit()
 
 
 def test_witness_and_reject_flow(client, users, notebook):

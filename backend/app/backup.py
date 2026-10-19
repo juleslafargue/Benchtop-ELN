@@ -7,12 +7,14 @@ makes one on startup if the newest is older than the interval, then checks hourl
 CLI (run from backend/):
     python -m app.backup create
     python -m app.backup list
+    python -m app.backup test                   # unpack the newest backup and check it
     python -m app.backup restore <file.zip>     # stop the server first
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import sys
@@ -75,6 +77,7 @@ def create_backup(reason: str = "manual") -> dict[str, Any]:
         manifest = {
             "app_version": __version__, "created_at": datetime.now(timezone.utc).isoformat(), "reason": reason,
             "database_sha256": hashlib.sha256(tmp_db.read_bytes()).hexdigest(), "attachments": len(blobs),
+            **_fingerprint(tmp_db),
         }
         with zipfile.ZipFile(tmp_zip, "w", zipfile.ZIP_DEFLATED) as z:
             z.writestr("manifest.json", json.dumps(manifest, indent=2))
@@ -89,7 +92,194 @@ def create_backup(reason: str = "manual") -> dict[str, Any]:
         tmp_db.unlink(missing_ok=True)
         tmp_zip.unlink(missing_ok=True)
     prune()
-    return {"name": final.name, "path": str(final), "size": final.stat().st_size, **manifest}
+    out = {"name": final.name, "path": str(final), "size": final.stat().st_size, **manifest}
+    out["copy"] = copy_to_second_place(final)
+    return out
+
+
+def _fingerprint(db: Path) -> dict[str, Any]:
+    """Database version and the audit trail's latest fingerprint, recorded in the manifest. Kept in a
+    second place, these make it detectable if the trail were ever rewritten wholesale later."""
+    try:
+        con = sqlite3.connect(db)
+        try:
+            head = con.execute("SELECT hash FROM auditevent ORDER BY id DESC LIMIT 1").fetchone()
+            n = con.execute("SELECT COUNT(*) FROM auditevent").fetchone()[0]
+            try:
+                v = con.execute("SELECT MAX(number) FROM benchtop_schema").fetchone()[0] or 0
+            except sqlite3.OperationalError:
+                v = 0
+        finally:
+            con.close()
+        return {"schema_version": v, "audit_events": n, "audit_head": head[0] if head else None}
+    except sqlite3.Error:
+        return {}
+
+
+# ------------------------------------------------------------------ a second copy, somewhere else
+
+def _state_path() -> Path:
+    return settings.data_dir / "backup-settings.json"
+
+
+def load_state() -> dict[str, Any]:
+    """Second-copy folder and the latest copy/check results (kept outside the database on purpose)."""
+    try:
+        return json.loads(_state_path().read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_state(**changes: Any) -> dict[str, Any]:
+    st = {**load_state(), **changes}
+    tmp = _state_path().with_suffix(".tmp")
+    tmp.write_text(json.dumps(st, indent=2))
+    tmp.replace(_state_path())
+    return st
+
+
+def copy_dir() -> Path | None:
+    env = os.environ.get("BENCHTOP_BACKUP_COPY_DIR")
+    raw = env if env is not None else load_state().get("copy_dir")
+    return Path(raw).expanduser() if raw else None
+
+
+def validate_copy_dir(raw: str) -> Path:
+    """A folder that exists (or whose parent does), is writable, and isn't inside Benchtop's own data."""
+    p = Path(raw.strip()).expanduser()
+    if not p.is_absolute():
+        raise BackupError("Give the full path of the folder, e.g. /Volumes/MyDrive/Benchtop backups")
+    p = p.resolve()
+    data = settings.data_dir.resolve()
+    if p == data or data in p.parents or p == settings.backup_dir.resolve():
+        raise BackupError("Choose a folder outside Benchtop's data folder; the point is a copy somewhere else")
+    if not p.exists():
+        if not p.parent.is_dir():
+            raise BackupError(f"{p.parent} doesn't exist. Is the drive plugged in?")
+        p.mkdir()
+    if not p.is_dir():
+        raise BackupError(f"{p} is a file, not a folder")
+    probe = p / ".benchtop-write-test"
+    try:
+        probe.write_text("ok")
+        probe.unlink()
+    except OSError as exc:
+        raise BackupError(f"Benchtop can't write to {p}: {exc.strerror or exc}") from None
+    return p
+
+
+def set_copy_dir(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return _save_state(copy_dir=None, last_copy=None)
+    p = validate_copy_dir(raw)
+    return _save_state(copy_dir=str(p), last_copy=None)
+
+
+def suggested_copy_dirs() -> list[dict[str, str]]:
+    """Places a Mac usually has for an off-laptop copy: iCloud Drive and plugged-in drives."""
+    out = []
+    icloud = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
+    if icloud.is_dir():
+        out.append({"label": "iCloud Drive", "path": str(icloud / "Benchtop backups")})
+    vols = Path("/Volumes")
+    if vols.is_dir():
+        for v in sorted(vols.iterdir()):
+            if v.is_dir() and not v.is_symlink() and v.name not in ("Macintosh HD", "Recovery", "Preboot", "VM", "Data"):
+                out.append({"label": f"Drive “{v.name}”", "path": str(v / "Benchtop backups")})
+    for name in ("Dropbox", "Google Drive", "OneDrive"):
+        d = Path.home() / name
+        if d.is_dir():
+            out.append({"label": name, "path": str(d / "Benchtop backups")})
+    return out
+
+
+def copy_backups() -> list[Path]:
+    d = copy_dir()
+    return sorted(d.glob(f"{PREFIX}*.zip"), reverse=True) if d and d.is_dir() else []
+
+
+def copy_to_second_place(src: Path) -> dict[str, Any] | None:
+    """Copy a finished backup to the second folder (keeping the same number as locally)."""
+    d = copy_dir()
+    if d is None:
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        if not d.is_dir():
+            raise BackupError(f"{d} isn't there. If it's on an external drive, plug it in; the next backup will be copied.")
+        part = d / f".{src.name}.part"
+        shutil.copyfile(src, part)
+        if hashlib.sha256(part.read_bytes()).hexdigest() != hashlib.sha256(src.read_bytes()).hexdigest():
+            part.unlink(missing_ok=True)
+            raise BackupError("The copy didn't match the original; it was removed")
+        part.replace(d / src.name)
+        for old in copy_backups()[settings.backup_keep:]:
+            old.unlink(missing_ok=True)
+        res = {"ok": True, "at": now, "name": src.name, "folder": str(d)}
+    except (OSError, BackupError) as exc:
+        res = {"ok": False, "at": now, "name": src.name, "folder": str(d), "error": str(exc)}
+    _save_state(last_copy=res)
+    return res
+
+
+# ------------------------------------------------------------------ the weekly backup test
+
+CHECK_EVERY_DAYS = 7
+
+
+def test_latest_backup() -> dict[str, Any] | None:
+    """Unpack the newest backup (the second copy when there is one: that's what you'd restore from if
+    this computer were lost) and check it as if it had been restored."""
+    from .check import check_backup
+
+    copies = copy_backups()
+    target = copies[0] if copies else (Path(list_backups()[0]["path"]) if list_backups() else None)
+    if target is None:
+        return None
+    res = check_backup(target)
+    summary = {"ok": res["ok"], "at": datetime.now(timezone.utc).isoformat(), "name": target.name,
+               "where": "second copy" if copies else "this computer", "checks": res["checks"], "counts": res.get("counts", {})}
+    _save_state(last_check=summary)
+    return summary
+
+
+def maybe_test_backup() -> dict[str, Any] | None:
+    if settings.backup_interval_hours <= 0:
+        return None
+    last = load_state().get("last_check") or {}
+    try:
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(last["at"])).total_seconds() / 86400 if last else None
+    except (KeyError, ValueError):
+        age = None
+    if age is not None and age < CHECK_EVERY_DAYS and last.get("ok"):
+        return None
+    if age is not None and age < 1:  # a failed test is retried daily, not hourly
+        return None
+    return test_latest_backup()
+
+
+def health() -> dict[str, Any]:
+    """What the admin page and dashboard show about backups."""
+    st = load_state()
+    b = list_backups()
+    newest = b[0] if b else None
+    age_h = newest_age_hours()
+    warnings = []
+    if settings.backup_interval_hours > 0:
+        if newest is None:
+            warnings.append("No backups yet.")
+        elif age_h is not None and age_h > max(72, settings.backup_interval_hours * 3):
+            warnings.append(f"The newest backup is {age_h / 24:.0f} days old.")
+        if copy_dir() is None:
+            warnings.append("Backups are only on this computer. Choose a second place (iCloud Drive or an external drive) in Admin → Backups.")
+        elif st.get("last_copy") and not st["last_copy"].get("ok"):
+            warnings.append(f"Copying the latest backup failed: {st['last_copy'].get('error')}")
+        if st.get("last_check") and not st["last_check"].get("ok"):
+            bad = [c["name"] for c in st["last_check"].get("checks", []) if not c["ok"]]
+            warnings.append(f"The latest backup test found problems ({', '.join(bad) or 'see Admin → Backups'}).")
+    return {"copy_dir": str(copy_dir()) if copy_dir() else None, "copy_dir_from_env": "BENCHTOP_BACKUP_COPY_DIR" in os.environ,
+            "last_copy": st.get("last_copy"), "last_check": st.get("last_check"), "copies": len(copy_backups()),
+            "warnings": warnings}
 
 
 def prune(keep: int | None = None) -> None:
@@ -112,6 +302,10 @@ def restore(zip_path: str) -> Path:
         db_bytes = z.read("benchtop.db")
         if hashlib.sha256(db_bytes).hexdigest() != manifest["database_sha256"]:
             raise BackupError("Backup is corrupt: database checksum does not match")
+        from .migrations import SCHEMA_VERSION
+        if (manifest.get("schema_version") or 0) > SCHEMA_VERSION:
+            raise BackupError(f"This backup was made by a newer Benchtop ({manifest.get('app_version')}); install that version "
+                              "or newer first, then restore it. Nothing was changed.")
         db = _sqlite_path()
         from .db import engine
 
@@ -173,6 +367,11 @@ def _main(argv: list[str]) -> int:
             print(f"Backups in {settings.backup_dir}:" if bs else f"No backups in {settings.backup_dir}")
             for b in bs:
                 print(f"  {b['name']}  {b['size'] / 1e6:6.1f} MB")
+        elif cmd == "test":
+            from .check import report
+            r = test_latest_backup()
+            print("No backups to test yet." if r is None else f"Tested {r['name']} ({r['where']}):\n" + report(r))
+            return 0 if r is None or r["ok"] else 1
         elif cmd == "restore" and len(argv) > 2:
             aside = restore(argv[2])
             print(f"Restored {argv[2]}.\nYour previous data was kept in {aside}")

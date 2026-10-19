@@ -1052,3 +1052,14 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 .panel.crash { padding: 24px; max-width: 640px; }
 .panel.crash h2 { margin: 0; font-size: 20px; }
 .crash-msg { font-family: var(--mono); font-size: 12px; color: var(--ink-3); overflow-wrap: anywhere; }
+
+/* Admin → Backups */
+.backup-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.backup-box { padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
+.backup-box h3 { margin: 0; font-size: 15px; }
+.backup-box p { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.check-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.check-list li { overflow-wrap: anywhere; }
+.check-list li.ok > span:first-child { color: var(--witnessed); }
+.check-list li.bad > span:first-child { color: var(--danger); }
+.dash-warning { border-left: 3px solid var(--signed); }

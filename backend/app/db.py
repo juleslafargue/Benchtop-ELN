@@ -24,10 +24,12 @@ if settings.database_url.startswith("sqlite"):
 
 
 def init_db() -> None:
-    from . import models  # noqa: F401  (register tables)
+    from . import migrations, models  # noqa: F401  (register tables)
 
+    migrations.check_not_too_new(engine)  # before touching anything: an older Benchtop mustn't alter newer data
     SQLModel.metadata.create_all(engine)
     add_missing_columns()
+    migrations.upgrade(engine)
 
 
 def add_missing_columns() -> list[str]:

@@ -67,7 +67,14 @@ function ResetPassword({ u, onClose, onDone }: { u: User; onClose: () => void; o
   )
 }
 
-interface BackupInfo { directory: string; keep: number; interval_hours: number; backups: { name: string; size: number; created_at: string }[] }
+interface CheckItem { name: string; ok: boolean; detail: string }
+interface BackupTest { ok: boolean; at: string; name: string; where: string; checks: CheckItem[] }
+interface BackupInfo {
+  directory: string; keep: number; interval_hours: number; backups: { name: string; size: number; created_at: string }[]
+  copy_dir: string | null; copy_dir_from_env: boolean; copies: number; warnings: string[]
+  last_copy: { ok: boolean; at: string; name: string; folder: string; error?: string } | null
+  last_check: BackupTest | null; suggestions: { label: string; path: string }[]
+}
 
 function NmrData() {
   const [st, setSt] = useState<NmrStatus | null>(null)
@@ -101,22 +108,72 @@ function NmrData() {
 function Backups() {
   const { toast } = useApp()
   const [info, setInfo] = useState<BackupInfo | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<'' | 'backup' | 'test' | 'folder'>('')
   const [err, setErr] = useState('')
-  const load = () => api.get<BackupInfo>('/api/admin/backups').then(setInfo)
+  const [folder, setFolder] = useState<string | null>(null)  // editing the second-copy folder
+  const load = () => api.get<BackupInfo>('/api/admin/backups').then(setInfo).catch(e => setErr(e.message))
   useEffect(() => { load() }, [])
-  const now = async () => {
-    setBusy(true); setErr('')
-    try { await api.post('/api/admin/backups'); toast('Backup written'); load() } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
+  const run = async (kind: typeof busy, fn: () => Promise<void>) => {
+    setBusy(kind); setErr('')
+    try { await fn() } catch (e: any) { setErr(e.message) } finally { setBusy(''); load() }
   }
+  const backupNow = () => run('backup', async () => {
+    const b = await api.post<any>('/api/admin/backups')
+    toast(b.copy ? (b.copy.ok ? 'Backup written and copied' : `Backup written, but the copy failed: ${b.copy.error}`) : 'Backup written')
+  })
+  const test = () => run('test', async () => {
+    const r = await api.post<BackupTest>('/api/admin/backups/test')
+    toast(r.ok ? `${r.name} restores cleanly` : 'The backup test found problems; see below')
+  })
+  const saveFolder = (path: string) => run('folder', async () => {
+    const r = await api.put<any>('/api/admin/backups/copy-dir', { path })
+    setFolder(null)
+    toast(!path ? 'Second copies turned off' : r.first_copy?.ok ? 'Folder set; the newest backup is already copied there' : r.first_copy ? `Folder set, but copying failed: ${r.first_copy.error}` : 'Folder set')
+  })
+  const lc = info?.last_check
   return (
-    <section className="stack" style={{ gap: 8 }}>
+    <section className="stack" style={{ gap: 10 }}>
       <div className="spread"><h2 style={{ fontSize: 17 }}>Backups</h2>
-        <button className="btn sm" disabled={busy} onClick={now}>{busy ? 'Backing up…' : 'Back up now'}</button></div>
+        <div className="row" style={{ gap: 6 }}>
+          <button className="btn sm" disabled={!!busy || !info?.backups.length} onClick={test}>{busy === 'test' ? 'Testing…' : 'Test the latest backup'}</button>
+          <button className="btn sm" disabled={!!busy} onClick={backupNow}>{busy === 'backup' ? 'Backing up…' : 'Back up now'}</button></div></div>
       {info && <p className="faint" style={{ margin: 0 }}>
         {info.interval_hours > 0 ? `Automatic every ${info.interval_hours} h` : 'Automatic backups are off'}, keeping the newest {info.keep}.
         Saved in <code>{info.directory}</code>. To restore, stop Benchtop and run <code>./benchtop restore &lt;file&gt;</code>.</p>}
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" style={{ margin: 0 }}>{err}</p>}
+      {info && info.warnings.length > 0 && <div className="notice" role="status">{info.warnings.map(w => <div key={w}>{w}</div>)}</div>}
+
+      {info && <div className="backup-boxes">
+        <div className="panel backup-box">
+          <h3>Second copy</h3>
+          {folder === null ? <>
+            <p>{info.copy_dir ? <>Every backup is also copied to <code>{info.copy_dir}</code> ({info.copies} there now).</>
+              : 'Backups are only on this computer. If it is lost or its drive fails, so are they. Choose a second place: iCloud Drive, or an external drive.'}</p>
+            {info.last_copy && <p className={info.last_copy.ok ? 'faint' : 'error'}>{info.last_copy.ok ? `Last copied ${when(info.last_copy.at)}.` : `Last copy failed (${when(info.last_copy.at)}): ${info.last_copy.error}`}</p>}
+            {info.copy_dir_from_env ? <p className="faint">Set by BENCHTOP_BACKUP_COPY_DIR in this server's settings.</p>
+              : <div className="row" style={{ gap: 6 }}>
+                <button className="btn sm" onClick={() => setFolder(info.copy_dir || info.suggestions[0]?.path || '')}>{info.copy_dir ? 'Change folder' : 'Choose a folder'}</button>
+                {info.copy_dir && <button className="btn ghost sm" disabled={!!busy} onClick={() => saveFolder('')}>Stop copying</button>}</div>}
+          </> : <div className="stack" style={{ gap: 8 }}>
+            {info.suggestions.length > 0 && <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              {info.suggestions.map(s => <button key={s.path} className={`btn sm${folder === s.path ? ' primary' : ''}`} onClick={() => setFolder(s.path)}>{s.label}</button>)}</div>}
+            <label className="field">Folder<input className="input" value={folder} onChange={e => setFolder(e.target.value)} placeholder="/Volumes/MyDrive/Benchtop backups" /></label>
+            <p className="faint" style={{ margin: 0 }}>Benchtop creates the last folder in the path if needed. An external drive only has to be plugged in when a backup runs; missed copies are reported here.</p>
+            <div className="row" style={{ gap: 6 }}><button className="btn primary sm" disabled={!folder.trim() || !!busy} onClick={() => saveFolder(folder)}>{busy === 'folder' ? 'Checking…' : 'Use this folder'}</button>
+              <button className="btn ghost sm" onClick={() => setFolder(null)}>Cancel</button></div>
+          </div>}
+        </div>
+        <div className="panel backup-box">
+          <h3>Backup test</h3>
+          <p>Once a week Benchtop unpacks the newest backup{info.copy_dir ? ' from the second copy' : ''} into a temporary folder and checks it as if it had been restored: the database, the audit trail, every signed record and every file.</p>
+          {lc ? <>
+            <p className={lc.ok ? '' : 'error'}><b>{lc.ok ? 'Passed' : 'Problems found'}</b> <span className="faint">· {lc.name} ({lc.where}) · {when(lc.at)}</span></p>
+            {!lc.ok && <p className="faint">Your live data isn't changed by this test. Run <code>./benchtop check</code> to see whether the live data has the same problem; for a signed record that no longer matches, open it and use Verify integrity. Older backups are listed below.</p>}
+            <ul className="check-list">{lc.checks.map(c => <li key={c.name} className={c.ok ? 'ok' : 'bad'}><span aria-hidden>{c.ok ? '✓' : '✗'}</span> <b>{c.name}</b> <span className="faint">{c.detail}</span></li>)}</ul>
+          </> : <p className="faint">Not tested yet.</p>}
+        </div>
+      </div>}
+
       <div className="panel grid-wrap" style={{ border: 0 }}>
         <table className="plain"><thead><tr><th>File</th><th>Made</th><th>Size</th></tr></thead>
           <tbody>{(info?.backups || []).map(b => (
