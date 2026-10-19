@@ -89,7 +89,7 @@ export default function SafetyEntry({ content, onChange, readOnly, experimentId 
           <thead><tr><th>Chemical</th><th>Hazards</th><th>Hazard statements</th><th>Source</th></tr></thead>
           <tbody>{shown.map((c, i) => <tr key={i}>
             <td><b style={{ fontWeight: 600 }}>{c.name}</b><br /><span className="faint">{c.role}</span></td>
-            <td style={{ whiteSpace: 'nowrap' }}>{c.pictograms.map(p => <Pictogram key={p} code={p} size={24} />)} <SignalWord signal={c.signal} /></td>
+            <td><span className="picto-row">{c.pictograms.map(p => <Pictogram key={p} code={p} size={26} />)}<SignalWord signal={c.signal} /></span></td>
             <td className="codes">{c.status === 'pending' ? 'Fetching…' : c.status === 'not_found' ? 'Not in PubChem: check the SDS' : c.status === 'unclassified' ? 'No GHS classification listed'
               : c.status === 'error' ? 'Couldn\'t fetch: check the SDS' : c.codes.map((code, j) => <span key={code} title={c.titles[j]}>{j ? ', ' : ''}{code}</span>)}</td>
             <td className="faint" style={{ fontSize: 12.5 }}>{c.source}{c.age ? ` · ${c.age}` : ''}</td>
