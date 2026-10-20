@@ -11,7 +11,7 @@ from sqlmodel import select
 from .. import safety
 from ..models import Attachment, ChemSafety, Experiment, ExperimentStatus, Lot, LotTransaction, Material, Role, Signature, utcnow
 from ..security import DB, CurrentUser
-from ..services import experiment_summary
+from ..services import user_brief, experiment_summary
 from .reactions import _collect
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
@@ -94,11 +94,29 @@ def dashboard(user: CurrentUser, session: DB):
     expiring.sort(key=lambda r: r["expires_at"])
 
     returned_ids = {r["id"] for r in returned}
+    # witness requests: what I've been asked to witness comes first; my own records show who they wait on
+    from ..models import WitnessRequest
+    signed_ids = [e.id for e in exps if e.status == ExperimentStatus.signed]
+    reqs: dict[int, WitnessRequest] = {}
+    if signed_ids:
+        for r in session.exec(select(WitnessRequest).where(WitnessRequest.status == "open", WitnessRequest.experiment_id.in_(signed_ids))):
+            reqs[r.experiment_id] = r
+
+    def with_request(e: Experiment) -> dict[str, Any]:
+        r = reqs.get(e.id)
+        extra = {"assigned_to_me": bool(r and r.witness_id == user.id), "witness": user_brief(session, r.witness_id) if r else None,
+                 "asked_at": r.created_at.isoformat() + "Z" if r else None, "overdue": bool(r and r.due_at and r.due_at < now)}
+        return {**summ(e), **extra}
+    others = [e for e in exps if e.status == ExperimentStatus.signed and e.owner_id != user.id]
+    others.sort(key=lambda e: (not (e.id in reqs and reqs[e.id].witness_id == user.id), not (e.id in reqs and reqs[e.id].due_at and reqs[e.id].due_at < now)))
+    awaiting = [with_request(e) for e in others[:10]]
+    waiting = [with_request(e) for e in [e for e in mine if e.status == ExperimentStatus.signed][:10]]
     return {
         "lists": {
             "recent": [summ(e) for e in mine[:8]],
             "open": [summ(e) for e in [e for e in mine if e.status == ExperimentStatus.open][:10]],
-            "awaiting": [summ(e) for e in [e for e in exps if e.status == ExperimentStatus.signed and e.owner_id != user.id][:10]],
+            "awaiting": awaiting,
+            "waiting": waiting,
             "returned": returned[:10],
             "pinned": pinned,
             # drafts nobody has touched for two weeks (returned ones are already listed above)

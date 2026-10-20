@@ -59,7 +59,7 @@ def _check_username(session, name: str, me: int | None = None) -> str:
 
 
 WIDGET_TYPES = {"list", "actions", "note", "header", "yield", "month", "spectra", "inventory"}
-LIST_KINDS = {"recent", "open", "awaiting", "returned", "pinned"}
+LIST_KINDS = {"recent", "open", "awaiting", "returned", "pinned", "stale", "waiting"}
 
 
 def _clean_dashboard(d: Any) -> dict[str, Any] | None:
@@ -91,6 +91,9 @@ def _clean_prefs(p: dict[str, Any]) -> dict[str, Any]:
             continue
         if k == "pinned":
             out[k] = [int(i) for i in (v or [])[:100] if isinstance(i, (int, float))] if isinstance(v, list) else []
+            continue
+        if k == "email_notify":  # which emails this person gets
+            out[k] = {t: bool(v[t]) for t in ("witness", "results") if isinstance(v, dict) and t in v}
             continue
         if k in ("nav", "nav_hidden"):  # sidebar order and hidden items, as known keys
             out[k] = list(dict.fromkeys(i for i in v if i in NAV_KEYS)) if isinstance(v, list) else []
@@ -264,6 +267,13 @@ def run_setup(body: SetupIn, request: Request, session: DB):
     token = start_session(session, me, request, REMEMBER_HOURS, method="setup")
     session.commit()
     return {"token": token, "user": user_out(me), "demo_loaded": demo}
+
+
+@router.get("/auth/email-status")
+def email_status(_: CurrentUser):
+    """Whether this Benchtop sends email (for Account settings)."""
+    from .. import mailer
+    return {"configured": mailer.configured()}
 
 
 @router.get("/auth/me")

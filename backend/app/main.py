@@ -63,6 +63,14 @@ async def _housekeeping_loop() -> None:
         except Exception:
             log.exception("Backup test failed to run")
         try:
+            from . import timestamps, witness
+            n = await asyncio.to_thread(witness.send_due_reminders)
+            if n:
+                log.info("Witness reminders sent: %s", n)
+            await asyncio.to_thread(timestamps.retry_pending)
+        except Exception:
+            log.exception("Witness reminders / timestamp retries failed")
+        try:
             synced = await asyncio.to_thread(_sync_obsidian)
             if synced and synced["written"]:
                 log.info("Obsidian sync: %s notes updated", synced["written"])

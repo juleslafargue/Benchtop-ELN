@@ -368,3 +368,47 @@ class LabShift(SQLModel, table=True):
     shift: float
     solvent: str = ""
     created_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+class WitnessRequest(SQLModel, table=True):
+    """The author asked a particular colleague to witness a signed record (0.14)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    experiment_id: int = Field(foreign_key="experiment.id", index=True)
+    requested_by: int = Field(foreign_key="user.id")
+    witness_id: int = Field(foreign_key="user.id", index=True)
+    status: str = Field(default="open", index=True)  # open | done | cancelled
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    due_at: Optional[NaiveDatetime] = None
+    reminded_at: Optional[NaiveDatetime] = None
+    closed_at: Optional[NaiveDatetime] = None
+    outcome: str = ""  # witnessed | returned | withdrawn | voided | reassigned
+
+
+class SignatureTimestamp(SQLModel, table=True):
+    """An RFC 3161 trusted timestamp for a signature: an independent service certifies when it existed (0.14)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    signature_id: int = Field(foreign_key="signature.id", index=True, unique=True)
+    status: str = Field(default="pending", index=True)  # pending | ok | failed
+    payload: str  # canonical JSON describing the signature; its SHA-256 is what was timestamped
+    digest: str   # hex SHA-256 of payload
+    tsa_url: str = ""
+    tsa_name: str = ""
+    token: Optional[str] = None  # base64 DER TimeStampToken (CMS SignedData)
+    gen_time: Optional[NaiveDatetime] = None
+    error: str = ""
+    attempts: int = 0
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    updated_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+class EmailLog(SQLModel, table=True):
+    """Recent outgoing emails, for the admin page (the newest 200 are kept)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    to: str
+    subject: str
+    kind: str = ""
+    status: str = "queued"  # queued | sent | failed
+    error: str = ""
+    created_at: NaiveDatetime = Field(default_factory=utcnow, index=True)
+    sent_at: Optional[NaiveDatetime] = None
+

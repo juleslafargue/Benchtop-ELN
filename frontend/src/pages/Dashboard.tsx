@@ -4,7 +4,7 @@ import GridLayout, { WidthProvider, type Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { useApp } from '../App'
-import { api, displayName, fmt, when, type ExperimentSummary, type User } from '../api'
+import { api, displayName, fmt, when, type ExperimentSummary, type User, type UserBrief } from '../api'
 import { StatusDot } from '../components/ExperimentList'
 import NewExperimentDialog from '../components/NewExperimentDialog'
 import NewNotebookDialog from '../components/NewNotebookDialog'
@@ -12,12 +12,12 @@ import YieldChart, { type YieldPoint } from '../components/YieldChart'
 
 const Grid = WidthProvider(GridLayout)
 
-type ListKind = 'recent' | 'open' | 'awaiting' | 'returned' | 'pinned' | 'stale'
+type ListKind = 'recent' | 'open' | 'awaiting' | 'returned' | 'pinned' | 'stale' | 'waiting'
 type WType = 'list' | 'actions' | 'note' | 'header' | 'yield' | 'month' | 'spectra' | 'inventory'
 export interface Widget { i: string; type: WType; x: number; y: number; w: number; h: number; list?: ListKind; text?: string; title?: string }
 
 interface DashData {
-  lists: Record<ListKind, (ExperimentSummary & { reason?: string; returned_by?: string })[]>
+  lists: Record<ListKind, (ExperimentSummary & { reason?: string; returned_by?: string; assigned_to_me?: boolean; overdue?: boolean; witness?: UserBrief | null; asked_at?: string | null })[]>
   stats: { this_month: number; last_month: number; witnessed_this_month: number; yields: YieldPoint[] }
   spectra: { id: number; filename: string; experiment_id: number; eid: string; title: string; created_at: string }[]
   stale_days?: number
@@ -28,16 +28,18 @@ interface InvRow { lot_id: number; barcode: string; material_id: number; materia
 
 const LIST_TITLES: Record<ListKind, string> = {
   recent: 'Recently edited', open: 'My open experiments', awaiting: 'Waiting for my witness signature',
-  returned: 'Returned to me', pinned: 'Pinned', stale: 'Drafts gone quiet',
+  returned: 'Returned to me', pinned: 'Pinned', stale: 'Drafts gone quiet', waiting: 'My records waiting for a witness',
 }
 const LIST_EMPTY: Record<ListKind, string> = {
   recent: 'Nothing yet. Start an experiment.', open: 'No open experiments.', awaiting: 'Nothing waiting for you.',
   returned: 'Nothing returned. Good.', pinned: 'Pin experiments from their page to keep them here.', stale: 'No drafts left untouched for two weeks.',
+  waiting: 'None of your records is waiting for a witness.',
 }
 const CATALOG: { type: WType; list?: ListKind; label: string; w: number; h: number }[] = [
   { type: 'actions', label: 'Quick actions', w: 4, h: 4 },
   { type: 'list', list: 'awaiting', label: 'Waiting for my witness signature', w: 4, h: 4 },
   { type: 'list', list: 'returned', label: 'Returned to me', w: 4, h: 4 },
+  { type: 'list', list: 'waiting', label: 'My records waiting for a witness', w: 4, h: 4 },
   { type: 'list', list: 'open', label: 'My open experiments', w: 4, h: 5 },
   { type: 'list', list: 'recent', label: 'Recently edited', w: 6, h: 5 },
   { type: 'list', list: 'pinned', label: 'Pinned experiments', w: 6, h: 4 },
@@ -69,7 +71,11 @@ function ExpList({ items, empty, kind }: { items: DashData['lists'][ListKind]; e
           <span className="eid">{e.eid}</span>
           <span className="w-main"><span className="w-title">{e.title}</span>
             <span className="faint">{kind === 'returned' && e.reason ? `“${e.reason}” · ${e.returned_by || ''}`
-              : kind === 'awaiting' ? `by ${displayName(e.owner)} · ${when(e.updated_at)}` : `${e.notebook_name || ''} · ${when(e.updated_at)}`}</span></span>
+              : kind === 'awaiting' ? `by ${displayName(e.owner)} · ${when(e.updated_at)}`
+                : kind === 'waiting' ? (e.witness ? `asked ${displayName(e.witness)} · ${when(e.asked_at || e.updated_at)}` : `anyone can witness · ${when(e.updated_at)}`)
+                  : `${e.notebook_name || ''} · ${when(e.updated_at)}`}
+              {(e.assigned_to_me && kind === 'awaiting') && <span className="w-badge">asked you</span>}
+              {e.overdue && <span className="w-badge overdue">overdue</span>}</span></span>
           <StatusDot status={e.status} />
         </Link></li>
       ))}

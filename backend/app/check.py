@@ -71,7 +71,31 @@ def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
             counts["signed_records"] = n
             checks.append(_item("Signed records", not bad, f"all {n:,} match their signatures" if not bad
                                 else f"{len(bad)} of {n} no longer match: {', '.join(bad[:10])}{'…' if len(bad) > 10 else ''}"))
-            # 5. attached files
+            # 5. trusted timestamps still verify against what was signed
+            from .models import SignatureTimestamp
+            from . import timestamps as tsmod
+            import base64 as _b64
+            good = bad = waiting = 0
+            bad_ids = []
+            for row in s.exec(select(SignatureTimestamp)):
+                if row.status != "ok":
+                    waiting += row.status == "pending"
+                    continue
+                sig = s.get(Signature, row.signature_id)
+                same = sig is not None and hashlib.sha256(row.payload.encode()).hexdigest() == row.digest and \
+                    tsmod.payload_for(s, sig) == row.payload
+                ok = same and tsmod.available() and tsmod.verify(_b64.b64decode(row.token or ""), bytes.fromhex(row.digest))["ok"]
+                if ok:
+                    good += 1
+                else:
+                    bad += 1
+                    bad_ids.append(str(row.signature_id))
+            counts["timestamps"] = good
+            if good or bad or waiting:
+                checks.append(_item("Trusted timestamps", not bad,
+                                    (f"all {good:,} verify" if not bad else f"{bad} don't verify (signatures {', '.join(bad_ids[:10])})")
+                                    + (f"; {waiting} still to fetch" if waiting else "")))
+            # 6. attached files
             missing, damaged, n = [], [], 0
             for a in s.exec(select(Attachment)):
                 n += 1

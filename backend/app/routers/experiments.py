@@ -69,7 +69,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
-from .. import audit, chem, nmrpredict, plugins
+from .. import audit, chem, mailer, nmrpredict, plugins, timestamps, witness
 from ..config import settings
 from ..models import (
     Attachment, Entry, EntryKind, EntryVersion, Experiment, ExperimentStatus, Notebook, Role,
@@ -355,6 +355,7 @@ def get_experiment(exp_id: int, user: CurrentUser, session: DB):
         "entries": [entry_out(e) for e in live_entries(session, exp.id)],
         "attachments": [attachment_out(a) for a in atts],
         "signatures": signatures_out(session, exp.id),
+        "witness_request": witness.summary(session, exp),
         **_access_info(session, user, exp),
     }
 
@@ -789,7 +790,8 @@ def download_attachment(att_id: int, user: CurrentUser, session: DB, inline: boo
 
 class SignIn(BaseModel):
     password: str
-    comment: str = ""
+    comment: str = Field("", max_length=4000)
+    witness_id: int | None = None  # author signing: who to ask to witness (optional)
 
 
 def _check_password(user: User, password: str, session) -> None:
@@ -833,6 +835,7 @@ def _sign(session, exp: Experiment, user: User, meaning: str, comment: str) -> S
     session.flush()
     audit.record(session, user, f"sign:{meaning}", "experiment", exp.id, eid=exp.eid,
                  content_hash=sig.content_hash, comment=comment)
+    timestamps.queue_for(session, sig)  # an independent service certifies when it was signed (fetched after commit)
     return sig
 
 
@@ -850,10 +853,14 @@ def sign_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
                for m in [plugins.missing_required(e.content or {})] if m]
     if missing:
         raise HTTPException(422, "Fill in the required items before signing — " + "; ".join(missing))
+    if body.witness_id is not None:
+        witness.validate(session, exp, body.witness_id)  # before signing, so a bad choice doesn't leave it half done
     _check_password(user, body.password, session)
     _claim(session, exp, ExperimentStatus.signed, frm=ExperimentStatus.open, msg=f"{exp.eid} has already been signed")
     _sign(session, exp, user, "author", body.comment)
     nmrpredict.lab_record(session, exp)  # its confirmed NMR assignments now teach the predictor
+    if body.witness_id is not None:
+        witness.request(session, exp, user, body.witness_id)
     session.commit()
     return get_experiment(exp.id, user, session)
 
@@ -876,6 +883,7 @@ def witness_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
         raise HTTPException(409, "Record content no longer matches the author signature")
     _claim(session, exp, ExperimentStatus.witnessed, frm=ExperimentStatus.signed, msg=f"{exp.eid} is no longer awaiting a witness")
     _sign(session, exp, user, "witness", body.comment)
+    witness.close(session, exp, "witnessed", user)
     session.commit()
     return get_experiment(exp.id, user, session)
 
@@ -894,6 +902,7 @@ def reject_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
     _claim(session, exp, ExperimentStatus.open, frm=ExperimentStatus.signed, msg=f"{exp.eid} is no longer awaiting a witness")
     _sign(session, exp, user, "rejected", body.comment)
     nmrpredict.lab_forget(session, exp.id)
+    witness.close(session, exp, "returned", user, body.comment)
     session.commit()
     return get_experiment(exp.id, user, session)
 
@@ -908,6 +917,7 @@ def withdraw_signature(exp_id: int, body: SignIn, user: Writer, session: DB):
     _claim(session, exp, ExperimentStatus.open, frm=ExperimentStatus.signed, msg=f"{exp.eid} is no longer awaiting a witness")
     _sign(session, exp, user, "withdrawn", body.comment)
     nmrpredict.lab_forget(session, exp.id)
+    witness.close(session, exp, "withdrawn", user)
     session.commit()
     return get_experiment(exp.id, user, session)
 
@@ -925,8 +935,66 @@ def void_experiment(exp_id: int, body: SignIn, user: Writer, session: DB):
     _claim(session, exp, ExperimentStatus.voided, not_=ExperimentStatus.voided, msg="Already voided")
     _sign(session, exp, user, "void", body.comment)
     nmrpredict.lab_forget(session, exp.id)
+    witness.close(session, exp, "voided", user)
     session.commit()
     return get_experiment(exp.id, user, session)
+
+
+@router.get("/experiments/{exp_id}/witness-candidates")
+def witness_candidates(exp_id: int, user: CurrentUser, session: DB):
+    """Colleagues who can be asked to witness this record."""
+    exp = read_experiment(session, user, exp_id)
+    return {"candidates": witness.candidates(session, exp), "email": mailer.configured()}
+
+
+class WitnessRequestIn(BaseModel):
+    witness_id: int
+
+
+def _request_owner(session, user: User, exp_id: int) -> Experiment:
+    exp = read_experiment(session, user, exp_id)
+    if exp.owner_id != user.id and user.role != Role.admin:
+        raise HTTPException(403, "Only the author (or an admin) can choose the witness")
+    if exp.status != ExperimentStatus.signed:
+        raise HTTPException(409, f"{exp.eid} isn't waiting for a witness")
+    return exp
+
+
+@router.put("/experiments/{exp_id}/witness-request")
+def set_witness_request(exp_id: int, body: WitnessRequestIn, user: Writer, session: DB):
+    """Ask someone (else) to witness a signed record."""
+    exp = _request_owner(session, user, exp_id)
+    witness.request(session, exp, user, body.witness_id)
+    audit.record(session, user, "witness_request", "experiment", exp.id, eid=exp.eid, witness_id=body.witness_id)
+    session.commit()
+    return witness.summary(session, exp)
+
+
+@router.post("/experiments/{exp_id}/witness-request/remind")
+def remind_witness(exp_id: int, user: Writer, session: DB):
+    exp = _request_owner(session, user, exp_id)
+    r = witness.open_request(session, exp.id)
+    if r is None:
+        raise HTTPException(404, "Nobody has been asked to witness this record")
+    if r.reminded_at and utcnow() - r.reminded_at < witness.MANUAL_REMIND_GAP:
+        raise HTTPException(429, "A reminder went out less than an hour ago")
+    witness.remind(session, r, manual_by=user)
+    session.commit()
+    return witness.summary(session, exp)
+
+
+@router.get("/signatures/{sig_id}/timestamp")
+def download_timestamp(sig_id: int, user: CurrentUser, session: DB):
+    """The trusted timestamp of a signature, with what was timestamped and how to check it with openssl."""
+    from ..models import SignatureTimestamp
+    sig = get_or_404(session, Signature, sig_id)
+    exp = read_experiment(session, user, sig.experiment_id)
+    row = session.exec(select(SignatureTimestamp).where(SignatureTimestamp.signature_id == sig.id)).first()
+    if row is None or row.status != "ok":
+        raise HTTPException(404, "This signature has no trusted timestamp (yet)")
+    data = timestamps.proof_zip(session, sig, row)
+    name = f"{exp.eid}-signature-{sig.id}-timestamp.zip"
+    return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @router.get("/experiments/{exp_id}/verify")
@@ -1208,10 +1276,17 @@ def report_html(session, exp: Experiment, pdf: bool = False) -> str:
     owner = session.get(User, exp.owner_id)
     sigs = signatures_out(session, exp.id)
     body = "".join(_render_entry_safe(e, atts, pdf) for e in live_entries(session, exp.id))
+    def stamp(s):
+        t = s.get("timestamp")
+        if not t:
+            return "—"
+        if t["status"] == "ok":
+            return f"{t['gen_time'][:19].replace('T', ' ')} UTC, {html.escape(t['tsa'] or '')}"
+        return "pending" if t["status"] == "pending" else "not obtained"
     sig_html = "".join(
         f"<tr><td>{html.escape(s['meaning'])}</td><td>{html.escape(s['signer_name'] or s['user']['username'])}</td>"
-        f"<td>{s['signed_at']}</td><td>{html.escape(s['comment'])}</td><td><code>{s['content_hash'][:16]}…</code></td></tr>"
-        for s in sigs) or "<tr><td colspan=5>Not signed</td></tr>"
+        f"<td>{s['signed_at']}</td><td>{html.escape(s['comment'])}</td><td><code>{s['content_hash'][:16]}…</code></td><td>{stamp(s)}</td></tr>"
+        for s in sigs) or "<tr><td colspan=6>Not signed</td></tr>"
     pdf_fix = pdf  # glyphs the PDF's built-in fonts lack
     pdf_css = ("@page{size:a4;margin:1.6cm 1.5cm 1.8cm 1.5cm;@frame footer{-pdf-frame-content:pdffoot;bottom:.6cm;margin-left:1.5cm;margin-right:1.5cm;height:.8cm}}"
                "body{font-family:Helvetica;font-size:10pt;line-height:1.35} h1{font-size:17pt} h2{font-size:12.5pt;margin:.6em 0 .2em}"
@@ -1228,7 +1303,7 @@ footer{{margin-top:2rem;border-top:1px solid #999;font-size:11px;color:#555}}{pd
 <header><div class="meta">{exp.eid} · {html.escape(exp.status.value.upper())}</div><h1>{html.escape(exp.title)}</h1>
 <div class="meta">Author: {html.escape(owner.full_name or owner.username)} · Created {exp.created_at:%Y-%m-%d %H:%M} UTC · Last modified {exp.updated_at:%Y-%m-%d %H:%M} UTC</div>
 <p>{html.escape(exp.description)}</p></header>{body}
-<section><h2>Signatures</h2><table><tr><th>Meaning</th><th>Signer</th><th>Signed (UTC)</th><th>Comment</th><th>Content hash</th></tr>{sig_html}</table></section>
+<section><h2>Signatures</h2><table><tr><th>Meaning</th><th>Signer</th><th>Signed (UTC)</th><th>Comment</th><th>Content hash</th><th>Trusted timestamp</th></tr>{sig_html}</table></section>
 <footer>Record content hash (SHA-256): <code>{content_hash(session, exp)}</code><br>Generated by Benchtop ELN {utcnow():%Y-%m-%d %H:%M} UTC</footer>
 </body></html>"""
     if pdf_fix:

@@ -121,12 +121,16 @@ def content_hash(session: Session, exp: Experiment) -> str:
 
 
 def signatures_out(session: Session, exp_id: int) -> list[dict[str, Any]]:
-    sigs = session.exec(select(Signature).where(Signature.experiment_id == exp_id).order_by(Signature.id))
+    from . import timestamps
+    from .models import SignatureTimestamp
+    sigs = list(session.exec(select(Signature).where(Signature.experiment_id == exp_id).order_by(Signature.id)))
+    stamps = {t.signature_id: t for t in session.exec(select(SignatureTimestamp).where(SignatureTimestamp.signature_id.in_([s.id for s in sigs])))} if sigs else {}
     return [
         {"id": s.id, "meaning": s.meaning, "comment": s.comment, "content_hash": s.content_hash,
          "signed_at": s.signed_at.isoformat() + "Z", "user": user_brief(session, s.user_id),
          # printed name as it was when signed; falls back to the current name for pre-0.4 signatures
          "signer_name": s.signer_name or (user_brief(session, s.user_id) or {}).get("full_name") or "",
-         "signer_username": s.signer_username}
+         "signer_username": s.signer_username,
+         "timestamp": timestamps.out(stamps.get(s.id), s.signed_at)}  # trusted timestamp (0.14), if any
         for s in sigs
     ]

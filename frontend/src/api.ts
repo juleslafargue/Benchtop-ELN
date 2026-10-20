@@ -4,7 +4,7 @@ export type Role = 'admin' | 'scientist' | 'viewer'
 export type Status = 'open' | 'signed' | 'witnessed' | 'voided'
 export type EntryKind = 'text' | 'reaction' | 'table' | 'file' | 'purification' | 'characterization' | 'safety' | 'screen' | 'custom'
 
-export interface Preferences { theme?: 'system' | 'light' | 'dark'; palette?: string; default_notebook_id?: number | null; spectrum_expanded?: boolean; pinned?: number[]; nav?: string[]; nav_hidden?: string[]; dashboard?: { widgets: unknown[] } }
+export interface Preferences { theme?: 'system' | 'light' | 'dark'; palette?: string; email_notify?: { witness?: boolean; results?: boolean }; default_notebook_id?: number | null; spectrum_expanded?: boolean; pinned?: number[]; nav?: string[]; nav_hidden?: string[]; dashboard?: { widgets: unknown[] } }
 export interface User { id: number; username: string; full_name: string; email: string; role: Role; active: boolean; preferences: Preferences; has_password?: boolean; must_change_password?: boolean }
 export interface UserBrief { id: number; username: string; full_name: string }
 export type Visibility = 'everyone' | 'group' | 'private'
@@ -39,13 +39,20 @@ export interface Entry {
   content: any; version: number; updated_by: number; updated_at: string
 }
 export interface Attachment { id: number; filename: string; content_type: string; size: number; sha256: string; created_at: string }
+export interface TrustedTimestamp { status: 'ok' | 'pending' | 'failed'; tsa: string; gen_time: string | null; delay_seconds: number | null; error: string; attempts: number }
 export interface Signature {
   id: number; meaning: string; comment: string; content_hash: string; signed_at: string; user: UserBrief
   signer_name?: string; signer_username?: string | null
   matches_current?: boolean
+  timestamp?: TrustedTimestamp | null
 }
+export interface WitnessRequest {
+  id: number; witness: UserBrief; requested_by: UserBrief; asked_at: string; due_at: string | null; overdue: boolean
+  reminded_at: string | null; can_remind_now: boolean; email: boolean
+}
+export interface WitnessCandidate extends UserBrief { has_email: boolean }
 export interface Experiment extends ExperimentSummary {
-  entries: Entry[]; attachments: Attachment[]; signatures: Signature[]
+  entries: Entry[]; attachments: Attachment[]; signatures: Signature[]; witness_request?: WitnessRequest | null
   can_edit: boolean; shared_with_me: 'view' | 'edit' | null; audience: Audience; open_comments: number
 }
 export interface StoichRow {

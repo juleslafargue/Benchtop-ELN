@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { api, type Experiment } from '../api'
+import { useEffect, useState } from 'react'
+import { api, displayName, type Experiment, type WitnessCandidate } from '../api'
 import Modal from './Modal'
 
 export type SignAction = 'sign' | 'witness' | 'reject' | 'withdraw' | 'void'
@@ -20,10 +20,28 @@ export default function SignDialog({ exp, action, onDone, onClose }: {
   const [comment, setComment] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  // signing as author: who to ask to witness (remembered for next time)
+  const [people, setPeople] = useState<WitnessCandidate[] | null>(null)
+  const [emailOn, setEmailOn] = useState(false)
+  const [witnessId, setWitnessId] = useState<number | ''>('')
+  useEffect(() => {
+    if (action !== 'sign') return
+    api.get<{ candidates: WitnessCandidate[]; email: boolean }>(`/api/experiments/${exp.id}/witness-candidates`).then(r => {
+      setPeople(r.candidates); setEmailOn(r.email)
+      let last: number | null = null
+      try { last = Number(localStorage.getItem('benchtop.last-witness')) || null } catch { /* ok */ }
+      if (last && r.candidates.some(c => c.id === last)) setWitnessId(last)
+    }).catch(() => setPeople([]))
+  }, [action, exp.id])
+  const chosen = people?.find(p => p.id === witnessId)
 
   const go = async () => {
     setBusy(true); setErr('')
-    try { onDone(await api.post<Experiment>(`/api/experiments/${exp.id}/${action}`, { password, comment })) }
+    try {
+      const body: Record<string, unknown> = { password, comment }
+      if (action === 'sign' && witnessId) { body.witness_id = witnessId; try { localStorage.setItem('benchtop.last-witness', String(witnessId)) } catch { /* ok */ } }
+      onDone(await api.post<Experiment>(`/api/experiments/${exp.id}/${action}`, body))
+    }
     catch (e: any) { setErr(e.message); setBusy(false) }
   }
 
@@ -35,6 +53,14 @@ export default function SignDialog({ exp, action, onDone, onClose }: {
       <form className="stack" onSubmit={e => { e.preventDefault(); go() }}>
         <p style={{ margin: 0 }}><b>{exp.eid}</b> {exp.title}</p>
         <p className="notice" style={{ margin: 0 }}>{c.meaning}</p>
+        {action === 'sign' && people && <label className="field">Ask someone to witness it
+          <select className="select" value={witnessId} onChange={e => setWitnessId(e.target.value ? Number(e.target.value) : '')}>
+            <option value="">No one in particular (anyone with access can witness)</option>
+            {people.map(p => <option key={p.id} value={p.id}>{displayName(p)}{emailOn && !p.has_email ? ' (no email address)' : ''}</option>)}
+          </select>
+          <span className="faint" style={{ fontSize: 12.5 }}>{chosen ? `${displayName(chosen)} gets a notification${emailOn && chosen.has_email ? ' and an email' : ''}, and reminders while it waits.`
+            : people.length ? 'They get a notification and reminders, and you hear back when it’s witnessed or returned.' : 'Nobody else can open this record yet: share it, or put it in a shared notebook, so someone can witness it.'}</span>
+        </label>}
         <label className="field">{c.needsReason ? 'Reason (required)' : 'Comment (optional)'}
           <textarea className="input" rows={2} value={comment} onChange={e => setComment(e.target.value)} /></label>
         <label className="field">Re-enter your password to apply your electronic signature

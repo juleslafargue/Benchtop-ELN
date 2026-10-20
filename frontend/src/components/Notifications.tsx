@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { ago, api, displayName, type Notification } from '../api'
 import { initials } from './Layout'
 
-const ICON: Record<string, string> = { mention: '@', reply: '↩', comment: '💬', share: '⇪', group: '👥' }
+const ICON: Record<string, string> = { mention: '@', reply: '↩', comment: '💬', share: '⇪', group: '👥', witness_request: '✍', witness_reminder: '⏰', witnessed: '✓', returned: '↩', witness_cancelled: '–' }
 
 /** Bell with unread count; the list opens as a popover. Polls every minute and on navigation. */
 export default function Notifications() {

@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../App'
-import { api, displayName, downloadAuthed, when, type AuditEvent, type EntryKind, type Experiment, type ExperimentSummary, type Signature } from '../api'
+import { api, displayName, downloadAuthed, when, type AuditEvent, type EntryKind, type Experiment, type ExperimentSummary, type Signature, type WitnessCandidate } from '../api'
 import EntryCard from '../components/EntryCard'
 import { AddSection } from '../components/AddSection'
 import Discussion from '../components/Discussion'
@@ -36,7 +36,8 @@ function StatusCard({ exp, fresh }: { exp: Experiment; fresh: boolean }) {
   const author = lastOf('author'), witness = lastOf('witness'), voided = lastOf('void')
   const step = { open: 0, signed: 1, witnessed: 2, voided: -1 }[exp.status]
   const line = exp.status === 'open' ? 'Editable until signed'
-    : exp.status === 'signed' ? <>Signed by {who(author)}<br /><span className="faint">Waiting for a witness</span></>
+    : exp.status === 'signed' ? <>Signed by {who(author)}<br /><span className={exp.witness_request?.overdue ? 'overdue-text' : 'faint'}>
+      {exp.witness_request ? `Waiting for ${displayName(exp.witness_request.witness)}${exp.witness_request.overdue ? ' · overdue' : ''}` : 'Waiting for a witness'}</span></>
       : exp.status === 'witnessed' ? <>Witnessed by {who(witness)}</>
         : <>Voided by {who(voided)}</>
   return (
@@ -57,7 +58,23 @@ function StatusCard({ exp, fresh }: { exp: Experiment; fresh: boolean }) {
 
 const SIG_LABEL: Record<string, string> = { author: 'Signed by author', witness: 'Witnessed', rejected: 'Returned to author', withdrawn: 'Signature withdrawn', void: 'Voided' }
 
-function SignatureRail({ sigs }: { sigs: Signature[] }) {
+/** The independent, certified time of a signature (RFC 3161), if this lab uses trusted timestamps. */
+function TimestampLine({ s, eid }: { s: Signature; eid: string }) {
+  const t = s.timestamp
+  if (!t) return null
+  if (t.status !== 'ok') return <div className="ts-line pending" title={t.error}>
+    {t.status === 'pending' ? (t.attempts === 0 ? 'Trusted timestamp: fetching…' : 'Trusted timestamp: the service couldn’t be reached; Benchtop retries hourly')
+      : 'Trusted timestamp: not obtained (an admin can retry)'}</div>
+  const late = t.delay_seconds != null && t.delay_seconds > 300
+  return (
+    <div className="ts-line" title={`An independent timestamp service (${t.tsa}) certifies this signature existed at this time.`}>
+      <span aria-hidden>🕒</span> Certified {when(t.gen_time!)} by {t.tsa}{late ? ` (fetched ${Math.round(t.delay_seconds! / 3600) || '<1'} h after signing)` : ''}
+      {' '}<button className="linkish" onClick={() => downloadAuthed(`/api/signatures/${s.id}/timestamp`, `${eid}-signature-${s.id}-timestamp.zip`)}>Proof</button>
+    </div>
+  )
+}
+
+function SignatureRail({ sigs, eid }: { sigs: Signature[]; eid: string }) {
   if (!sigs.length) return <p className="faint">No signatures yet.</p>
   return <>{sigs.map(s => (
     <div key={s.id} className={`sig ${s.meaning}`}>
@@ -66,8 +83,49 @@ function SignatureRail({ sigs }: { sigs: Signature[] }) {
       {s.signer_name && s.user && s.signer_name !== (s.user.full_name || s.user.username) && <div className="faint">now {displayName(s.user)}</div>}
       {s.comment && <div style={{ fontSize: 13 }}>“{s.comment}”</div>}
       <div className="hash" title={s.content_hash}>{s.content_hash.slice(0, 24)}…</div>
+      <TimestampLine s={s} eid={eid} />
     </div>
   ))}</>
+}
+
+/** Who has been asked to witness, with Remind and Change (author or admin). */
+function WitnessPanel({ exp, canManage, onChange }: { exp: Experiment; canManage: boolean; onChange: () => void }) {
+  const { toast } = useApp()
+  const r = exp.witness_request
+  const [picking, setPicking] = useState(false)
+  const [people, setPeople] = useState<WitnessCandidate[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  if (exp.status !== 'signed' || (!r && !canManage)) return null
+  const open = () => { setPicking(true); api.get<{ candidates: WitnessCandidate[] }>(`/api/experiments/${exp.id}/witness-candidates`).then(x => setPeople(x.candidates)).catch(e => toast(e.message)) }
+  const ask = async (id: number) => {
+    setBusy(true)
+    try { await api.put(`/api/experiments/${exp.id}/witness-request`, { witness_id: id }); setPicking(false); toast('Asked to witness'); onChange() }
+    catch (e: any) { toast(e.message) } finally { setBusy(false) }
+  }
+  const remind = async () => {
+    try { await api.post(`/api/experiments/${exp.id}/witness-request/remind`); toast(`Reminded ${displayName(r!.witness)}`); onChange() } catch (e: any) { toast(e.message) }
+  }
+  return (
+    <div className={`witness-panel${r?.overdue ? ' overdue' : ''}`}>
+      {r ? <>
+        <div><b>Waiting for {displayName(r.witness)}</b></div>
+        <div className="faint" style={{ fontSize: 12.5 }}>Asked {when(r.asked_at)}{r.overdue ? ' · overdue' : r.due_at ? ` · due ${when(r.due_at)}` : ''}
+          {r.reminded_at ? ` · reminded ${when(r.reminded_at)}` : ''}{r.email ? '' : ' · no email (notification only)'}</div>
+      </> : <div className="faint" style={{ fontSize: 13 }}>Nobody in particular has been asked to witness this record.</div>}
+      {canManage && !picking && <div className="row" style={{ gap: 6, marginTop: 6 }}>
+        {r && <button className="btn sm" disabled={!r.can_remind_now} title={r.can_remind_now ? '' : 'A reminder went out less than an hour ago'} onClick={remind}>Remind</button>}
+        <button className="btn ghost sm" onClick={open}>{r ? 'Ask someone else' : 'Ask someone to witness'}</button>
+      </div>}
+      {picking && <div className="stack" style={{ gap: 6, marginTop: 6 }}>
+        {people === null ? <span className="faint">Loading…</span> : people.length === 0 ? <span className="faint">Nobody else can open this record. Share it first.</span>
+          : <select className="select" disabled={busy} defaultValue="" onChange={e => e.target.value && ask(Number(e.target.value))} aria-label="Witness">
+            <option value="" disabled>Choose a colleague…</option>
+            {people.filter(p => p.id !== r?.witness.id).map(p => <option key={p.id} value={p.id}>{displayName(p)}</option>)}
+          </select>}
+        <button className="btn ghost sm" onClick={() => setPicking(false)}>Cancel</button>
+      </div>}
+    </div>
+  )
 }
 
 function AuditTab({ expId }: { expId: number }) {
@@ -122,6 +180,12 @@ export default function ExperimentPage() {
   const [, redraw] = useState(0)
   useEffect(() => { const on = () => redraw(n => n + 1); window.addEventListener('benchtop:collapse', on); return () => window.removeEventListener('benchtop:collapse', on) }, [])
 
+  const tsPolls = useRef(0)
+  useEffect(() => {  // a signature's trusted timestamp arrives a moment after signing: refresh a few times
+    if (!exp || !exp.signatures.some(s => s.timestamp?.status === 'pending' && s.timestamp.attempts === 0) || tsPolls.current >= 6) return
+    const t = setTimeout(() => { tsPolls.current += 1; load() }, 1500)
+    return () => clearTimeout(t)
+  }, [exp]) // eslint-disable-line react-hooks/exhaustive-deps
   const load = useCallback(async () => {
     try { setExp(await api.get<Experiment>(`/api/experiments/${id}`)); setErr('') } catch (e: any) { setErr(e.message) }
   }, [id])
@@ -363,7 +427,8 @@ export default function ExperimentPage() {
             )}
             {!exp.is_template && <div>
               <h3>Signatures</h3>
-              <SignatureRail sigs={exp.signatures} />
+              <WitnessPanel exp={exp} canManage={isOwner || user.role === 'admin'} onChange={load} />
+              <SignatureRail sigs={exp.signatures} eid={exp.eid} />
               <button className="btn ghost sm" onClick={runVerify}>Verify integrity</button>
               {verify && <p style={{ fontSize: 13, margin: '6px 0 0' }} className={verify.intact ? '' : 'error'}>
                 {verify.intact ? 'Content matches the latest signature.' : 'Content does not match the signature. The record may have been altered outside the app.'}

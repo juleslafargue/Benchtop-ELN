@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from .. import audit, backup
+from .. import audit, backup, mailer, sitesettings, timestamps
 from ..config import settings
 from ..security import DB, Admin
 
@@ -63,3 +63,133 @@ async def create_backup(user: Admin, session: DB):
     audit.record(session, user, "backup", "system", None, name=b["name"], size=b["size"])
     session.commit()
     return b
+
+
+# ------------------------------------------------------------------ email, witness reminders, trusted timestamps
+
+class EmailSettingsIn(BaseModel):
+    host: str | None = None
+    port: int | None = None
+    security: str | None = None
+    username: str | None = None
+    password: str | None = None  # None = keep the stored one
+    from_address: str | None = None
+    from_name: str | None = None
+    base_url: str | None = None
+
+
+@router.get("/email")
+def get_email_settings(_: Admin, session: DB):
+    from ..models import EmailLog
+    from sqlmodel import select
+    recent = session.exec(select(EmailLog).order_by(EmailLog.id.desc()).limit(25)).all()
+    return {**sitesettings.public("email"), "configured": mailer.configured(), "link_base": mailer.base_url(),
+            "log": [{"to": e.to, "subject": e.subject, "status": e.status, "error": e.error,
+                     "at": (e.sent_at or e.created_at).isoformat() + "Z"} for e in recent]}
+
+
+@router.put("/email")
+def set_email_settings(body: EmailSettingsIn, user: Admin, session: DB):
+    changes = body.model_dump(exclude_none=True)
+    if body.password is not None:
+        changes["password"] = body.password
+    if "security" in changes and changes["security"] not in ("starttls", "ssl", "none"):
+        raise HTTPException(422, "Security must be starttls, ssl or none")
+    if "port" in changes and not 1 <= changes["port"] <= 65535:
+        raise HTTPException(422, "Port must be between 1 and 65535")
+    for k in ("host", "username", "from_address", "from_name", "base_url"):
+        if k in changes:
+            changes[k] = changes[k].strip()[:300]
+    if changes.get("from_address") and "@" not in changes["from_address"]:
+        raise HTTPException(422, "The From address should be an email address")
+    out = sitesettings.update("email", changes)
+    audit.record(session, user, "settings_email", "system", None, host=out["host"], from_address=out["from_address"])
+    session.commit()
+    return {**out, "configured": mailer.configured(), "link_base": mailer.base_url()}
+
+
+class TestEmailIn(BaseModel):
+    to: str
+
+
+@router.post("/email/test")
+async def test_email(body: TestEmailIn, _: Admin):
+    if "@" not in body.to:
+        raise HTTPException(422, "Enter an email address to send the test to")
+    err = await run_in_threadpool(mailer.send_test, body.to.strip())
+    if err:
+        raise HTTPException(400, err)
+    return {"ok": True}
+
+
+class WitnessSettingsIn(BaseModel):
+    remind_after_days: int | None = None
+    overdue_after_days: int | None = None
+
+
+@router.get("/witness-settings")
+def get_witness_settings(_: Admin):
+    return sitesettings.public("witness")
+
+
+@router.put("/witness-settings")
+def set_witness_settings(body: WitnessSettingsIn, user: Admin, session: DB):
+    changes = body.model_dump(exclude_none=True)
+    for k, v in changes.items():
+        if not 1 <= v <= 90:
+            raise HTTPException(422, "Use between 1 and 90 days")
+    out = sitesettings.update("witness", changes)
+    audit.record(session, user, "settings_witness", "system", None, **changes)
+    session.commit()
+    return out
+
+
+class TimestampSettingsIn(BaseModel):
+    enabled: bool | None = None
+    tsa_url: str | None = None
+
+
+def _timestamp_status(session) -> dict:
+    from sqlmodel import func, select
+    from ..models import SignatureTimestamp
+    counts = dict(session.exec(select(SignatureTimestamp.status, func.count()).group_by(SignatureTimestamp.status)).all())
+    last_err = session.exec(select(SignatureTimestamp.error).where(SignatureTimestamp.status != "ok", SignatureTimestamp.error != "")
+                            .order_by(SignatureTimestamp.updated_at.desc())).first()
+    return {**sitesettings.public("timestamps"), "available": timestamps.available(), "services": timestamps.TSAS,
+            "counts": {"ok": counts.get("ok", 0), "pending": counts.get("pending", 0), "failed": counts.get("failed", 0)},
+            "last_error": last_err or ""}
+
+
+@router.get("/timestamps")
+def get_timestamp_settings(_: Admin, session: DB):
+    return _timestamp_status(session)
+
+
+@router.put("/timestamps")
+def set_timestamp_settings(body: TimestampSettingsIn, user: Admin, session: DB):
+    changes = body.model_dump(exclude_none=True)
+    if "tsa_url" in changes:
+        url = changes["tsa_url"].strip()
+        if not url.startswith(("http://", "https://")) or len(url) > 300:
+            raise HTTPException(422, "The timestamp service address should start with http:// or https://")
+        changes["tsa_url"] = url
+    sitesettings.update("timestamps", changes)
+    audit.record(session, user, "settings_timestamps", "system", None, **changes)
+    session.commit()
+    return _timestamp_status(session)
+
+
+class TestTsaIn(BaseModel):
+    tsa_url: str | None = None
+
+
+@router.post("/timestamps/test")
+async def test_timestamp_service(body: TestTsaIn, _: Admin):
+    url = (body.tsa_url or sitesettings.get("timestamps")["tsa_url"]).strip()
+    return await run_in_threadpool(timestamps.test_service, url)
+
+
+@router.post("/timestamps/retry")
+def retry_timestamps(_: Admin, session: DB):
+    n = timestamps.retry_pending(include_failed=True)
+    return {**_timestamp_status(session), "retried": n}

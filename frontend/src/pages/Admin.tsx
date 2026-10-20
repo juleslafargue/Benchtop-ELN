@@ -4,6 +4,7 @@ import type { NmrStatus } from '../components/Prediction'
 import { api, when, type AuditEvent, type Role, type User } from '../api'
 import Modal from '../components/Modal'
 import { Plugins, Webhooks } from '../components/Integrations'
+import { EmailSettingsPanel, TimestampSettingsPanel, WitnessSettingsPanel } from '../components/AdminSigning'
 import PasswordField from '../components/PasswordField'
 
 function EditUser({ u, onClose, onSaved }: { u: User; onClose: () => void; onSaved: () => void }) {
@@ -221,6 +222,9 @@ export default function Admin() {
             ))}</tbody></table>
         </div>
       </section>
+      <EmailSettingsPanel />
+      <WitnessSettingsPanel />
+      <TimestampSettingsPanel />
       <Plugins />
       <Webhooks />
       <NmrData />

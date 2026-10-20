@@ -92,6 +92,9 @@ export default function Account() {
         <div><h2>API tokens</h2><p className="help">For scripts and other programs (an instrument PC, a data pipeline) that need to read or add to your notebooks. A token acts as you, but can never sign records or change settings.</p></div>
         <ApiTokens />
 
+        <div><h2>Email</h2><p className="help">Which emails Benchtop sends you. You always see these as notifications in Benchtop too.</p></div>
+        <EmailPrefs />
+
         <div><h2>Benchtop as an app</h2><p className="help">Its own window and Dock icon, without the browser's tabs and address bar. Your notebook stays where it is; the app is a window onto it.</p></div>
         <InstallApp />
 
@@ -222,6 +225,28 @@ function InstallApp() {
         </ul>}
       {!standalone && !window.isSecureContext && <p className="faint" style={{ margin: 0 }}>This computer reaches Benchtop over the network (http), and Chrome only installs secure addresses, so use Safari's <i>Add to Dock</i> here. On the computer running Benchtop, any browser works.</p>}
       <p className="faint" style={{ margin: 0 }}>Benchtop itself still has to be running (<code>./benchtop</code>, or the lab computer). Upgrades show in the app the next time it opens.</p>
+    </div></div>
+  )
+}
+
+
+function EmailPrefs() {
+  const { user, setUser, toast } = useApp()
+  const [configured, setConfigured] = useState<boolean | null>(null)
+  useEffect(() => { api.get<{ configured: boolean }>('/api/auth/email-status').then(r => setConfigured(r.configured)).catch(() => setConfigured(false)) }, [])
+  const prefs = user.preferences?.email_notify || {}
+  const set = async (k: 'witness' | 'results', v: boolean) => {
+    try { setUser(await api.patch<User>('/api/auth/me', { preferences: { email_notify: { ...prefs, [k]: v } } })) } catch (e: any) { toast(e.message) }
+  }
+  const noAddress = !(user.email || '').trim()
+  return (
+    <div className="panel"><div className="section stack" style={{ gap: 8 }}>
+      <label className="check-row"><input type="checkbox" checked={prefs.witness !== false} onChange={e => set('witness', e.target.checked)} disabled={noAddress} />
+        When someone asks me to witness a record, and reminders while it waits</label>
+      <label className="check-row"><input type="checkbox" checked={prefs.results !== false} onChange={e => set('results', e.target.checked)} disabled={noAddress} />
+        When my records are witnessed or returned to me</label>
+      {noAddress ? <p className="faint" style={{ margin: 0 }}>Add your email address under Profile to get these.</p>
+        : configured === false && <p className="faint" style={{ margin: 0 }}>This Benchtop doesn't send email yet (an admin sets it up in Admin → Email), so for now these arrive as notifications only.</p>}
     </div></div>
   )
 }

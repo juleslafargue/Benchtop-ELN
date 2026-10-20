@@ -1168,3 +1168,17 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 :root[data-wco] .side { top: var(--titlebar); height: calc(100vh - var(--titlebar)); }
 :root[data-wco] :is(.toast, .pic-viewer-bar) { z-index: 210; }
 :root[data-wco] .pic-viewer { padding-top: calc(var(--titlebar) + 24px); }
+
+/* Witnessing and trusted timestamps */
+.linkish { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.linkish:disabled { opacity: .5; cursor: default; }
+.ts-line { font-size: 12px; color: var(--ink-2); margin-top: 3px; overflow-wrap: anywhere; }
+.ts-line.pending { color: var(--ink-3); font-style: italic; }
+.witness-panel { border: 1px solid var(--rule); border-left: 3px solid var(--signed); border-radius: 8px; padding: 8px 10px; margin: 6px 0 10px; font-size: 13.5px; background: var(--paper); }
+.witness-panel.overdue { border-left-color: var(--danger); }
+.overdue-text { color: var(--danger); }
+.w-badge { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 99px; background: var(--accent-soft); color: var(--ink); font-style: normal; }
+.w-badge.overdue { background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--paper-2); color: var(--ink-2); border: 1px solid var(--rule); }
+.pill.ok { background: color-mix(in srgb, var(--witnessed) 16%, transparent); color: var(--ink); border-color: transparent; }
+.input.inline-num { display: inline-block; width: 64px; padding: 2px 6px; height: auto; text-align: center; }
