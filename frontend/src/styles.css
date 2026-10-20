@@ -1152,3 +1152,19 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 /* Account → Benchtop as an app */
 .install-steps { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
 .install-steps li.here { font-weight: 500; }
+
+/* Installed app with Chrome's compact title bar (window controls overlay, <html data-wco>): a title bar strip
+   across the top; Chrome's buttons sit at its right, the window is dragged by it, and the page starts below it. */
+.wco-bar { display: none; }
+:root[data-wco] { --titlebar: env(titlebar-area-height, 33px); }
+:root[data-wco] .wco-bar {
+  display: flex; align-items: center; gap: 7px; position: fixed; z-index: 200; top: 0; left: 0; right: 0; height: var(--titlebar);
+  padding: 0 12px 0 calc(env(titlebar-area-x, 0px) + 12px); background: var(--paper); border-bottom: 1px solid var(--rule);
+  color: var(--ink-2); font: 500 12.5px/1 var(--sans); user-select: none; app-region: drag; -webkit-app-region: drag;
+}
+:root[data-wco] .wco-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: calc(env(titlebar-area-width, 100vw) - 40px); }
+:root[data-wco] body { padding-top: var(--titlebar); }
+:root[data-wco] .side { top: var(--titlebar); height: calc(100vh - var(--titlebar)); }
+:root[data-wco] :is(.toast, .pic-viewer-bar) { z-index: 210; }
+:root[data-wco] .pic-viewer { padding-top: calc(var(--titlebar) + 24px); }

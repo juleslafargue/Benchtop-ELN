@@ -12,4 +12,23 @@ export function applyPalette(p?: string | null) {
   if (known(id) && id !== 'benchtop') root.dataset.palette = id
   else delete root.dataset.palette
   if (p !== undefined) { try { if (known(p) && p !== 'benchtop') localStorage.setItem(KEY, p); else localStorage.removeItem(KEY) } catch { /* private mode */ } }
+  syncThemeColor()
+}
+
+/** Chrome / Safari tint the installed app's title bar with <meta name="theme-color">: follow the theme in use. */
+export function syncThemeColor() {
+  const paper = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()
+  if (!paper) return
+  const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')
+  metas.forEach((m, i) => { if (i === 0) { m.removeAttribute('media'); m.content = paper } else m.remove() })
+}
+
+/** Installed app with Chrome's compact title bar ("window controls overlay"): mark <html data-wco> so the page
+ *  leaves room for the title bar strip and Chrome's buttons sit centred in it. */
+export function watchTitleBar() {
+  const wco = (navigator as any).windowControlsOverlay
+  if (!wco) return
+  const sync = () => document.documentElement.toggleAttribute('data-wco', !!wco.visible)
+  wco.addEventListener?.('geometrychange', sync)
+  sync()
 }

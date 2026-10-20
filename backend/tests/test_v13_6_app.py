@@ -24,3 +24,9 @@ def test_nothing_is_cached_offline():
     """Upgrade safety: no service worker that could keep serving an old copy of Benchtop."""
     assert not (PUBLIC / "sw.js").exists()
     assert "serviceWorker.register" not in "".join(p.read_text() for p in SRC.rglob("*.ts*"))
+
+
+def test_normal_title_bar():
+    """Benchtop doesn't draw its own title bar, so the window keeps the standard one (Chrome's buttons sit in it)."""
+    m = json.loads((PUBLIC / "manifest.webmanifest").read_text())
+    assert "window-controls-overlay" not in json.dumps(m)

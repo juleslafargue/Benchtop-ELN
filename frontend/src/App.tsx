@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import TitleBar from './components/TitleBar'
 import { PictureViewer } from './components/editorExtras'
-import { applyPalette } from './theme'
+import { applyPalette, syncThemeColor } from './theme'
 import ErrorBoundary from './components/ErrorBoundary'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { api, getToken, setToken, setUnauthorizedHandler, type Group, type Notebook, type User } from './api'
@@ -96,6 +97,7 @@ export default function App() {
     const t = user?.preferences?.theme
     if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t
     else delete document.documentElement.dataset.theme
+    syncThemeColor()
   }, [user?.preferences?.theme])
   useEffect(() => { if (user) applyPalette(user.preferences?.palette ?? null) }, [user, user?.preferences?.palette])
 
@@ -136,6 +138,7 @@ export default function App() {
       </Layout>
       <Shortcuts />
       </>}
+      <TitleBar />
       <PictureViewer />
       {toastEl}
     </AppCtx.Provider>

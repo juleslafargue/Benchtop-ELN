@@ -4,9 +4,11 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './styles.css'
 import './themes.css'
-import { applyPalette } from './theme'
+import { applyPalette, syncThemeColor, watchTitleBar } from './theme'
 
 applyPalette()  // this browser's last theme, before the account loads, so pages don't flash the default
+watchTitleBar()
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', syncThemeColor)
 
 // Chrome / Edge offer "Install Benchtop" (its own window and Dock icon) from the manifest alone; keep the offer so
 // Account settings can show an Install button. No service worker: nothing is stored offline, so upgrades show at once.

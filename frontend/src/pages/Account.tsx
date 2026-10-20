@@ -199,7 +199,7 @@ function ThemePicker({ value, onChange }: { value: string; onChange: (id: string
 /** "Install Benchtop" where the browser can (Chrome, Edge), and how to do it elsewhere. */
 function InstallApp() {
   const [offer, setOffer] = useState<any>(() => (window as any).__benchtopInstall || null)
-  const standalone = typeof window.matchMedia === 'function' && (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: window-controls-overlay)').matches || (navigator as any).standalone)
+  const standalone = typeof window.matchMedia === 'function' && (window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone)
   useEffect(() => {
     const on = () => setOffer((window as any).__benchtopInstall || null)
     window.addEventListener('benchtop:installable', on)
