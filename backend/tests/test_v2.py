@@ -1,5 +1,7 @@
 import io
+import json
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -69,19 +71,23 @@ def test_reactions_overview_filters(client, users, notebook):
 def test_backup_create_and_restore_roundtrip(client, users, admin, notebook):
     h = users["alice"]
     exp = new_exp(client, h, notebook, title="Before backup")
-    client.post(f"/api/experiments/{exp['id']}/attachments", headers=h,
-                files={"file": ("spec.jdx", io.BytesIO(b"##TITLE=x\n##END=\n"), "text/plain")})
+    att = client.post(f"/api/experiments/{exp['id']}/attachments", headers=h,
+                      files={"file": ("spec.jdx", io.BytesIO(b"##TITLE=x\n##END=\n"), "text/plain")}).json()
     assert client.post("/api/admin/backups", headers=h).status_code == 403
     b = client.post("/api/admin/backups", headers=admin).json()
     with zipfile.ZipFile(b["path"]) as z:
         names = z.namelist()
-    assert "benchtop.db" in names and any(n.startswith("attachments/") for n in names)
+        manifest = json.loads(z.read("manifest.json"))
+    # since 0.15 attached files are kept once, beside the zips, and listed in the manifest
+    assert "benchtop.db" in names and att["sha256"] in manifest["files"]
+    assert (Path(b["path"]).parent / backup.FILES / att["sha256"][:2] / att["sha256"]).is_file()
     # change something after the backup, then restore and check it's gone
     client.post("/api/experiments", headers=h, json={"title": "After backup", "notebook_id": notebook["id"]})
     aside = backup.restore(b["path"])
     assert (aside / "benchtop.db").exists()
     titles = [e["title"] for e in client.get("/api/experiments", headers=h).json()]
     assert "Before backup" in titles and "After backup" not in titles
+    assert client.get(f"/api/attachments/{att['id']}", headers=h).content == b"##TITLE=x\n##END=\n"
 
 
 def test_backup_pruning(tmp_path, monkeypatch):

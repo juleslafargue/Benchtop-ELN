@@ -72,7 +72,7 @@ interface CheckItem { name: string; ok: boolean; detail: string }
 interface BackupTest { ok: boolean; at: string; name: string; where: string; checks: CheckItem[] }
 interface BackupInfo {
   directory: string; keep: number; interval_hours: number; backups: { name: string; size: number; created_at: string }[]
-  copy_dir: string | null; copy_dir_from_env: boolean; copies: number; warnings: string[]
+  copy_dir: string | null; copy_dir_from_env: boolean; copies: number; warnings: string[]; files?: { files: number; bytes: number }
   last_copy: { ok: boolean; at: string; name: string; folder: string; error?: string } | null
   last_check: BackupTest | null; suggestions: { label: string; path: string }[]
 }
@@ -104,6 +104,10 @@ function NmrData() {
         : st && !st.updating && <p className="faint" style={{ margin: 0 }}>No prediction table found.</p>}
     </section>
   )
+}
+
+function fmtBytes(n: number) {
+  return n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${(n / 1e6).toFixed(1)} MB`
 }
 
 function Backups() {
@@ -140,7 +144,9 @@ function Backups() {
           <button className="btn sm" disabled={!!busy} onClick={backupNow}>{busy === 'backup' ? 'Backing up…' : 'Back up now'}</button></div></div>
       {info && <p className="faint" style={{ margin: 0 }}>
         {info.interval_hours > 0 ? `Automatic every ${info.interval_hours} h` : 'Automatic backups are off'}, keeping the newest {info.keep}.
-        Saved in <code>{info.directory}</code>. To restore, stop Benchtop and run <code>./benchtop restore &lt;file&gt;</code>.</p>}
+        Saved in <code>{info.directory}</code>. Attached files are kept once for all backups, in the <code>benchtop-files</code> folder
+        beside them{info.files && info.files.files > 0 ? ` (${info.files.files.toLocaleString()} files, ${fmtBytes(info.files.bytes)})` : ''}:
+        keep that folder with the backups if you move or copy them. To restore, stop Benchtop and run <code>./benchtop restore &lt;file&gt;</code>.</p>}
       {err && <p className="error" style={{ margin: 0 }}>{err}</p>}
       {info && info.warnings.length > 0 && <div className="notice" role="status">{info.warnings.map(w => <div key={w}>{w}</div>)}</div>}
 

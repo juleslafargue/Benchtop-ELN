@@ -182,7 +182,9 @@ case "$cmd" in
   restore)
     [ $# -ge 2 ] || fail "Usage: ./benchtop restore path/to/benchtop-backup-….zip"
     running && fail "Stop Benchtop first (close its Terminal window or press Ctrl+C there), then run restore."
-    ensure_python_env; py -m app.backup restore "$2"
+    ensure_python_env
+    if [ "${3:-}" = "--without-missing-files" ]; then py -m app.backup restore "$2" --without-missing-files
+    else py -m app.backup restore "$2"; fi
     ;;
   seed)     ensure_python_env; py -m app.seed ;;
   update-nmr-data)
@@ -208,6 +210,7 @@ Data
   ./benchtop backups      list backups
   ./benchtop check [F]    check your data is intact (audit trail, signed records, files), or a backup file F
   ./benchtop restore F    restore backup file F (your current data is moved aside, not deleted)
+                          F needs the benchtop-files folder that sits next to it: copy them together
   ./benchtop seed         load demo data
   ./benchtop update-nmr-data [FILE]   download NMRShiftDB2 and build the NMR prediction table (or build from a downloaded FILE)
   ./benchtop export-obsidian DIR   write every experiment as a Markdown note into DIR

@@ -129,11 +129,16 @@ to be running.
 ```
 
 Backups are automatic: one on start-up if the newest is more than a day old, then daily while running,
-keeping the newest 14. Each is a single zip with a consistent database snapshot, every attachment, and the
-audit trail's latest fingerprint. In **Admin → Backups**, choose a *second copy* folder (iCloud Drive or
-an external drive) and every backup is copied there too. Once a week Benchtop unpacks the newest backup
-into a temporary folder and checks it as if it had been restored, so you know your backups actually work;
-problems show on the admin's dashboard.
+keeping the newest 14. Each is a zip with a consistent database snapshot and the audit trail's latest
+fingerprint. Attached files are kept **once** for all backups, in a `benchtop-files` folder beside the
+zips: files never change once attached, so each backup only adds the new ones, and 1 GB of spectra costs
+about 1 GB of backup space rather than 1 GB per backup kept. In **Admin → Backups**, choose a *second
+copy* folder (iCloud Drive or an external drive) and every backup is copied there too, its files first.
+Once a week Benchtop unpacks the newest backup into a temporary folder and checks it as if it had been
+restored, so you know your backups actually work; problems show on the admin's dashboard.
+
+When you move or copy backups, take the zip **and** the `benchtop-files` folder beside it. Backups made
+before 0.15 hold their files inside the zip and still restore as before.
 
 **Want to explore with realistic data first?** `./benchtop demo` opens a demo lab on
 http://localhost:8001, kept completely apart from your own notebook: the fictional Ruiz group
@@ -244,7 +249,7 @@ backend/   FastAPI + SQLModel + RDKit
                     Material, Lot, LotTransaction, AuditEvent, User
   app/chem.py       structure parsing, depiction, reaction → rows, stoichiometry engine, search
   app/audit.py      hash-chained audit log + verifier
-  app/backup.py     snapshot/zip backups, second copy, weekly backup test, restore (also a CLI)
+  app/backup.py     snapshot/zip backups, files kept once beside them, second copy, weekly test, restore (also a CLI)
   app/check.py      health check: database, audit trail, signed records, files (./benchtop check)
   app/migrations.py numbered database upgrade steps
   app/writeup.py    SI-style experimental paragraph composer

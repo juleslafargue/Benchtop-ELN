@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import sys
 import tempfile
@@ -143,6 +144,8 @@ def check_live() -> dict[str, Any]:
 
 def check_backup(zip_path: Path) -> dict[str, Any]:
     """Unpack a backup to a temporary folder and check it as if it had been restored."""
+    from .backup import FILES, missing_files, needed_files
+
     with tempfile.TemporaryDirectory(prefix="benchtop-backup-test-") as tmp:
         root = Path(tmp)
         try:
@@ -156,6 +159,7 @@ def check_backup(zip_path: Path) -> dict[str, Any]:
                     return {"ok": False, "checks": [_item("Backup file", False, f"Damaged inside the zip: {bad}")], "counts": {}}
                 (root / "benchtop.db").write_bytes(z.read("benchtop.db"))
                 att = root / "attachments"
+                att.mkdir()
                 for n in names:
                     if n.startswith("attachments/") and not n.endswith("/"):
                         t = (att / n.removeprefix("attachments/")).resolve()
@@ -170,7 +174,19 @@ def check_backup(zip_path: Path) -> dict[str, Any]:
                       else "the database inside doesn't match its checksum")
         if not db_ok:
             return {"ok": False, "checks": [first], "counts": {}}
-        res = check_files(root / "benchtop.db", root / "attachments")
+        # newer backups keep attached files once, in the shared folder beside the zip: check them there
+        store = zip_path.parent / FILES
+        if needed_files(manifest):
+            for sha in needed_files(manifest):
+                link = att / sha[:2] / sha
+                if not link.exists() and (store / sha[:2] / sha).is_file():
+                    link.parent.mkdir(parents=True, exist_ok=True)
+                    os.symlink(store / sha[:2] / sha, link)  # read in place; nothing large is copied
+        res = check_files(root / "benchtop.db", att)
+        missing = missing_files(zip_path, manifest)
+        if missing:
+            res["checks"].append(_item("Shared file folder", False, f"{len(missing)} files this backup needs aren't in {store}"))
+            res["ok"] = False
         res["checks"].insert(0, first)
         res["manifest"] = manifest
         return res

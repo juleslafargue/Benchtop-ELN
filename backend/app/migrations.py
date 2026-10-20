@@ -54,9 +54,16 @@ def _indexes_for_large_labs(conn: Connection) -> None:
         conn.execute(text(f'CREATE INDEX IF NOT EXISTS {name} ON "{table}" ({cols})'))
 
 
+def _backups_keep_files_beside_the_zip(conn: Connection) -> None:
+    """Nothing in the database changes. From 0.15 a backup's attached files sit beside the zip, in the shared
+    benchtop-files folder; this step raises the version backups record, so an older Benchtop refuses to restore
+    one (it would bring back the records without their files) and says to install the newer version first."""
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "Start tracking database upgrades", _baseline),
     Migration(2, "Indexes for labs with thousands of experiments", _indexes_for_large_labs),
+    Migration(3, "Backups keep attached files once, beside the zips", _backups_keep_files_beside_the_zip),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1].number
 assert [m.number for m in MIGRATIONS] == list(range(1, len(MIGRATIONS) + 1)), "migration numbers must be 1, 2, 3…"
