@@ -37,12 +37,12 @@ export function EmailSettingsPanel() {
   const preset = (host: string, port: number, security: EmailSettings['security']) => setF({ ...f, host, port, security })
   return (
     <section className="stack" style={{ gap: 10 }}>
-      <div className="spread"><h2 style={{ fontSize: 17 }}>Email</h2>
+      <div className="spread" style={{ alignItems: 'center' }}><h2 style={{ fontSize: 17 }}>Email</h2>
         <span className={`pill ${s.configured ? 'ok' : ''}`}>{s.configured ? 'Sending' : 'Not set up'}</span></div>
       <p className="faint" style={{ margin: 0 }}>Benchtop emails people when they're asked to witness a record, reminds them while it waits, and tells authors when
         their record is witnessed or returned. Without an email server, all of this still appears as notifications in Benchtop.</p>
-      <div className="panel"><div className="section stack" style={{ gap: 10 }}>
-        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}><span className="faint" style={{ fontSize: 13 }}>Fill in for:</span>
+      <div className="panel admin-card">
+        <div className="card-row"><span className="card-label">Fill in for</span>
           <button className="btn sm" onClick={() => preset('smtp.gmail.com', 587, 'starttls')}>Gmail</button>
           <button className="btn sm" onClick={() => preset('smtp.office365.com', 587, 'starttls')}>Outlook / Microsoft 365</button>
           <button className="btn sm" onClick={() => preset('smtp.mail.me.com', 587, 'starttls')}>iCloud</button></div>
@@ -61,13 +61,15 @@ export function EmailSettingsPanel() {
         <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>For Gmail, Outlook and iCloud, use an <i>app password</i> from your account's security settings (your normal password won't work).
           “Address in links” is what people open Benchtop at; links in emails currently go to <code>{s.link_base}</code>. The password is stored encrypted.</p>
         {err && <p className="error" style={{ margin: 0 }}>{err}</p>}
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <div className="card-foot">
           <button className="btn primary" disabled={!!busy} onClick={save}>{busy === 'save' ? 'Saving…' : 'Save'}</button>
-          <span className="grow" />
-          <input className="input" style={{ maxWidth: 240 }} value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="send a test to…" aria-label="Test email address" />
-          <button className="btn" disabled={!!busy || !s.configured || !testTo.includes('@')} onClick={test}>{busy === 'test' ? 'Sending…' : 'Send test email'}</button>
+          <div className="foot-group">
+            <input className="input" type="email" value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="Send a test to…" aria-label="Test email address" />
+            <button className="btn" disabled={!!busy || !s.configured || !testTo.includes('@')} onClick={test}
+              title={s.configured ? '' : 'Save the email settings first'}>{busy === 'test' ? 'Sending…' : 'Send test email'}</button>
+          </div>
         </div>
-      </div></div>
+      </div>
       {s.log.length > 0 && <details><summary className="faint">Recent emails ({s.log.length})</summary>
         <table className="plain" style={{ marginTop: 6 }}><tbody>{s.log.map((e, i) => <tr key={i}>
           <td className={e.status === 'failed' ? 'error' : ''}>{e.status}</td><td>{e.to}</td><td>{e.subject}{e.error && <div className="error" style={{ fontSize: 12 }}>{e.error}</div>}</td><td className="faint">{when(e.at)}</td>
@@ -86,12 +88,18 @@ export function WitnessSettingsPanel() {
     try { setS(await api.put('/api/admin/witness-settings', changes)); toast('Saved') } catch (e: any) { toast(e.message) }
   }
   return (
-    <section className="stack" style={{ gap: 8 }}>
+    <section className="stack" style={{ gap: 10 }}>
       <h2 style={{ fontSize: 17 }}>Witnessing</h2>
-      <p className="faint" style={{ margin: 0 }}>When an author asks someone to witness, that person is reminded every
-        {' '}<input className="input inline-num" type="number" min={1} max={90} defaultValue={s.remind_after_days} onBlur={e => save({ remind_after_days: Number(e.target.value) })} aria-label="Remind every (days)" /> days
-        until it's done, and the request counts as overdue after
-        {' '}<input className="input inline-num" type="number" min={1} max={90} defaultValue={s.overdue_after_days} onBlur={e => save({ overdue_after_days: Number(e.target.value) })} aria-label="Overdue after (days)" /> days.</p>
+      <p className="faint" style={{ margin: 0 }}>When an author asks someone to witness, that person gets a reminder until it's done,
+        and the request is marked overdue for both of them after a while. Changes save when you leave the box.</p>
+      <div className="panel admin-card">
+        <div className="card-row" style={{ columnGap: 28, rowGap: 10 }}>
+          <label className="inline-field">Remind every
+            <input className="input inline-num" type="number" min={1} max={90} defaultValue={s.remind_after_days} onBlur={e => save({ remind_after_days: Number(e.target.value) })} /> days</label>
+          <label className="inline-field">Overdue after
+            <input className="input inline-num" type="number" min={1} max={90} defaultValue={s.overdue_after_days} onBlur={e => save({ overdue_after_days: Number(e.target.value) })} /> days</label>
+        </div>
+      </div>
     </section>
   )
 }
@@ -122,26 +130,27 @@ export function TimestampSettingsPanel() {
   const fixed = (k: string) => s.fixed.includes(k)
   return (
     <section className="stack" style={{ gap: 10 }}>
-      <div className="spread"><h2 style={{ fontSize: 17 }}>Trusted timestamps</h2>
-        <label className="check-row"><input type="checkbox" checked={s.enabled} disabled={fixed('enabled') || !s.available} onChange={e => save({ enabled: e.target.checked })} /> On</label></div>
+      <div className="spread" style={{ alignItems: 'center' }}><h2 style={{ fontSize: 17 }}>Trusted timestamps</h2>
+        <label className="switch-row"><input type="checkbox" checked={s.enabled} disabled={fixed('enabled') || !s.available} onChange={e => save({ enabled: e.target.checked })} /> On</label></div>
       <p className="faint" style={{ margin: 0 }}>Every signature is also certified by an independent timestamp service (RFC 3161, as used for patents and in
         industry ELNs): proof, checkable without Benchtop, that it existed at that time. Only a fingerprint of the signature is sent, never the record.
         Offline, signing still works and the timestamp is fetched later.</p>
       {!s.available && <p className="notice" style={{ margin: 0 }}>Stop Benchtop and start it again so it can install what trusted timestamps need.</p>}
-      <div className="panel"><div className="section stack" style={{ gap: 10 }}>
-        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>{s.services.map(t =>
+      <div className="panel admin-card">
+        <div className="card-row"><span className="card-label">Service</span>{s.services.map(t =>
           <button key={t.url} className={`btn sm${url === t.url ? ' primary' : ''}`} disabled={fixed('tsa_url')} onClick={() => setUrl(t.url)}>{t.name}</button>)}</div>
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <div className="card-row url-row">
           <input className="input grow" value={url} onChange={e => setUrl(e.target.value)} disabled={fixed('tsa_url')} aria-label="Timestamp service address" />
           <button className="btn" disabled={!!busy} onClick={test}>{busy === 'test' ? 'Testing…' : 'Test'}</button>
           <button className="btn primary" disabled={url === s.tsa_url || fixed('tsa_url')} onClick={() => save({ tsa_url: url })}>Use this service</button>
         </div>
         {result && <p className={result.ok ? '' : 'error'} style={{ margin: 0 }}>{result.ok ? `Works: ${result.tsa} certified ${result.gen_time ? when(result.gen_time) : 'just now'}.` : result.error}</p>}
-        <p style={{ margin: 0, fontSize: 14 }}>{s.counts.ok} signature{s.counts.ok === 1 ? '' : 's'} timestamped
+        <div className="card-foot"><span>{s.counts.ok} signature{s.counts.ok === 1 ? '' : 's'} timestamped
           {s.counts.pending ? ` · ${s.counts.pending} waiting` : ''}{s.counts.failed ? ` · ${s.counts.failed} not obtained` : ''}
-          {(s.counts.pending > 0 || s.counts.failed > 0) && <> · <button className="linkish" disabled={!!busy} onClick={retry}>Retry now</button></>}</p>
-        {s.last_error && (s.counts.pending > 0 || s.counts.failed > 0) && <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>Last problem: {s.last_error}</p>}
-      </div></div>
+          {(s.counts.pending > 0 || s.counts.failed > 0) && <> · <button className="linkish" disabled={!!busy} onClick={retry}>Retry now</button></>}</span>
+          {s.last_error && (s.counts.pending > 0 || s.counts.failed > 0) && <span className="faint" style={{ flexBasis: '100%', fontSize: 12.5 }}>Last problem: {s.last_error}</span>}
+        </div>
+      </div>
     </section>
   )
 }

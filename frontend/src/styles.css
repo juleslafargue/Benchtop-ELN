@@ -1181,4 +1181,30 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 .w-badge.overdue { background: color-mix(in srgb, var(--danger) 18%, transparent); }
 .pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--paper-2); color: var(--ink-2); border: 1px solid var(--rule); }
 .pill.ok { background: color-mix(in srgb, var(--witnessed) 16%, transparent); color: var(--ink); border-color: transparent; }
-.input.inline-num { display: inline-block; width: 64px; padding: 2px 6px; height: auto; text-align: center; }
+/* Admin settings cards (Email, Witnessing, Trusted timestamps) */
+.admin-card { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.admin-card .card-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.admin-card .card-label { font-size: 13px; color: var(--ink-3); margin-right: 4px; }
+.admin-card .form-grid { gap: 12px 14px; }
+.admin-card .input, .admin-card .select { min-height: 34px; }
+.admin-card .card-row > .btn:not(.sm), .admin-card .card-foot .btn { min-height: 34px; justify-content: center; }
+.admin-card .url-row .input { min-width: 240px; }
+.admin-card .card-foot {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px;
+  margin: 2px -18px -16px; padding: 12px 18px; border-top: 1px solid var(--rule);
+  background: var(--paper-2); border-radius: 0 0 9px 9px;
+}
+.admin-card .foot-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.admin-card .foot-group .input { width: 230px; }
+.inline-field { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); }
+.input.inline-num { width: 64px; min-height: 32px; padding: 4px 6px; text-align: center; font-size: 14px; color: var(--ink); }
+.switch-row { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; cursor: pointer;
+  padding: 4px 11px 4px 9px; border: 1px solid var(--rule-strong); border-radius: 99px; background: var(--paper); }
+.switch-row input { margin: 0; accent-color: var(--accent); }
+@media (max-width: 640px) {
+  .admin-card { padding: 14px; }
+  .admin-card .card-foot { margin: 2px -14px -14px; padding: 12px 14px; }
+  .admin-card .foot-group { margin-left: 0; width: 100%; }
+  .admin-card .foot-group .input { flex: 1; width: auto; }
+  .admin-card .url-row .input { min-width: 0; flex-basis: 100%; }
+}
