@@ -73,6 +73,10 @@ export default function Account() {
           </div>
         </form>
 
+        <div><h2>Sample codes</h2><p className="help">Short labels for your samples, like JL-013, that instruments understand. Type one as the sample
+          name on the NMR or HPLC, and the data goes straight into the right experiment.</p></div>
+        <SamplePrefix />
+
         <div><h2>Sign-in</h2><p className="help">Your username and password. Both changes are recorded in the audit trail.</p></div>
         <div className="panel">
           <div className="section spread" style={{ alignItems: 'center' }}>
@@ -248,5 +252,34 @@ function EmailPrefs() {
       {noAddress ? <p className="faint" style={{ margin: 0 }}>Add your email address under Profile to get these.</p>
         : configured === false && <p className="faint" style={{ margin: 0 }}>This Benchtop doesn't send email yet (an admin sets it up in Admin → Email), so for now these arrive as notifications only.</p>}
     </div></div>
+  )
+}
+
+/** The start of this person's sample codes (their initials). */
+function SamplePrefix() {
+  const { user, setUser, toast } = useApp()
+  const [v, setV] = useState(user.sample_prefix || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const shown = (v.trim() || 'JL').toUpperCase()
+  const dirty = v.trim().toUpperCase() !== (user.sample_prefix || '')
+  const save = async () => {
+    setBusy(true); setErr('')
+    try { const u = await api.put<User>('/api/auth/me/sample-prefix', { prefix: v.trim() || null }); setUser(u); setV(u.sample_prefix || ''); toast(u.sample_prefix ? `Your sample codes start with ${u.sample_prefix}` : 'Sample codes turned off') }
+    catch (e: any) { setErr(e.message) } finally { setBusy(false) }
+  }
+  return (
+    <form className="panel" onSubmit={e => { e.preventDefault(); if (dirty) save() }}>
+      <div className="section stack" style={{ gap: 12 }}>
+        <label className="field">Your initials<input className="input mono" style={{ maxWidth: 140, textTransform: 'uppercase' }} maxLength={6} value={v}
+          onChange={e => setV(e.target.value.replace(/[^A-Za-z0-9]/g, ''))} placeholder="JL" /></label>
+        <p className="help" style={{ margin: 0 }}>On an experiment, <b>New sample code</b> gives you the next number: <span className="mono">{shown}-013</span>.
+          Label the vial with it and type it as the instrument's sample name; a date after it is fine (<span className="mono">{shown}-013-20261021</span>).
+          A code Benchtop doesn't know yet goes to your Inbox, never to a guess.</p>
+        {err && <p className="error" style={{ margin: 0 }}>{err}</p>}
+        <div className="row"><button className="btn primary" disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save'}</button>
+          {user.sample_prefix && !dirty && <span className="faint">Codes you've already handed out keep working if you change this.</span>}</div>
+      </div>
+    </form>
   )
 }

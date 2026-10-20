@@ -31,7 +31,8 @@ def user_out(u: User) -> dict:
     from ..security import has_password
     return {"id": u.id, "username": u.username, "full_name": u.full_name, "email": u.email,
             "role": u.role.value, "active": u.active, "preferences": u.preferences or {},
-            "has_password": has_password(u.password_hash), "must_change_password": bool(u.must_change_password)}
+            "has_password": has_password(u.password_hash), "must_change_password": bool(u.must_change_password),
+            "sample_prefix": u.sample_prefix}
 
 
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

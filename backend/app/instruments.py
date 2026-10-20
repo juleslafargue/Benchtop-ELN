@@ -11,8 +11,9 @@ How it works
   * An arrival is one file, or one dataset folder (a Bruker experiment number). It's handled once nothing in
     it has changed for the folder's quiet time (2 minutes by default), so half-copied files aren't taken.
   * Its name, folder names and (for Bruker) its title are searched for an experiment number such as
-    EXP-00042. Exactly one, for a draft: the files are attached to that experiment's "Instrument data"
-    section. Anything else waits in the Inbox with a note saying why. Benchtop never guesses.
+    EXP-00042, or a sample code handed to an experiment (JL-013, see samples.py). If they point to exactly one
+    draft, the files are attached to its "Instrument data" section. Anything else waits in the Inbox with a
+    note saying why. Benchtop never guesses.
 
 Visibility follows Benchtop's sharing rules (see `can_see`): an arrival's file names can be revealing, so the
 Inbox shows each person only what they're allowed to see.
@@ -187,6 +188,7 @@ class Decision:
     experiment: Optional[Experiment] = None
     matched_ids: list[int] = field(default_factory=list)
     rule: str = ""
+    person_id: Optional[int] = None  # whose sample code it carries (an unknown number of theirs)
 
 
 def experiment_numbers(*texts: str) -> list[int]:
@@ -201,26 +203,44 @@ def experiment_numbers(*texts: str) -> list[int]:
 
 def decide(session: Session, rel: str, extra: str = "") -> Decision:
     """Where an arrival goes. The rules, in order; the first that fits wins, and anything unclear waits:
-      1. exactly one experiment number (EXP-00042) in its name, folder names or title, for a draft → attach;
-      2. otherwise → Inbox, with a note saying why."""
+      1. an experiment number (EXP-00042) in its name, folder names or title;
+      2. a sample code handed to an experiment (JL-013);
+         (both may be there, if they agree)
+      3. a known prefix with a number never handed out (JL-099) → that person's Inbox;
+      4. otherwise → the Inbox, with a note saying why."""
+    from . import samples
     nums = experiment_numbers(rel, extra)
+    codes = samples.find(session, rel, extra)
     if len(nums) > 1:
         found = [e.id for e in (session.get(Experiment, n) for n in nums) if e and not e.is_template]
         names = " and ".join(f"EXP-{n:05d}" for n in nums[:4])
         return Decision("inbox", f"The name mentions more than one experiment ({names}), so Benchtop didn't choose.",
                         matched_ids=found)
-    if len(nums) == 1:
-        exp = session.get(Experiment, nums[0])
-        eid = f"EXP-{nums[0]:05d}"
+    known = [c for c in codes if c.code is not None]
+    targets = sorted({*nums, *(c.code.experiment_id for c in known)})
+    if len(targets) > 1:
+        parts = [f"EXP-{n:05d}" for n in nums] + [f"{c.text} (EXP-{c.code.experiment_id:05d})" for c in known]
+        return Decision("inbox", f"The name points to more than one experiment ({', '.join(parts[:4])}), so Benchtop didn't choose.",
+                        matched_ids=[t for t in targets if (e := session.get(Experiment, t)) and not e.is_template])
+    if len(targets) == 1:
+        exp = session.get(Experiment, targets[0])
+        eid = f"EXP-{targets[0]:05d}"
+        via = eid if nums else f"{known[0].text} ({eid})"
+        rule = "eid" if nums else "sample"
         if exp is None or exp.is_template:
             return Decision("inbox", f"There's no experiment {eid}. Check the number, or assign it to the right one.")
         if exp.status == ExperimentStatus.open:
-            return Decision("attach", experiment=exp, matched_ids=[exp.id], rule="eid")
+            return Decision("attach", experiment=exp, matched_ids=[exp.id], rule=rule)
         if exp.status == ExperimentStatus.voided:
-            return Decision("inbox", f"{eid} was voided, so nothing more is added to it.", matched_ids=[exp.id])
-        return Decision("inbox", f"Matched {eid}, but it's already signed, so it wasn't attached. "
+            return Decision("inbox", f"{via} was voided, so nothing more is added to it.", matched_ids=[exp.id])
+        return Decision("inbox", f"Matched {via}, but it's already signed, so it wasn't attached. "
                                  "Attach it to a follow-up experiment.", matched_ids=[exp.id])
-    return Decision("inbox", "No experiment number (like EXP-00042) in the name.")
+    unknown = [c for c in codes if c.code is None and c.owner_id is not None]
+    if unknown:
+        c = unknown[0]
+        return Decision("inbox", f"{c.text} isn't a sample code that's been given to an experiment yet. Assign it, "
+                                 f"and next time use “New sample code” on the experiment first.", person_id=c.owner_id)
+    return Decision("inbox", "No experiment number (like EXP-00042) or sample code in the name.")
 
 
 # ====================================================================== attaching
@@ -357,9 +377,12 @@ def _handle(session: Session, row: InstrumentFile, inst: Instrument, p: Path) ->
             d = Decision("inbox", f"Matched {d.experiment.eid}, but it was signed just before the files arrived, so "
                                   "they weren't attached. Attach them to a follow-up experiment.", matched_ids=[d.experiment.id])
             row.matched_ids = d.matched_ids
-    row.state, row.note = "inbox", d.note
+    row.state, row.note, row.person_id = "inbox", d.note, d.person_id
     session.add(row)
-    if len(d.matched_ids) == 1:  # the record's owner hears about it; unmatched files just wait in the Inbox
+    if d.person_id is not None:
+        notify(session, d.person_id, f"has a file from {inst.name} ({row.path}) with your sample code waiting in your Inbox",
+               kind="inbox")
+    elif len(d.matched_ids) == 1:  # the record's owner hears about it; unmatched files just wait in the Inbox
         exp = session.get(Experiment, d.matched_ids[0])
         if exp:
             notify(session, exp.owner_id, f"has a file from {inst.name} ({row.path}) for {exp.eid} waiting in your Inbox",

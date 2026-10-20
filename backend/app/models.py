@@ -62,6 +62,8 @@ class User(SQLModel, table=True):
     # added in 0.9.1: an admin reset the password, so the person must choose their own at next sign-in
     must_change_password: Optional[bool] = Field(default=None, nullable=True)
     password_changed_at: Optional[NaiveDatetime] = Field(default=None, nullable=True)
+    # added in 0.17: the start of this person's sample codes (JL → JL-013), unique across the lab
+    sample_prefix: Optional[str] = Field(default=None, nullable=True)
 
 
 class AuthSession(SQLModel, table=True):
@@ -468,3 +470,16 @@ class InstrumentFile(SQLModel, table=True):
     attachment_ids: list[int] = Field(default_factory=list, sa_column=Column(JSON))
     handled_by: Optional[int] = Field(default=None, foreign_key="user.id", nullable=True)  # None: automatically
     handled_at: Optional[NaiveDatetime] = None
+
+
+class SampleCode(SQLModel, table=True):
+    """A sample code (JL-013) handed to an experiment (0.17). Written on a vial or typed as an instrument's
+    sample name, it tells Benchtop where that instrument's data belongs."""
+    __table_args__ = (UniqueConstraint("prefix", "number"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    prefix: str = Field(index=True)
+    number: int
+    user_id: int = Field(foreign_key="user.id", index=True)
+    experiment_id: int = Field(foreign_key="experiment.id", index=True)
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    retired_at: Optional[NaiveDatetime] = None  # taken off its experiment; the number is never handed out again

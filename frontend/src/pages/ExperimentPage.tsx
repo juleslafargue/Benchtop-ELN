@@ -57,6 +57,46 @@ function StatusCard({ exp, fresh }: { exp: Experiment; fresh: boolean }) {
   )
 }
 
+/** The experiment's sample codes (JL-013): click one to copy it; drafts can get a new one. */
+function SampleCodes({ exp, editable, onChange }: { exp: Experiment; editable: boolean; onChange: () => void }) {
+  const { user, toast } = useApp()
+  const [busy, setBusy] = useState(false)
+  const [typing, setTyping] = useState(false)
+  const [num, setNum] = useState('')
+  const add = async (number?: number) => {
+    setBusy(true)
+    try {
+      const sc = await api.post<{ code: string }>(`/api/experiments/${exp.id}/samples`, number ? { number } : {})
+      onChange(); setTyping(false); setNum('')
+      navigator.clipboard?.writeText(sc.code).catch(() => {})
+      toast(`${sc.code} is now this experiment's (copied)`)
+    } catch (e: any) { toast(e.message) } finally { setBusy(false) }
+  }
+  const retire = async (s: { id: number; code: string }) => {
+    if (!confirm(`Take ${s.code} off ${exp.eid}? Its number won't be handed out again; files carrying it will wait in your Inbox.`)) return
+    try { await api.del(`/api/samples/${s.id}`); onChange() } catch (e: any) { toast(e.message) }
+  }
+  const samples = exp.samples || []
+  return (
+    <div className="sample-codes">
+      <span className="faint">Samples</span>
+      {samples.map(s => <span key={s.id} className="sample-chip">
+        <button className="mono" title="Copy" onClick={() => navigator.clipboard?.writeText(s.code).then(() => toast(`Copied ${s.code}`)).catch(() => toast(s.code))}>{s.code}</button>
+        {editable && <button className="x" aria-label={`Take ${s.code} off this experiment`} onClick={() => retire(s)}>×</button>}</span>)}
+      {editable && (user.sample_prefix
+        ? typing
+          ? <span className="row" style={{ gap: 4 }}><span className="mono faint">{user.sample_prefix}-</span>
+            <input className="input inline-num" autoFocus inputMode="numeric" value={num} onChange={e => setNum(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={e => { if (e.key === 'Enter' && num) add(Number(num)); if (e.key === 'Escape') setTyping(false) }} aria-label="Sample number" />
+            <button className="btn sm" disabled={!num || busy} onClick={() => add(Number(num))}>Add</button>
+            <button className="btn ghost sm" onClick={() => setTyping(false)}>Cancel</button></span>
+          : <><button className="btn sm" disabled={busy} onClick={() => add()}>New sample code</button>
+            <button className="btn ghost sm" onClick={() => setTyping(true)} title="A number you've already written on a vial">Use a number I already have…</button></>
+        : <Link className="faint" to="/account" style={{ fontSize: 13 }}>Set your initials in Account to give samples codes</Link>)}
+    </div>
+  )
+}
+
 const SIG_LABEL: Record<string, string> = { author: 'Signed by author', witness: 'Witnessed', rejected: 'Returned to author', withdrawn: 'Signature withdrawn', void: 'Voided' }
 
 /** The independent, certified time of a signature (RFC 3161), if this lab uses trusted timestamps. */
@@ -368,6 +408,7 @@ export default function ExperimentPage() {
             {!!exp.follow_ups?.length && <span>Follow-up{exp.follow_ups.length > 1 ? 's' : ''}: {exp.follow_ups.map((f, i) =>
               <Fragment key={f.id}>{i > 0 && ', '}<Link to={`/experiments/${f.id}`} title={f.title}><b>{f.eid}</b></Link></Fragment>)}</span>}
           </div>}
+          {!exp.is_template && (!!exp.samples?.length || editable) && <SampleCodes exp={exp} editable={editable} onChange={load} />}
           {exp.audience && !exp.is_template && <div className="exp-access">
             <AudienceBadge audience={exp.audience} />
             {exp.shared_with_me && <span className="tag">Shared with you · {exp.shared_with_me === 'edit' ? 'can edit' : 'can view'}</span>}

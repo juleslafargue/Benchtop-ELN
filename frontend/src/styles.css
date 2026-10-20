@@ -1251,3 +1251,11 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
   .inbox-item { padding: 12px; }
   .inbox-actions .btn { flex: 1 1 auto; justify-content: center; }
 }
+
+/* sample codes (0.17) */
+.sample-codes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 14px; }
+.sample-chip { display: inline-flex; align-items: center; border: 1px solid var(--rule-strong); border-radius: 99px; background: var(--paper); overflow: hidden; }
+.sample-chip button { all: unset; cursor: pointer; padding: 1px 9px; }
+.sample-chip button.mono { font-weight: 600; color: var(--ink); }
+.sample-chip button:hover { background: var(--accent-soft); }
+.sample-chip .x { padding: 1px 7px 1px 2px; color: var(--ink-3); }

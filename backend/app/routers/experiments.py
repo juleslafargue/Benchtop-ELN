@@ -357,13 +357,17 @@ def get_experiment(exp_id: int, user: CurrentUser, session: DB):
         "signatures": signatures_out(session, exp.id),
         "witness_request": witness.summary(session, exp),
         **_access_info(session, user, exp),
-        **_follow_info(session, user, exp),
+        **_links_and_samples(session, user, exp),
     }
 
 
-def _follow_info(session, user: User, exp: Experiment) -> dict[str, Any]:
+def _links_and_samples(session, user: User, exp: Experiment) -> dict[str, Any]:
+    from .. import samples
+    from ..models import SampleCode
     from .instruments import follow_info
-    return follow_info(session, user, exp)
+    codes = session.exec(select(SampleCode).where(SampleCode.experiment_id == exp.id, SampleCode.retired_at == None)  # noqa: E711
+                         .order_by(SampleCode.prefix, SampleCode.number))
+    return {**follow_info(session, user, exp), "samples": [samples.out(session, c) for c in codes]}
 
 
 def _access_info(session, user: User, exp: Experiment) -> dict[str, Any]:

@@ -5,7 +5,7 @@ export type Status = 'open' | 'signed' | 'witnessed' | 'voided'
 export type EntryKind = 'text' | 'reaction' | 'table' | 'file' | 'purification' | 'characterization' | 'safety' | 'screen' | 'custom'
 
 export interface Preferences { theme?: 'system' | 'light' | 'dark'; palette?: string; email_notify?: { witness?: boolean; results?: boolean }; default_notebook_id?: number | null; spectrum_expanded?: boolean; pinned?: number[]; nav?: string[]; nav_hidden?: string[]; dashboard?: { widgets: unknown[] } }
-export interface User { id: number; username: string; full_name: string; email: string; role: Role; active: boolean; preferences: Preferences; has_password?: boolean; must_change_password?: boolean }
+export interface User { id: number; username: string; full_name: string; email: string; role: Role; active: boolean; preferences: Preferences; has_password?: boolean; must_change_password?: boolean; sample_prefix?: string | null }
 export interface UserBrief { id: number; username: string; full_name: string }
 export type Visibility = 'everyone' | 'group' | 'private'
 export interface Notebook {
@@ -55,7 +55,9 @@ export interface Experiment extends ExperimentSummary {
   entries: Entry[]; attachments: Attachment[]; signatures: Signature[]; witness_request?: WitnessRequest | null
   can_edit: boolean; shared_with_me: 'view' | 'edit' | null; audience: Audience; open_comments: number
   follows?: LinkedExperiment | { hidden: true } | null; follow_ups?: LinkedExperiment[]
+  samples?: SampleCode[]
 }
+export interface SampleCode { id: number; code: string; user: UserBrief | null; created_at: string }
 export interface LinkedExperiment { id: number; eid: string; title: string; status?: Status; notebook_id?: number | null }
 export interface InboxItem {
   id: number; path: string; revision: number; state: 'inbox' | 'ignored' | 'attached'; note: string
