@@ -1,11 +1,12 @@
 {
   "name": "benchtop-frontend",
   "private": true,
-  "version": "0.18.0",
+  "version": "0.18.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "node --experimental-strip-types --no-warnings --test 'tests/*.test.mjs'",
     "preview": "vite preview"
   },
   "dependencies": {

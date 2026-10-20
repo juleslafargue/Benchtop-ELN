@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { median } from '../stats'
 
 export interface YieldPoint { experiment_id: number; eid: string; title: string; date: string; yield_pct: number; product: string | null }
 
@@ -16,8 +17,7 @@ export default function YieldChart({ points }: { points: YieldPoint[] }) {
   if (t1 - t0 < 864e5 * 7) { const mid = (t0 + t1) / 2; t0 = mid - 864e5 * 3.5; t1 = mid + 864e5 * 3.5 } // at least a week wide
   const x = (ms: number) => m.l + (ms - t0) / (t1 - t0) * (W - m.l - m.r)
   const y = (v: number) => m.t + (1 - Math.min(100, Math.max(0, v)) / 100) * (H - m.t - m.b)
-  const sorted = [...pts.map(p => p.yield_pct)].sort((a, b) => a - b)
-  const median = sorted[Math.floor(sorted.length / 2)]
+  const mid = median(pts.map(p => p.yield_pct)) ?? 0
   const months: number[] = []
   for (let d = new Date(new Date(t0).getFullYear(), new Date(t0).getMonth() + 1, 1); d.getTime() <= t1; d.setMonth(d.getMonth() + 1)) months.push(d.getTime())
   const fmtDay = (ms: number) => new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
@@ -36,7 +36,7 @@ export default function YieldChart({ points }: { points: YieldPoint[] }) {
 
   return (
     <div className="ychart">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Yields of ${pts.length} reactions over time; median ${median.toFixed(0)}%`}
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Yields of ${pts.length} reactions over time; median ${mid.toFixed(0)}%`}
         onPointerMove={onMove} onPointerLeave={() => setHover(null)} onClick={() => h && nav(`/experiments/${h.experiment_id}`)}
         style={{ cursor: h ? 'pointer' : 'default' }}>
         {[0, 25, 50, 75, 100].map(v => <g key={v}>
@@ -45,8 +45,8 @@ export default function YieldChart({ points }: { points: YieldPoint[] }) {
         </g>)}
         {ticks.map(tk => { const px = x(tk.ms); return <text key={tk.ms} x={px} y={H - 8} className="tick"
           textAnchor={px > W - m.r - 30 ? 'end' : px < m.l + 30 ? 'start' : 'middle'}>{tk.label}</text> })}
-        <line x1={m.l} x2={W - m.r} y1={y(median)} y2={y(median)} className="median" />
-        <text x={W - m.r} y={y(median) - 5} textAnchor="end" className="tick">median {median.toFixed(0)}%</text>
+        <line x1={m.l} x2={W - m.r} y1={y(mid)} y2={y(mid)} className="median" />
+        <text x={W - m.r} y={y(mid) - 5} textAnchor="end" className="tick">median {mid.toFixed(0)}%</text>
         {pts.map((p, i) => <circle key={`${p.experiment_id}-${i}`} cx={x(t[i])} cy={y(p.yield_pct)} r={hover === i ? 6 : 4.5} className="dot" />)}
       </svg>
       {h && <div className={`ytip${y(h.yield_pct) < H * 0.35 ? ' below' : ''}${x(t[hover!]) < W * 0.2 ? ' left' : x(t[hover!]) > W * 0.8 ? ' right' : ''}`}

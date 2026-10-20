@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, downloadAuthed, fmt, PURIFICATION_LABELS, type ReactionSummary } from '../api'
 import { StatusDot } from '../components/ExperimentList'
 import { Mol, NumInput, useDebounced } from '../components/bits'
+import { median } from '../stats'
 
 type SortKey = 'date' | 'yield' | 'temp' | 'scale'
 
@@ -60,7 +61,7 @@ export default function Reactions() {
         <div>
           <h1 className="page-title">Reactions</h1>
           <p className="lede">Every reaction across your notebooks, with its conditions and outcome.
-            {yields.length > 0 && <> {rows!.length} shown · median yield {fmt([...yields].sort((a, b) => a - b)[Math.floor(yields.length / 2)], 0)}%.</>}</p>
+            {yields.length > 0 && <> {rows!.length} shown · median yield {fmt(median(yields), 0)}%.</>}</p>
         </div>
         <button className="btn" onClick={() => downloadAuthed(`/api/reactions?${params}&format=csv`, 'reactions.csv')}>Download CSV</button>
       </div>
