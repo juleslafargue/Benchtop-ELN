@@ -11,6 +11,8 @@ os.environ["BENCHTOP_ADMIN_PASSWORD"] = "adminpass"
 os.environ["BENCHTOP_BACKUP_INTERVAL_HOURS"] = "0"  # tests trigger backups explicitly
 os.environ["BENCHTOP_PUBCHEM"] = "off"  # tests inject a mock PubChem
 os.environ["BENCHTOP_TIMESTAMPS"] = "off"  # no calls to real timestamp services; tests switch on a fake one
+os.environ["BENCHTOP_NMR_AUTO_UPDATE"] = "off"  # no NMRShiftDB2 download at start-up (tests build their own table)
+os.environ["BENCHTOP_INSTRUMENT_SCAN_SECONDS"] = "0"  # tests look at instrument folders explicitly (instruments.scan_all)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402

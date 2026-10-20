@@ -15,7 +15,7 @@ from . import __version__, backup
 from .config import settings
 from .db import engine, init_db
 from .models import Role, User
-from .routers import admin, auth, chemistry, dashboard, experiments, materials, reactions, safety as safety_router, search, nmr as nmr_router, groups, comments, sso, integrations, bench
+from .routers import admin, auth, chemistry, dashboard, experiments, materials, reactions, safety as safety_router, search, nmr as nmr_router, groups, comments, sso, integrations, bench, instruments as instruments_router
 from .security import hash_password
 
 
@@ -103,7 +103,10 @@ async def lifespan(_: FastAPI):
         raise
     ensure_admin()
     task = asyncio.create_task(_housekeeping_loop())
+    from . import instruments
+    instruments.start()  # watches the instrument folders (Admin → Instruments) about once a minute
     yield
+    instruments.stop()
     task.cancel()
     with suppress(asyncio.CancelledError):
         await task
@@ -148,7 +151,7 @@ async def security_headers(request, call_next):
     return resp
 
 
-for r in (auth, experiments, materials, chemistry, search, reactions, admin, dashboard, safety_router, nmr_router, groups, comments, sso, integrations, bench):
+for r in (auth, experiments, materials, chemistry, search, reactions, admin, dashboard, safety_router, nmr_router, groups, comments, sso, integrations, bench, instruments_router):
     app.include_router(r.router)
 
 

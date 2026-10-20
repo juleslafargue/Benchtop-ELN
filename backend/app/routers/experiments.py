@@ -349,7 +349,7 @@ def create_experiment(body: ExperimentIn, user: Writer, session: DB):
 @router.get("/experiments/{exp_id}")
 def get_experiment(exp_id: int, user: CurrentUser, session: DB):
     exp = read_experiment(session, user, exp_id)
-    atts = session.exec(select(Attachment).where(Attachment.experiment_id == exp.id))
+    atts = session.exec(select(Attachment).where(Attachment.experiment_id == exp.id, Attachment.withdrawn_at == None))  # noqa: E711
     return {
         **experiment_summary(session, exp),
         "entries": [entry_out(e) for e in live_entries(session, exp.id)],
@@ -357,7 +357,13 @@ def get_experiment(exp_id: int, user: CurrentUser, session: DB):
         "signatures": signatures_out(session, exp.id),
         "witness_request": witness.summary(session, exp),
         **_access_info(session, user, exp),
+        **_follow_info(session, user, exp),
     }
+
+
+def _follow_info(session, user: User, exp: Experiment) -> dict[str, Any]:
+    from .instruments import follow_info
+    return follow_info(session, user, exp)
 
 
 def _access_info(session, user: User, exp: Experiment) -> dict[str, Any]:
@@ -739,7 +745,8 @@ def entry_versions(entry_id: int, user: CurrentUser, session: DB):
 
 def attachment_out(a: Attachment) -> dict[str, Any]:
     return {"id": a.id, "filename": a.filename, "content_type": a.content_type, "size": a.size,
-            "sha256": a.sha256, "created_at": a.created_at.isoformat() + "Z"}
+            "sha256": a.sha256, "created_at": a.created_at.isoformat() + "Z",
+            "from_instrument": a.instrument_file_id is not None}
 
 
 def _blob_path(sha: str):
@@ -773,6 +780,8 @@ async def upload_attachment(exp_id: int, user: Writer, session: DB, file: Upload
 def download_attachment(att_id: int, user: CurrentUser, session: DB, inline: bool = False):
     a = get_or_404(session, Attachment, att_id)
     read_experiment(session, user, a.experiment_id)
+    if a.withdrawn_at is not None:  # sent back with "Not mine": it's someone else's data now (see the Inbox)
+        raise HTTPException(404, f"Attachment {att_id} not found")
     path = _blob_path(a.sha256)
     if not path.exists():
         raise HTTPException(410, "Attachment blob missing from storage")
@@ -1273,7 +1282,8 @@ def _pdf_response(session, exp: Experiment) -> Response:
 def report_html(session, exp: Experiment, pdf: bool = False) -> str:
     """The printable record: every section, signatures and the content hash. pdf=True swaps in
     rasters and print-safe styles for the PDF renderer."""
-    atts = {a.id: a for a in session.exec(select(Attachment).where(Attachment.experiment_id == exp.id))}
+    atts = {a.id: a for a in session.exec(select(Attachment).where(Attachment.experiment_id == exp.id,
+                                                                   Attachment.withdrawn_at == None))}  # noqa: E711
     owner = session.get(User, exp.owner_id)
     sigs = signatures_out(session, exp.id)
     body = "".join(_render_entry_safe(e, atts, pdf) for e in live_entries(session, exp.id))

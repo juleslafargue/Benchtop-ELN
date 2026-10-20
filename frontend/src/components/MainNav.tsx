@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useApp } from '../App'
 import { api, type User } from '../api'
 
@@ -7,6 +7,7 @@ import { api, type User } from '../api'
  *  ones they don't use; the choice is saved to their account, so it follows them to any computer. */
 const ITEMS = [
   { key: 'dashboard', to: '/', label: 'Dashboard', end: true },
+  { key: 'inbox', to: '/inbox', label: 'Inbox' },
   { key: 'reactions', to: '/reactions', label: 'Reactions' },
   { key: 'compounds', to: '/compounds', label: 'Compounds' },
   { key: 'search', to: '/search', label: 'Search' },
@@ -31,8 +32,20 @@ const Eye = ({ off }: { off: boolean }) => (
   </svg>
 )
 
+/** How many instrument files wait in the Inbox for this person (checked every minute and on navigation). */
+function useInboxCount() {
+  const [n, setN] = useState(0)
+  const loc = useLocation()
+  const load = useCallback(() => { api.get<{ waiting: number }>('/api/inbox/count').then(r => setN(r.waiting)).catch(() => {}) }, [])
+  useEffect(() => { load(); const t = setInterval(load, 60_000); addEventListener('benchtop:inbox', load)
+    return () => { clearInterval(t); removeEventListener('benchtop:inbox', load) } }, [load])
+  useEffect(() => { const t = setTimeout(load, 800); return () => clearTimeout(t) }, [loc.pathname, load])
+  return n
+}
+
 export default function MainNav() {
   const { user, setUser, toast } = useApp()
+  const inboxCount = useInboxCount()
   const isAdmin = user.role === 'admin'
   const [editing, setEditing] = useState(false)
   const [drag, setDrag] = useState<Key | null>(null)
@@ -55,7 +68,8 @@ export default function MainNav() {
 
   if (!editing) return (
     <nav className="nav">
-      {items.filter(i => !hidden.has(i.key)).map(i => <NavLink key={i.key} to={i.to} end={'end' in i}>{i.label}</NavLink>)}
+      {items.filter(i => !hidden.has(i.key)).map(i => <NavLink key={i.key} to={i.to} end={'end' in i}>{i.label}
+        {i.key === 'inbox' && inboxCount > 0 && <span className="nav-count" aria-label={`${inboxCount} waiting`}>{inboxCount > 99 ? '99+' : inboxCount}</span>}</NavLink>)}
       <button className="btn ghost sm nav-custom-btn" onClick={() => setEditing(true)}>Customise menu</button>
     </nav>
   )

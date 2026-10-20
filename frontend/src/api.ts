@@ -38,7 +38,7 @@ export interface Entry {
   id: number; experiment_id: number; kind: EntryKind; title: string; position: number
   content: any; version: number; updated_by: number; updated_at: string
 }
-export interface Attachment { id: number; filename: string; content_type: string; size: number; sha256: string; created_at: string }
+export interface Attachment { id: number; filename: string; content_type: string; size: number; sha256: string; created_at: string; from_instrument?: boolean }
 export interface TrustedTimestamp { status: 'ok' | 'pending' | 'failed'; tsa: string; gen_time: string | null; delay_seconds: number | null; error: string; attempts: number }
 export interface Signature {
   id: number; meaning: string; comment: string; content_hash: string; signed_at: string; user: UserBrief
@@ -54,6 +54,26 @@ export interface WitnessCandidate extends UserBrief { has_email: boolean }
 export interface Experiment extends ExperimentSummary {
   entries: Entry[]; attachments: Attachment[]; signatures: Signature[]; witness_request?: WitnessRequest | null
   can_edit: boolean; shared_with_me: 'view' | 'edit' | null; audience: Audience; open_comments: number
+  follows?: LinkedExperiment | { hidden: true } | null; follow_ups?: LinkedExperiment[]
+}
+export interface LinkedExperiment { id: number; eid: string; title: string; status?: Status; notebook_id?: number | null }
+export interface InboxItem {
+  id: number; path: string; revision: number; state: 'inbox' | 'ignored' | 'attached'; note: string
+  instrument: { id: number; name: string; kind: string }
+  files: { n: number; name: string; size: number; content_type: string }[]
+  size: number; arrived_at: string; handled_at: string | null; handled_by: UserBrief | null
+  matched: (LinkedExperiment & { status: Status })[]; experiment: LinkedExperiment | null
+  follow_up: boolean; for_you: boolean
+}
+export interface Instrument {
+  id: number; name: string; kind: string; kind_label: string; folder: string; audience: { id: number; name: string }[]
+  settle_minutes: number; enabled: boolean; import_since: string | null; last_scan_at: string | null
+  last_scan_ms: number | null; last_error: string; counts: Record<string, number>; created_at: string
+}
+export interface FolderPreview {
+  folder: string; items: number; scan_seconds: number; hints: string[]
+  latest: { path: string; action: 'attach' | 'inbox'; note: string; experiment: string | null; size: number; modified: string }[]
+  since?: { items: number; attach: number; inbox: number }
 }
 export interface StoichRow {
   role: 'reactant' | 'reagent' | 'catalyst' | 'solvent' | 'product'

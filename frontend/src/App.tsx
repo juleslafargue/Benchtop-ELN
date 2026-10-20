@@ -20,6 +20,7 @@ import Templates from './pages/Templates'
 import Admin from './pages/Admin'
 import Account from './pages/Account'
 import Groups from './pages/Groups'
+import Inbox from './pages/Inbox'
 import PasswordDialog from './components/PasswordDialog'
 import BenchPage from './pages/BenchPage'
 import { Shortcuts } from './components/Shortcuts'
@@ -131,6 +132,7 @@ export default function App() {
           <Route path="/compounds" element={<Compounds />} />
           <Route path="/account" element={<Account />} />
           <Route path="/groups" element={<Groups />} />
+          <Route path="/inbox" element={<Inbox />} />
           <Route path="/admin" element={user.role === 'admin' ? <Admin /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

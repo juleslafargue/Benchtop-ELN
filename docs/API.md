@@ -30,6 +30,20 @@ with open("run42_HPLC.csv", "rb") as f:
     BT.post("/api/experiments/25/attachments", files={"file": f})
 ```
 
+Usually you don't need a script for instrument files: an admin can point Benchtop at the instrument's folder
+(**Admin → Instruments**) and files named with an experiment number arrive by themselves. The Inbox has an API
+too, for programs that sort files:
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/inbox?state=inbox` | files waiting (`ignored` and `attached` for the other tabs); only those you may see |
+| `GET /api/inbox/{id}/files/{n}` | download one of a waiting arrival's files |
+| `POST /api/inbox/{id}/assign` `{"experiment_id": 25}` | attach it to a draft you can edit |
+| `POST /api/inbox/{id}/follow-up` `{"notebook_id": 3}` | make a follow-up of the signed record it names, with the file in it |
+| `POST /api/inbox/{id}/ignore`, `/unignore` | set it aside, or bring it back |
+| `POST /api/experiments/{id}/follow-up` | a follow-up of a signed record, without a file |
+| `POST /api/attachments/{id}/not-mine` | send an instrument file back to the Inbox (drafts only) |
+
 What tokens can and can't do:
 
 - A token acts as **you**. It sees what you can see, and everything it does is recorded in the audit trail under your name.

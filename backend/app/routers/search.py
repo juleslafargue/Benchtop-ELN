@@ -154,7 +154,7 @@ def search(user: CurrentUser, session: DB, q: str = "", mode: str = "text", thre
                     text = " ".join(_strings(en.content))
                 sections.setdefault(en.experiment_id, []).append((en.title, text))
         files: dict[int, list[Attachment]] = {}
-        for a in session.exec(select(Attachment)):
+        for a in session.exec(select(Attachment).where(Attachment.withdrawn_at == None)):  # noqa: E711
             files.setdefault(a.experiment_id, []).append(a)
 
         hits = []

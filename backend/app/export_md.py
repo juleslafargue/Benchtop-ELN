@@ -142,7 +142,8 @@ def experiment_markdown(session: Session, exp: Experiment, asset_dir: str = "_as
     nb = session.get(Notebook, exp.notebook_id) if exp.notebook_id else None
     owner = session.get(User, exp.owner_id)
     entries = live_entries(session, exp.id)
-    atts = {a.id: a for a in session.exec(select(Attachment).where(Attachment.experiment_id == exp.id))}
+    atts = {a.id: a for a in session.exec(select(Attachment).where(Attachment.experiment_id == exp.id,
+                                                                   Attachment.withdrawn_at == None))}  # noqa: E711
     rxn = next((e for e in entries if e.kind == EntryKind.reaction and (e.content or {}).get("rows")), None)
     pur = next((e.content for e in entries if e.kind == EntryKind.purification), None) or {}
     fm: dict[str, Any] = {

@@ -15,7 +15,7 @@ from enum import Enum
 from typing import Any, Optional
 
 from pydantic import NaiveDatetime
-from sqlalchemy import JSON, BigInteger, Column, Text
+from sqlalchemy import JSON, BigInteger, Column, Text, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -173,6 +173,8 @@ class Experiment(SQLModel, table=True):
     tags: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: NaiveDatetime = Field(default_factory=utcnow)
     updated_at: NaiveDatetime = Field(default_factory=utcnow)
+    # added in 0.16: the signed record this one follows up (results that came back after signing)
+    follows_id: Optional[int] = Field(default=None, foreign_key="experiment.id", nullable=True)
 
     @property
     def eid(self) -> str:
@@ -213,6 +215,11 @@ class Attachment(SQLModel, table=True):
     sha256: str = Field(index=True)
     uploaded_by: int = Field(foreign_key="user.id")
     created_at: NaiveDatetime = Field(default_factory=utcnow)
+    # added in 0.16: the instrument arrival it came from, and whether its owner sent it back ("Not mine")
+    # while the record was a draft. A sent-back file is no longer part of the record (or of what a signature covers).
+    instrument_file_id: Optional[int] = Field(default=None, foreign_key="instrumentfile.id", nullable=True)
+    withdrawn_at: Optional[NaiveDatetime] = Field(default=None, nullable=True)
+    withdrawn_by: Optional[int] = Field(default=None, foreign_key="user.id", nullable=True)
 
 
 class Signature(SQLModel, table=True):
@@ -416,3 +423,48 @@ class EmailLog(SQLModel, table=True):
     attempts: Optional[int] = None
     next_try: Optional[NaiveDatetime] = None
 
+
+
+class Instrument(SQLModel, table=True):
+    """A folder Benchtop watches for instrument data (0.16). Nothing in it is ever moved, renamed or deleted."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    kind: str = "files"  # bruker_nmr | files (see instruments.KINDS)
+    folder: str
+    # groups whose members see this folder's unmatched files in their Inbox; empty = everyone
+    audience: list[int] = Field(default_factory=list, sa_column=Column(JSON))
+    settle_seconds: int = 120  # an arrival is handled once nothing in it has changed for this long
+    enabled: bool = True
+    archived: bool = False  # removed from the Admin list; its history stays
+    import_since: Optional[NaiveDatetime] = None  # also handle files already there if changed since then
+    baseline_at: Optional[NaiveDatetime] = None  # when Benchtop noted what was already in the folder
+    created_by: int = Field(foreign_key="user.id")
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    last_scan_at: Optional[NaiveDatetime] = None
+    last_scan_ms: Optional[int] = None
+    last_error: str = ""
+
+
+class InstrumentFile(SQLModel, table=True):
+    """One arrival in a watched folder: a file, or a dataset folder (e.g. one Bruker experiment number).
+    If it changes after being handled, the change arrives again as the next revision."""
+    __table_args__ = (UniqueConstraint("instrument_id", "path", "revision"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    instrument_id: int = Field(foreign_key="instrument.id", index=True)
+    path: str = Field(index=True)  # inside the watched folder
+    revision: int = 1
+    fingerprint: str = ""  # names, sizes and modification times inside, to notice changes
+    size: int = 0
+    first_seen_at: NaiveDatetime = Field(default_factory=utcnow)
+    changed_at: NaiveDatetime = Field(default_factory=utcnow)
+    # baseline (already there when the folder was added) | settling | attached | inbox | ignored
+    state: str = Field(default="settling", index=True)
+    note: str = ""  # why it's waiting in the Inbox, in plain words
+    rule: str = ""  # how its experiment was found: eid | assigned | follow-up
+    matched_ids: list[int] = Field(default_factory=list, sa_column=Column(JSON))  # experiments its name points to
+    person_id: Optional[int] = Field(default=None, foreign_key="user.id", nullable=True)  # whose sample code it carries
+    experiment_id: Optional[int] = Field(default=None, foreign_key="experiment.id", nullable=True)
+    files: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))  # [{name, sha256, size, content_type}]
+    attachment_ids: list[int] = Field(default_factory=list, sa_column=Column(JSON))
+    handled_by: Optional[int] = Field(default=None, foreign_key="user.id", nullable=True)  # None: automatically
+    handled_at: Optional[NaiveDatetime] = None

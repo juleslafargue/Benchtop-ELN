@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, downloadAuthed, type Attachment } from '../api'
+import { useApp } from '../App'
 import type { EntryEditorProps } from './EntryCard'
 import { hydrogensInFormula, SPECTRUM_EXT } from '../spectra'
 import SpectrumViewer, { type SavedAnalysis } from './SpectrumViewer'
@@ -21,6 +22,17 @@ export default function FileEntry({ content, onChange, readOnly, experimentId, a
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [viewing, setViewing] = useState<number | null>(null)
+  const { toast } = useApp()
+  /** A file that came from an instrument folder but isn't this experiment's (a mistyped number): back to the Inbox. */
+  const notMine = async (a: Attachment) => {
+    if (!confirm(`Send “${a.filename}” back to the Inbox? It leaves this experiment, and someone can assign it to the right one.`)) return
+    try {
+      await api.post(`/api/attachments/${a.id}/not-mine`)
+      toast('Sent back to the Inbox')
+      window.dispatchEvent(new CustomEvent('benchtop:reload', { detail: { experimentId } }))  // the server changed the section
+      window.dispatchEvent(new Event('benchtop:inbox'))
+    } catch (e: any) { toast(e.message) }
+  }
   const ids: number[] = content.attachment_ids || []
   const mine = ids.map(id => attachments.find(a => a.id === id)).filter(Boolean) as Attachment[]
 
@@ -57,7 +69,8 @@ export default function FileEntry({ content, onChange, readOnly, experimentId, a
               <span className="grow"><b style={{ fontWeight: 600 }}>{a.filename}</b> <span className="faint">{size(a.size)} · sha256 {a.sha256.slice(0, 12)}…</span></span>
               {SPECTRUM_EXT.test(a.filename) && <button className={`btn sm${viewing === a.id ? ' primary' : ''}`} onClick={() => setViewing(viewing === a.id ? null : a.id)}>{viewing === a.id ? 'Hide spectrum' : 'View spectrum'}</button>}
               <button className="btn sm" onClick={() => downloadAuthed(`/api/attachments/${a.id}`, a.filename)}>Download</button>
-              {!readOnly && <button className="btn ghost sm" onClick={() => onChange({ ...content, attachment_ids: ids.filter(i => i !== a.id) })}>Unlink</button>}
+              {!readOnly && a.from_instrument && <button className="btn ghost sm" onClick={() => notMine(a)} title="It isn't this experiment's: send it back to the Inbox">Not mine</button>}
+              {!readOnly && !a.from_instrument && <button className="btn ghost sm" onClick={() => onChange({ ...content, attachment_ids: ids.filter(i => i !== a.id) })}>Unlink</button>}
               {a.content_type.startsWith('image/') && <div style={{ flexBasis: '100%' }}><ImagePreview att={a} /></div>}
               {viewing === a.id && <div style={{ flexBasis: '100%' }}><SpectrumViewer attachmentId={a.id} filename={a.filename} expectedH={hydrogensInFormula(context.productFormula)} productSmiles={context.productSmiles} productMW={context.productMW}
                 saved={(content.analyses || {})[a.id] as SavedAnalysis | undefined}

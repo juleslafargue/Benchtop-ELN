@@ -5,6 +5,7 @@ import { api, when, type AuditEvent, type Role, type User } from '../api'
 import Modal from '../components/Modal'
 import { Plugins, Webhooks } from '../components/Integrations'
 import { EmailSettingsPanel, TimestampSettingsPanel, WitnessSettingsPanel } from '../components/AdminSigning'
+import InstrumentsPanel from '../components/AdminInstruments'
 import PasswordField from '../components/PasswordField'
 
 function EditUser({ u, onClose, onSaved }: { u: User; onClose: () => void; onSaved: () => void }) {
@@ -231,6 +232,7 @@ export default function Admin() {
       <EmailSettingsPanel />
       <WitnessSettingsPanel />
       <TimestampSettingsPanel />
+      <InstrumentsPanel />
       <Plugins />
       <Webhooks />
       <NmrData />

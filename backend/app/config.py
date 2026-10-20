@@ -27,6 +27,9 @@ class Settings:
         self.admin_password = os.environ.get("BENCHTOP_ADMIN_PASSWORD", "admin")
         self.static_dir = os.environ.get("BENCHTOP_STATIC_DIR")  # built frontend
         self.max_upload_mb = int(os.environ.get("BENCHTOP_MAX_UPLOAD_MB", "50"))
+        # instrument folders (0.16): how often to look, and the largest arrival taken in
+        self.instrument_scan_seconds = int(os.environ.get("BENCHTOP_INSTRUMENT_SCAN_SECONDS", "60"))
+        self.instrument_max_mb = int(os.environ.get("BENCHTOP_INSTRUMENT_MAX_MB", "2048"))
         # Backups: point BENCHTOP_BACKUP_DIR at an iCloud/Dropbox folder to keep copies off-machine
         self.backup_dir = Path(os.environ.get("BENCHTOP_BACKUP_DIR", self.data_dir / "backups")).expanduser().resolve()
         self.backup_keep = int(os.environ.get("BENCHTOP_BACKUP_KEEP", "14"))

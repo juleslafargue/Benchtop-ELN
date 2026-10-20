@@ -100,7 +100,8 @@ def experiment_summary(session: Session, exp: Experiment) -> dict[str, Any]:
 def snapshot(session: Session, exp: Experiment) -> dict[str, Any]:
     """Deterministic representation of everything a signature attests to."""
     atts = session.exec(
-        select(Attachment).where(Attachment.experiment_id == exp.id).order_by(Attachment.id)
+        select(Attachment).where(Attachment.experiment_id == exp.id, Attachment.withdrawn_at == None)  # noqa: E711
+        .order_by(Attachment.id)  # files sent back with "Not mine" (only possible on a draft) aren't part of the record
     )
     return {
         "eid": exp.eid,

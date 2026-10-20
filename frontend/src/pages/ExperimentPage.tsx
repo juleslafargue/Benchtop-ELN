@@ -12,6 +12,7 @@ import WriteupDialog from '../components/WriteupDialog'
 import { BenchBar, PhoneDialog } from '../components/BenchTools'
 import { isCollapsed, setCollapsedMany } from '../collapse'
 import ScaleDialog from '../components/ScaleDialog'
+import FollowUpDialog from '../components/FollowUpDialog'
 import { useBackTarget } from '../components/BackButton'
 import { parseSpectrumBuffer, techniqueFor } from '../spectra'
 import type { Attachment, Entry, User, UserBrief } from '../api'
@@ -172,6 +173,7 @@ export default function ExperimentPage() {
   const [importNotes, setImportNotes] = useState<string[]>([])
   const [scaling, setScaling] = useState(false)
   const [sharing, setSharing] = useState<UserBrief[] | null>(null)
+  const [followUp, setFollowUp] = useState(false)
   const [focusEntry, setFocusEntry] = useState<number | null>(null)
   const [commentCounts, setCommentCounts] = useState<Record<number, number>>({})
   const dragDepth = useRef(0)
@@ -196,8 +198,10 @@ export default function ExperimentPage() {
     const logged = (e: Event) => { if ((e as CustomEvent).detail?.experimentId === Number(id)) load() }
     document.addEventListener('visibilitychange', again)
     window.addEventListener('focus', again)
+    const reload = async (e: Event) => { if ((e as CustomEvent).detail?.experimentId === Number(id)) { await load(); setReloadKey(k => k + 1) } }
     window.addEventListener('benchtop:logged', logged)
-    return () => { document.removeEventListener('visibilitychange', again); window.removeEventListener('focus', again); window.removeEventListener('benchtop:logged', logged) }
+    window.addEventListener('benchtop:reload', reload)
+    return () => { document.removeEventListener('visibilitychange', again); window.removeEventListener('focus', again); window.removeEventListener('benchtop:logged', logged); window.removeEventListener('benchtop:reload', reload) }
   }, [id, load])
   // L: log a note · T: timer · P: phone · ⌘S: save every section now
   useEffect(() => {
@@ -357,6 +361,13 @@ export default function ExperimentPage() {
             <span>Created {when(exp.created_at)}</span>
             <span>Modified {when(exp.updated_at)}</span>
           </div>
+          {(exp.follows || !!exp.follow_ups?.length) && <div className="follow-links">
+            {exp.follows && ('hidden' in exp.follows
+              ? <span>Follow-up to a record you don't have access to</span>
+              : <span>Follow-up to <Link to={`/experiments/${exp.follows.id}`}><b>{exp.follows.eid}</b> {exp.follows.title}</Link></span>)}
+            {!!exp.follow_ups?.length && <span>Follow-up{exp.follow_ups.length > 1 ? 's' : ''}: {exp.follow_ups.map((f, i) =>
+              <Fragment key={f.id}>{i > 0 && ', '}<Link to={`/experiments/${f.id}`} title={f.title}><b>{f.eid}</b></Link></Fragment>)}</span>}
+          </div>}
           {exp.audience && !exp.is_template && <div className="exp-access">
             <AudienceBadge audience={exp.audience} />
             {exp.shared_with_me && <span className="tag">Shared with you · {exp.shared_with_me === 'edit' ? 'can edit' : 'can view'}</span>}
@@ -453,6 +464,8 @@ export default function ExperimentPage() {
                 }}>{pinned ? 'Pinned to dashboard' : 'Pin to dashboard'}</button>
               })()}
               {!exp.is_template && <button className="btn sm" onClick={() => setWriteup(true)}>Draft write-up</button>}
+              {canWrite && !exp.is_template && (exp.status === 'signed' || exp.status === 'witnessed') &&
+                <button className="btn sm" onClick={() => setFollowUp(true)} title="A new draft linked to this one, for results that came after signing">Make a follow-up…</button>}
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export?format=pdf`, `${exp.eid} ${exp.title.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').slice(0, 80)}.pdf`).catch(e => toast(e.message))}>Download PDF</button>
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export`, `${exp.eid}.html`, true)}>Open printable report</button>
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export?format=md`, `${exp.eid} ${exp.title.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').slice(0, 80)}.md`)}>Download Markdown</button>
@@ -469,6 +482,8 @@ export default function ExperimentPage() {
 
       {bench && editable && <BenchBar key={bench} experimentId={exp.id} eid={exp.eid} initialTimer={bench === 'timer'} onClose={() => setBench(null)} />}
       {phone && <PhoneDialog experimentId={exp.id} onClose={() => setPhone(false)} />}
+      {followUp && <FollowUpDialog eid={exp.eid} title={exp.title} notebookId={exp.notebook_id}
+        url={`/api/experiments/${exp.id}/follow-up`} onClose={() => setFollowUp(false)} />}
       {sharing && <ShareDialog experimentId={exp.id} eid={exp.eid} preselect={sharing} onClose={() => { setSharing(null); load() }} />}
       {scaling && (() => {
         const rx = exp.entries.find(e => e.kind === 'reaction')?.content

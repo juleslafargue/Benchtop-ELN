@@ -82,7 +82,7 @@ def sweep(sync_playwright) -> list[tuple[str, str, str, str]]:
     nbs = httpx.get(B + "/api/notebooks", headers=H).json()
     pages = (["/", "/templates", "/materials", f"/materials/{mats[0]['id']}", "/inventory", "/search?q=suzuki", "/reactions",
               "/compounds", "/account", "/groups"] + [f"/notebooks/{n['id']}" for n in nbs]
-             + [f"/experiments/{e['id']}" for e in exps] + [f"/bench/{exps[0]['id']}"])
+             + [f"/experiments/{e['id']}" for e in exps] + [f"/bench/{exps[0]['id']}", "/inbox"])
     problems: list[tuple[str, str, str, str]] = []
     print(f"Opening {len(pages)} pages on desktop, phone and dark mode…", flush=True)
     runs = [("desktop", "slaurent", {"width": 1400, "height": 900}, "light", pages),

@@ -376,7 +376,8 @@ def logout(user: CurrentUser, session: DB):
 
 @router.get("/users")
 def list_users(_: CurrentUser, session: DB):
-    return [user_out(u) for u in session.exec(select(User).order_by(User.username))]
+    from ..instruments import SYSTEM_USERNAME  # the account instrument files arrive under isn't a person
+    return [user_out(u) for u in session.exec(select(User).where(User.username != SYSTEM_USERNAME).order_by(User.username))]
 
 
 class UserIn(BaseModel):

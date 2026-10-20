@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { ago, api, displayName, type Notification } from '../api'
 import { initials } from './Layout'
 
-const ICON: Record<string, string> = { mention: '@', reply: '↩', comment: '💬', share: '⇪', group: '👥', witness_request: '✍', witness_reminder: '⏰', witnessed: '✓', returned: '↩', witness_cancelled: '–' }
+const ICON: Record<string, string> = { mention: '@', reply: '↩', comment: '💬', share: '⇪', group: '👥', witness_request: '✍', witness_reminder: '⏰', witnessed: '✓', returned: '↩', witness_cancelled: '–', instrument: '⇣', inbox: '⇣' }
 
 /** Bell with unread count; the list opens as a popover. Polls every minute and on navigation. */
 export default function Notifications() {
@@ -31,6 +31,7 @@ export default function Notifications() {
     if (!n.read) api.post('/api/notifications/read', { ids: [n.id] }).then(load).catch(() => {})
     if (n.experiment) nav(`/experiments/${n.experiment.id}${n.comment_id ? `#comment-${n.comment_id}` : ''}`)
     else if (n.kind === 'group') nav('/groups')
+    else if (n.kind === 'inbox') nav('/inbox')
   }
   const readAll = async () => { await api.post('/api/notifications/read', { all: true }).catch(() => {}); load() }
 
