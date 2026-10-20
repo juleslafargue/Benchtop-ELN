@@ -92,6 +92,9 @@ export default function Account() {
         <div><h2>API tokens</h2><p className="help">For scripts and other programs (an instrument PC, a data pipeline) that need to read or add to your notebooks. A token acts as you, but can never sign records or change settings.</p></div>
         <ApiTokens />
 
+        <div><h2>Benchtop as an app</h2><p className="help">Its own window and Dock icon, without the browser's tabs and address bar. Your notebook stays where it is; the app is a window onto it.</p></div>
+        <InstallApp />
+
         <div><h2>Preferences</h2><p className="help">Saved to your account, so they follow you to other computers.</p></div>
         <div className="panel">
           <div className="section">
@@ -189,5 +192,36 @@ function ThemePicker({ value, onChange }: { value: string; onChange: (id: string
         </button>
       ))}
     </div>
+  )
+}
+
+
+/** "Install Benchtop" where the browser can (Chrome, Edge), and how to do it elsewhere. */
+function InstallApp() {
+  const [offer, setOffer] = useState<any>(() => (window as any).__benchtopInstall || null)
+  const standalone = typeof window.matchMedia === 'function' && (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: window-controls-overlay)').matches || (navigator as any).standalone)
+  useEffect(() => {
+    const on = () => setOffer((window as any).__benchtopInstall || null)
+    window.addEventListener('benchtop:installable', on)
+    return () => window.removeEventListener('benchtop:installable', on)
+  }, [])
+  const ua = navigator.userAgent
+  const safari = /Safari/.test(ua) && !/Chrome|Chromium|Edg\//.test(ua)
+  const phone = /iPhone|iPad|Android/.test(ua)
+  const install = async () => { await offer.prompt(); const r = await offer.userChoice; if (r?.outcome === 'accepted') setOffer(null) }
+  return (
+    <div className="panel"><div className="section stack" style={{ gap: 10 }}>
+      {standalone ? <p style={{ margin: 0 }}>You're using the Benchtop app. To remove it, quit it and delete it like any app (or right-click its Dock icon and choose Options → Remove from Dock).</p>
+        : offer ? <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}><button className="btn primary" onClick={install}>Install Benchtop</button>
+          <span className="faint">Adds Benchtop to your Applications and Dock.</span></div>
+        : <ul className="install-steps">
+          {phone ? <li><b>iPhone / iPad:</b> Share button → <i>Add to Home Screen</i>. <b>Android:</b> browser menu → <i>Install app</i>.</li> : <>
+            <li className={safari ? 'here' : ''}><b>Safari</b> (macOS Sonoma or later): <i>File → Add to Dock</i>.</li>
+            <li className={!safari ? 'here' : ''}><b>Chrome or Edge:</b> the install icon at the right of the address bar, or the browser menu → <i>Cast, save and share → Install page as app</i>.</li>
+            <li><b>Firefox</b> doesn't install web apps on Mac; use Safari or Chrome for this.</li></>}
+        </ul>}
+      {!standalone && !window.isSecureContext && <p className="faint" style={{ margin: 0 }}>This computer reaches Benchtop over the network (http), and Chrome only installs secure addresses, so use Safari's <i>Add to Dock</i> here. On the computer running Benchtop, any browser works.</p>}
+      <p className="faint" style={{ margin: 0 }}>Benchtop itself still has to be running (<code>./benchtop</code>, or the lab computer). Upgrades show in the app the next time it opens.</p>
+    </div></div>
   )
 }

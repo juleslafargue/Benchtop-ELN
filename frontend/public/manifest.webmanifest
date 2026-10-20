@@ -1,0 +1,22 @@
+{
+  "name": "Benchtop",
+  "short_name": "Benchtop",
+  "description": "Electronic lab notebook",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#e6ecf1",
+  "theme_color": "#e6ecf1",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Dashboard", "url": "/" },
+    { "name": "Search", "url": "/search" },
+    { "name": "Reactions", "url": "/reactions" }
+  ]
+}

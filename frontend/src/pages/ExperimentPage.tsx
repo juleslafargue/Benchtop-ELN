@@ -99,6 +99,8 @@ export default function ExperimentPage() {
   const nav = useNavigate()
   const { user, canWrite, toast, refreshNotebooks, setUser } = useApp()
   const [exp, setExp] = useState<Experiment | null>(null)
+  // the window / tab title names the record (handy with several app windows open)
+  useEffect(() => { if (exp) document.title = `${exp.eid} ${exp.title} · Benchtop`; return () => { document.title = 'Benchtop' } }, [exp?.eid, exp?.title])
   const [err, setErr] = useState('')
   const [tab, setTab] = useState<'record' | 'history'>('record')
   const [dialog, setDialog] = useState<SignAction | null>(null)

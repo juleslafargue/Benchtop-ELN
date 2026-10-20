@@ -113,6 +113,11 @@ def sweep(sync_playwright) -> list[tuple[str, str, str, str]]:
                   and note(f"HTTP {r.status}", r.url.replace(B, "")))
             pg.goto(B)
             pg.evaluate(f"localStorage.setItem('benchtop.token', '{tok[user]}')")
+            if label == "desktop":  # Chrome must consider Benchtop installable as an app (manifest, icons)
+                cdp = ctx.new_cdp_session(pg)
+                errs = cdp.send("Page.getInstallabilityErrors").get("installabilityErrors", [])
+                if errs:
+                    note("installable", "; ".join(e.get("errorId", "?") for e in errs))
             for path in paths:
                 cur["path"] = path
                 pg.goto(B + path, wait_until="domcontentloaded")

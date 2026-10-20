@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi.testclient import TestClient
+import warnings
+
+with warnings.catch_warnings():  # the demo builder drives the API in-process; the library's deprecation notice isn't for users
+    warnings.simplefilter("ignore", DeprecationWarning)
+    from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from . import audit

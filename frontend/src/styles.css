@@ -1146,3 +1146,7 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 .tp-chip { display: block; width: 9px; height: 5px; border-radius: 3px; }
 .tp-btn { display: grid; place-items: center; margin-left: auto; width: 22px; height: 9px; border-radius: 3px; }
 .tp-btn > span { display: block; width: 12px; height: 2px; border-radius: 1px; }
+
+/* Account → Benchtop as an app */
+.install-steps { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+.install-steps li.here { font-weight: 500; }

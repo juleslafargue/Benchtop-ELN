@@ -169,5 +169,9 @@ if settings.static_dir and Path(settings.static_dir).is_dir():
             return JSONResponse({"detail": "Not Found"}, status_code=404)
         f = static / path
         if path and f.is_file() and static in f.resolve().parents:
-            return FileResponse(f)
-        return FileResponse(static / "index.html")
+            media = "application/manifest+json" if f.suffix == ".webmanifest" else None
+            # the manifest and icons can change between versions: check with the server each time (a cheap 304)
+            return FileResponse(f, media_type=media, headers={"Cache-Control": "no-cache"})
+        # the app page always revalidates, so an installed Benchtop window picks up an upgrade on its next load
+        # (its scripts and styles have content hashes in their names, so those can be cached freely)
+        return FileResponse(static / "index.html", headers={"Cache-Control": "no-cache"})

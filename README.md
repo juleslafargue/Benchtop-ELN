@@ -101,9 +101,18 @@ Double-click **Benchtop.command** in the folder, or run:
 ```
 
 Benchtop runs while that Terminal window is open; close it (or press Ctrl+C) to stop. On a fresh install it
-asks you to create your own account (you become the administrator) and can add a demo notebook. If macOS
-says Benchtop.command can't be opened because it was downloaded, right-click it and choose *Open* once.
-Needs Python 3.11+ (python.org); Node is only needed if the bundled interface has to be rebuilt.
+asks you to create your own account (you become the administrator) and can add a demo notebook.
+Needs Python 3.11+ (python.org). Node is only needed when the interface has to be built: release zips include it
+ready-built; a download of the GitHub repository doesn't, so install Node (nodejs.org, LTS) for that.
+
+If macOS says *"Benchtop.command" Not Opened* because Apple couldn't verify it, click **Done** (not Move to Trash),
+then **System Settings → Privacy & Security → Open Anyway**. Or skip double-clicking: in Terminal, `cd` into the folder
+and run `./benchtop`. Unzipping with `unzip` in Terminal (instead of double-clicking the zip) avoids the warning entirely.
+
+**Use it like an app.** In Safari choose *File → Add to Dock*, or in Chrome/Edge click the install icon in the
+address bar (or *Install Benchtop* in Account settings): Benchtop gets its own window and Dock icon. It's a window
+onto the same notebook (nothing is stored in it), so upgrades show the next time it opens; Benchtop itself still needs
+to be running.
 
 ```bash
 ./benchtop status               # running? which version? where is the data?
