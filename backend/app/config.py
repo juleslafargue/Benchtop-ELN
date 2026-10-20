@@ -28,6 +28,9 @@ class Settings:
         self.static_dir = os.environ.get("BENCHTOP_STATIC_DIR")  # built frontend
         self.max_upload_mb = int(os.environ.get("BENCHTOP_MAX_UPLOAD_MB", "50"))
         # instrument folders (0.16): how often to look, and the largest arrival taken in
+        # set (by docker-compose.server.yml) on servers whose deploy/.env still names a Postgres password: they kept
+        # their records in Postgres before 0.18.2, so an empty SQLite database there means "wrong setup", not "new lab"
+        self.legacy_postgres = bool(os.environ.get("BENCHTOP_LEGACY_POSTGRES", "").strip())
         self.instrument_scan_seconds = int(os.environ.get("BENCHTOP_INSTRUMENT_SCAN_SECONDS", "60"))
         self.instrument_max_mb = int(os.environ.get("BENCHTOP_INSTRUMENT_MAX_MB", "2048"))
         # Backups: point BENCHTOP_BACKUP_DIR at an iCloud/Dropbox folder to keep copies off-machine

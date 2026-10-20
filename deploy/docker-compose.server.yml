@@ -1,14 +1,17 @@
-# Benchtop on a lab server, with HTTPS (automatic certificates from Let's Encrypt via Caddy)
-# and Postgres. See docs/SERVER.md for the step-by-step guide.
+# Benchtop on a lab server, with HTTPS (automatic certificates from Let's Encrypt via Caddy).
+# See docs/SERVER.md for the step-by-step guide.
 #
 #   cp deploy/server.env.example deploy/.env      # then edit deploy/.env
 #   docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env up -d --build
 #
+# Benchtop uses its standard database (SQLite) here, exactly as on a Mac, so the built-in backups work:
+# a daily backup into BENCHTOP_BACKUP_HOST_DIR (attached files kept once), a second copy (choose it in
+# Admin → Backups), and a weekly restore test. (docker-compose.server-postgres.yml is the advanced
+# alternative, without built-in backups.)
 services:
   app:
     build: ..
     environment:
-      BENCHTOP_DATABASE_URL: postgresql+psycopg://benchtop:${POSTGRES_PASSWORD}@db:5432/benchtop
       BENCHTOP_PUBLIC_URL: https://${BENCHTOP_DOMAIN}
       BENCHTOP_ADMIN_USER: admin
       BENCHTOP_ADMIN_PASSWORD: ${BENCHTOP_ADMIN_PASSWORD}
@@ -22,27 +25,15 @@ services:
       BENCHTOP_OIDC_ALLOWED_DOMAINS: ${BENCHTOP_OIDC_ALLOWED_DOMAINS:-}
       BENCHTOP_OIDC_AUTO_CREATE: ${BENCHTOP_OIDC_AUTO_CREATE:-on}
       BENCHTOP_PASSWORD_LOGIN: ${BENCHTOP_PASSWORD_LOGIN:-on}
+      # A server set up before 0.18.2 kept its records in Postgres. If deploy/.env still has POSTGRES_PASSWORD,
+      # Benchtop refuses to start on an empty database here rather than look as if the records were gone.
+      BENCHTOP_LEGACY_POSTGRES: ${POSTGRES_PASSWORD:-}
     volumes:
-      - benchtop-data:/data
-      - ${BENCHTOP_BACKUP_HOST_DIR:-./backups}:/backups
+      - benchtop-data:/data                                         # the database and attached files
+      - ${BENCHTOP_BACKUP_HOST_DIR:-./backups}:/backups             # daily backups, on the host
+      - ${BENCHTOP_BACKUP_COPY_HOST_DIR:-./backup-copy}:/backup-copy  # the second copy: choose /backup-copy in Admin → Backups
       # instrument folders (Admin → Instruments), mounted read-only; see docs/SERVER.md
       # - /mnt/instruments:/instruments:ro
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: benchtop
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: benchtop
-    volumes: ["benchtop-pg:/var/lib/postgresql/data"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U benchtop"]
-      interval: 5s
-      retries: 20
     restart: unless-stopped
 
   caddy:
@@ -59,6 +50,5 @@ services:
 
 volumes:
   benchtop-data:
-  benchtop-pg:
   caddy-data:
   caddy-config:

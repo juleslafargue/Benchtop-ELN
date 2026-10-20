@@ -2,9 +2,9 @@
 #   docker compose up -d --build
 #   docker compose exec app python -m app.seed      # optional demo data
 #
-# For a shared lab server, use Postgres instead:
-#   docker compose --profile postgres up -d --build
-# and uncomment BENCHTOP_DATABASE_URL below.
+# For a lab server people share, use deploy/docker-compose.server.yml (HTTPS, backups): see docs/SERVER.md.
+# Postgres (below) is for very large installations only: Benchtop's built-in backups don't cover it.
+#   docker compose --profile postgres up -d --build    and uncomment BENCHTOP_DATABASE_URL
 services:
   app:
     build: .

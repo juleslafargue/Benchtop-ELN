@@ -155,7 +155,7 @@ spectra to analyse. The sign-in page lists everyone; click a name to see Benchto
 `./benchtop demo --reset` rebuilds it.
 
 **Using it as a group?** See [docs/SERVER.md](docs/SERVER.md): a lab Mac on the local network
-(`./benchtop lab`), the same over Tailscale from anywhere, or a server with HTTPS, Postgres and single
+(`./benchtop lab`), the same over Tailscale from anywhere, or a server with HTTPS, backups and single
 sign-on (`deploy/`).
 
 ## Quick start (Docker)
@@ -170,9 +170,9 @@ Sign in as `admin` with the password in `BENCHTOP_ADMIN_PASSWORD` (default in co
 The demo seed adds **alice** (author) and **bob** (witness), both `benchtop123`, a reagent
 registry with lots, a template and a worked Suzuki coupling.
 
-For a shared server, run Postgres instead of SQLite: `docker compose --profile postgres up -d`
-and set `BENCHTOP_DATABASE_URL` as shown in `docker-compose.yml`. Put it behind HTTPS (Caddy,
-nginx, Tailscale) before anyone uses it over a network.
+For a server that a group uses, follow [docs/SERVER.md](docs/SERVER.md): it adds HTTPS, single sign-on and
+a second copy of the backups. Benchtop uses its standard database (SQLite) there too, so the built-in backups,
+restore test and `./benchtop check` all work; SQLite is plenty for a research group.
 
 ## Instrument data: using it well
 
@@ -267,7 +267,7 @@ covers. A Benchtop that finds data from a newer version refuses to start rather 
 | Variable | Default | |
 |---|---|---|
 | `BENCHTOP_DATA_DIR` | `./data` | SQLite file, attachments, generated secret key |
-| `BENCHTOP_DATABASE_URL` | SQLite in data dir | Any SQLAlchemy URL, e.g. `postgresql+psycopg://…` |
+| `BENCHTOP_DATABASE_URL` | SQLite in data dir | Any SQLAlchemy URL, e.g. `postgresql+psycopg://…`. Built-in backups, restore and `check` need SQLite; with anything else, back up yourself (docs/SERVER.md) |
 | `BENCHTOP_SECRET_KEY` | generated, stored in data dir | Signs session tokens |
 | `BENCHTOP_ADMIN_USER` / `_PASSWORD` | `admin` / `admin` | First account, created only when the user table is empty |
 | `BENCHTOP_TOKEN_TTL_HOURS` | `12` | Session length |

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine
@@ -23,9 +24,27 @@ if settings.database_url.startswith("sqlite"):
         cur.close()
 
 
+class MovedFromPostgres(RuntimeError):
+    """This server kept its records in Postgres; starting on an empty SQLite database would hide them."""
+
+
+def check_not_moved_from_postgres() -> None:
+    if not settings.legacy_postgres or not settings.database_url.startswith("sqlite:///"):
+        return
+    if Path(settings.database_url.removeprefix("sqlite:///")).exists():
+        return  # already running on SQLite (moved over on purpose): nothing to protect
+    raise MovedFromPostgres(
+        "This server kept its records in Postgres, but it has just been started with Benchtop's standard database, "
+        "which is empty here. Nothing was changed, and your records are still in Postgres.\n"
+        "  To keep using Postgres: start it with deploy/docker-compose.server-postgres.yml instead, and set up its "
+        "backups (docs/SERVER.md, \"Postgres (advanced)\").\n"
+        "  To start afresh on the standard database instead: remove the POSTGRES_PASSWORD line from deploy/.env.")
+
+
 def init_db() -> None:
     from . import migrations, models  # noqa: F401  (register tables)
 
+    check_not_moved_from_postgres()  # before anything creates an empty database file
     migrations.check_not_too_new(engine)  # before touching anything: an older Benchtop mustn't alter newer data
     SQLModel.metadata.create_all(engine)
     add_missing_columns()

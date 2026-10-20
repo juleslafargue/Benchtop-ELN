@@ -439,7 +439,11 @@ def health() -> dict[str, Any]:
     newest = b[0] if b else None
     age_h = newest_age_hours()
     warnings = []
-    if settings.backup_interval_hours > 0:
+    if not settings.database_url.startswith("sqlite:///"):
+        warnings.append("Automatic backups can't run: they need Benchtop's standard database (SQLite), and this server uses "
+                        "another one (Postgres). Back up the database with pg_dump and copy the attached files yourself; "
+                        "see “Postgres (advanced)” in docs/SERVER.md.")
+    elif settings.backup_interval_hours > 0:
         if newest is None:
             warnings.append("No backups yet.")
         elif age_h is not None and age_h > max(72, settings.backup_interval_hours * 3):

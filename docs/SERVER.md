@@ -67,11 +67,51 @@ docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env up -d 
 ```
 
 Open `https://<your domain>`. The first visit asks you to create your own administrator account.
-Data lives in Postgres and Docker volumes; backups are written nightly to `deploy/backups` (copy
-that folder somewhere else as well).
+
+**Backups work exactly as on a Mac.** The records and attached files live in a Docker volume
+(`benchtop-data`). Every day Benchtop writes a backup into `deploy/backups` on the server, keeping each
+attached file once. Once a week it unpacks the newest backup and checks it as if it had been restored.
+Two more things to do once:
+
+- **A second copy.** Set `BENCHTOP_BACKUP_COPY_HOST_DIR` in `deploy/.env` to a folder on another disk, or
+  on a network drive (NAS) mounted on the server, so one failure can't take both. Then choose
+  `/backup-copy` in **Admin → Backups**. Until you do, the admin dashboard reminds you.
+- **Off the building**, if your data matters beyond a disk failure (fire, theft): copy `deploy/backups`
+  somewhere else from time to time, e.g. with `rsync` to university storage. Copy the whole folder:
+  each zip needs the `benchtop-files` folder beside it.
+
+To restore on a server: `docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env stop app`,
+then `docker compose … run --rm app python -m app.backup restore /backups/<file>.zip`, then start it again.
 
 To upgrade: `git pull` (or unzip the new version over the folder, keeping `deploy/.env`), then run the
 same `docker compose … up -d --build` command.
+
+### Postgres (advanced)
+
+Benchtop can keep its records in Postgres instead (`deploy/docker-compose.server-postgres.yml`). It's for a
+very large installation: hundreds of people writing at once, or several servers sharing one database.
+A research group doesn't need it. **Benchtop's built-in backups, weekly restore test, restore and
+`check` don't work with Postgres** (the admin dashboard says so). You then take care of two things yourself,
+on a schedule:
+
+```bash
+# the database (every night, e.g. from cron), and keep several days of these somewhere else
+docker compose -f deploy/docker-compose.server-postgres.yml --env-file deploy/.env exec -T db \
+  pg_dump -U benchtop -Fc benchtop > benchtop-$(date +%F).pgdump
+# the attached files, at the same time (they're in the benchtop-data volume, under attachments/)
+docker run --rm -v deploy_benchtop-data:/data -v "$PWD":/out alpine tar czf /out/benchtop-files-$(date +%F).tgz -C /data attachments
+```
+
+Test a restore (`pg_restore` into a scratch database, plus the attachments) now and then: an untested
+backup isn't one.
+
+### A server set up before 0.18.2
+
+Before 0.18.2 the server setup used Postgres. If `deploy/.env` still has a `POSTGRES_PASSWORD` line,
+Benchtop now refuses to start on an empty database rather than look as if your records were gone
+(`docker compose … logs app` shows the message). Your records are still in Postgres. Either keep using it,
+with `deploy/docker-compose.server-postgres.yml` and the backups above, or ask for help moving them to the
+standard database, then remove the `POSTGRES_PASSWORD` line.
 
 ### Single sign-on
 
