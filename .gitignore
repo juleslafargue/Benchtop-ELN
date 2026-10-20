@@ -12,3 +12,4 @@ backend/.venv/
 .DS_Store
 /deploy/.env
 /deploy/backups/
+frontend/*.tsbuildinfo
