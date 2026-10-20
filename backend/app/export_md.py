@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
@@ -251,7 +252,9 @@ def experiment_markdown(session: Session, exp: Experiment, asset_dir: str = "_as
                     line = f"- **{it.get('technique', '')}**" + (f" ({it['conditions']})" if it.get("conditions") else "")
                     line += f" {it.get('data', '')}".rstrip()
                     a = atts.get(it.get("attachment_id"))
-                    if a:
+                    if a and a.size > VAULT_MAX_BYTES:
+                        line += f" — [{a.filename}]({base_url.rstrip('/')}/experiments/{exp.id}) (kept in Benchtop)"
+                    elif a:
                         line += f" — [[{_asset_name(a)}]]"
                         if assets is not None:
                             assets[_asset_name(a)] = _blob(a)
@@ -271,10 +274,7 @@ def experiment_markdown(session: Session, exp: Experiment, asset_dir: str = "_as
                     a = atts.get(i)
                     if not a:
                         continue
-                    embed = "!" if a.content_type.startswith("image/") else ""
-                    out.append(f"- {embed}[[{_asset_name(a)}]]")
-                    if assets is not None:
-                        assets[_asset_name(a)] = _blob(a)
+                    out.append(_file_line(a, exp, base_url, assets))
                 if c.get("caption"):
                     out += ["", str(c["caption"])]
                 out.append("")
@@ -296,8 +296,21 @@ def _asset_name(a: Attachment) -> str:
     return f"{a.sha256[:8]}-{safe_name(a.filename, 100)}"
 
 
-def _blob(a: Attachment) -> bytes:
-    return (settings.attachments_dir / a.sha256[:2] / a.sha256).read_bytes()
+VAULT_MAX_BYTES = 25_000_000  # bigger files (raw instrument data) stay in Benchtop; the note links to them
+
+
+def _blob(a: Attachment) -> Path:
+    """Where the file is; it's copied into the vault without being read into memory."""
+    return settings.attachments_dir / a.sha256[:2] / a.sha256
+
+
+def _file_line(a: Attachment, exp: Experiment, base_url: str, assets: dict | None) -> str:
+    if a.size > VAULT_MAX_BYTES:
+        return f"- [{a.filename}]({base_url.rstrip('/')}/experiments/{exp.id}) ({a.size / 1e6:,.0f} MB, kept in Benchtop)"
+    if assets is not None:
+        assets[_asset_name(a)] = _blob(a)
+    embed = "!" if a.content_type.startswith("image/") else ""
+    return f"- {embed}[[{_asset_name(a)}]]"
 
 
 # ------------------------------------------------------------------ vault sync
@@ -329,7 +342,7 @@ def sync_vault(session: Session, target: Path, base_url: str = "http://localhost
         nb = session.get(Notebook, exp.notebook_id) if exp.notebook_id else None
         folder = target / safe_name(nb.name if nb else "No notebook")
         folder.mkdir(parents=True, exist_ok=True)
-        assets: dict[str, bytes] = {}
+        assets: dict[str, bytes | Path] = {}
         md = experiment_markdown(session, exp, assets=assets, base_url=base_url)
         path = folder / f"{exp.eid} {safe_name(exp.title)}.md"
         # drop older copies of this experiment (renamed, or moved between notebooks)
@@ -342,8 +355,12 @@ def sync_vault(session: Session, target: Path, base_url: str = "http://localhost
             written += 1
         for name, data in assets.items():
             p = assets_dir / name
-            if not p.exists() or p.stat().st_size != len(data):
-                p.write_bytes(data)
+            size = data.stat().st_size if isinstance(data, Path) else len(data)
+            if not p.exists() or p.stat().st_size != size:
+                if isinstance(data, Path):
+                    shutil.copyfile(data, p)
+                else:
+                    p.write_bytes(data)
     (target / "Benchtop index.md").write_text(INDEX.replace("{folder}", target.name), encoding="utf-8")
     return {"experiments": len(exps), "written": written, "removed": removed}
 

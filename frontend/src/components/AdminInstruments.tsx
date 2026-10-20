@@ -7,6 +7,8 @@ interface ListOut { instruments: Instrument[]; kinds: Record<string, string>; sc
 
 const KIND_HELP: Record<string, string> = {
   bruker_nmr: 'Each experiment-number folder (the one holding acqus) arrives as one zip; spectra open in the viewer. The title typed in TopSpin or IconNMR is searched for the experiment number too.',
+  agilent_nmr: 'Each .fid folder (VnmrJ, OpenVnmrJ) arrives as one zip. The sample name and comment typed on the spectrometer are searched for the experiment number too.',
+  chromatography: 'Vendor data is stored as it is: an Agilent or Bruker .D folder, or a Waters .raw folder, as one zip; Thermo .raw, Sciex .wiff (with its .wiff.scan), Shimadzu and mzML files as they are. PDF and CSV reports inside a .D are also attached on their own, and exports saved beside the data arrive as their own files. Long runs keep writing, so a quiet time of 5 minutes is safer.',
   files: 'Every file arrives on its own: PDF reports, CSV or JCAMP exports, IR, UV, balance printouts.',
 }
 
@@ -34,6 +36,7 @@ function InstrumentForm({ kinds, editing, onClose, onSaved }: {
   const { groups, toast } = useApp()
   const [name, setName] = useState(editing?.name || '')
   const [kind, setKind] = useState(editing?.kind || 'bruker_nmr')
+  const [quietTouched, setQuietTouched] = useState(!!editing)
   const [folder, setFolder] = useState(editing?.folder || '')
   const [restrict, setRestrict] = useState((editing?.audience.length || 0) > 0)
   const [aud, setAud] = useState<number[]>(editing?.audience.map(g => g.id) || [])
@@ -68,7 +71,7 @@ function InstrumentForm({ kinds, editing, onClose, onSaved }: {
       <div className="stack" style={{ gap: 14 }}>
         <div className="form-grid">
           <label className="field">Name<input className="input" value={name} maxLength={80} onChange={e => setName(e.target.value)} placeholder="NMR – Bruker 400" /></label>
-          <label className="field">Type<select className="select" value={kind} onChange={e => { setKind(e.target.value); setPreview(null) }}>
+          <label className="field">Type<select className="select" value={kind} onChange={e => { setKind(e.target.value); setPreview(null); if (!quietTouched) setQuiet(e.target.value === 'chromatography' ? 5 : 2) }}>
             {Object.entries(kinds).map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select></label>
         </div>
         <p className="faint" style={{ margin: '-6px 0 0', fontSize: 13 }}>{KIND_HELP[kind]}</p>
@@ -93,7 +96,7 @@ function InstrumentForm({ kinds, editing, onClose, onSaved }: {
         </fieldset>
         <div className="stack" style={{ gap: 4 }}>
           <label className="inline-field">Wait until a file has been quiet for
-            <input className="input inline-num" type="number" min={0.25} max={1440} step={0.5} value={quiet} onChange={e => setQuiet(Number(e.target.value))} /> minutes</label>
+            <input className="input inline-num" type="number" min={0.25} max={1440} step={0.5} value={quiet} onChange={e => { setQuiet(Number(e.target.value)); setQuietTouched(true) }} /> minutes</label>
           <p className="faint" style={{ margin: 0, fontSize: 13 }}>Benchtop takes an arrival once nothing in it has changed for this long, so files still being
             copied (USB, OneDrive, a network drive) aren't taken half-finished. 2 minutes suits most; make it longer for slow syncs.</p>
         </div>

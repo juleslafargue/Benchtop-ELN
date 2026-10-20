@@ -789,7 +789,11 @@ def download_attachment(att_id: int, user: CurrentUser, session: DB, inline: boo
     path = _blob_path(a.sha256)
     if not path.exists():
         raise HTTPException(410, "Attachment blob missing from storage")
-    if hashlib.sha256(path.read_bytes()).hexdigest() != a.sha256:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:  # in pieces: instrument data can be gigabytes
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    if h.hexdigest() != a.sha256:
         raise HTTPException(500, "Attachment failed integrity check")
     resp = FileResponse(path, media_type=a.content_type, filename=a.filename,
                         content_disposition_type="inline" if inline else "attachment")

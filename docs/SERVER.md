@@ -108,3 +108,64 @@ Benchtop reminds them.
 
 Single sign-on also works without a server, e.g. on a lab Mac: put the same `BENCHTOP_OIDC_*` lines,
 plus `BENCHTOP_PUBLIC_URL=https://<address people use>`, in `backend/data/settings.env`.
+
+---
+
+## Instrument folders
+
+Benchtop can watch the folders your instruments save to and file their data into the right experiment
+(**Admin → Instruments**; the README explains how people name samples so this works). It only needs to
+**read** those folders, the same way in every setup: give it a path it can open.
+
+**On a lab Mac (options 1 and 2).**
+
+- *A network share* (the NMR or HPLC PC shares its data folder): in Finder choose **Go → Connect to
+  Server**, enter e.g. `smb://nmr-pc.chem.example.edu/data`, and sign in with **Remember this password**
+  ticked. The share appears under `/Volumes/` (e.g. `/Volumes/data/ruizlab`). So that it comes back after
+  a restart, add it to **System Settings → General → Login Items**.
+- *OneDrive or Dropbox*: the folder lives under `~/Library/CloudStorage/`. In Finder, right-click the
+  instrument folder and choose **Always Keep on This Device**, so files are really on the Mac when Benchtop
+  reads them.
+- *macOS privacy*: the first time, macOS may ask whether Terminal may access a network volume or a folder:
+  allow it. If Benchtop reports that it isn't allowed to read a folder, open **System Settings → Privacy &
+  Security → Files and Folders** (or **Full Disk Access**), allow Terminal, and restart Benchtop.
+
+To copy a folder's path, select it in Finder and press <kbd>⌥⌘C</kbd> (Copy as Pathname), then paste it
+into the Admin form. **Check folder** shows what Benchtop would do with the newest files before you save.
+
+**On a server (option 3).** Mount each share on the Linux host, **read-only**, so Benchtop cannot change
+instrument data even by mistake. For a Windows (SMB) share, with the password in a file only root can read:
+
+```bash
+sudo apt install cifs-utils
+sudo mkdir -p /mnt/instruments/nmr
+printf 'username=benchtop\npassword=…\n' | sudo tee /root/.nmr-share && sudo chmod 600 /root/.nmr-share
+echo '//nmr-pc.chem.example.edu/data /mnt/instruments/nmr cifs ro,credentials=/root/.nmr-share,iocharset=utf8,uid=0,gid=0 0 0' \
+  | sudo tee -a /etc/fstab
+sudo mount -a
+```
+
+Then give the container the folder (read-only again) in `deploy/docker-compose.server.yml`, under the
+`app` service's `volumes:`
+
+```yaml
+      - /mnt/instruments:/instruments:ro
+```
+
+run `docker compose … up -d` again, and in **Admin → Instruments** use paths inside the container, such as
+`/instruments/nmr/ruizlab`.
+
+**Settings** (environment variables, or `backend/data/settings.env` on a Mac):
+
+| Setting | Default | |
+|---|---|---|
+| `BENCHTOP_INSTRUMENT_SCAN_SECONDS` | `60` | how often the folders are looked through; `0` turns watching off |
+| `BENCHTOP_INSTRUMENT_MAX_MB` | `2048` | the largest arrival copied in; bigger ones wait in the Inbox with a note |
+
+**Disk space.** Instrument data is copied into Benchtop's data folder, so the disk holding it needs room for
+it (raw LC-MS data can be hundreds of MB per run). Backups keep each file only once, so they grow by about
+the same amount, not by that times the number of backups kept.
+
+Point each instrument at the smallest folder that holds your group's data (your group's subfolder on the
+departmental NMR, say): Benchtop looks through it every minute, and other groups' file names stay out of
+your Inbox.

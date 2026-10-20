@@ -25,6 +25,8 @@ services:
     volumes:
       - benchtop-data:/data
       - ${BENCHTOP_BACKUP_HOST_DIR:-./backups}:/backups
+      # instrument folders (Admin → Instruments), mounted read-only; see docs/SERVER.md
+      # - /mnt/instruments:/instruments:ro
     depends_on:
       db:
         condition: service_healthy

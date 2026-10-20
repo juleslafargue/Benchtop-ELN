@@ -48,8 +48,16 @@ log = logging.getLogger("benchtop.instruments")
 
 KINDS = {
     "bruker_nmr": "Bruker NMR",
+    "agilent_nmr": "Agilent / Varian NMR",
+    "chromatography": "LC-MS, HPLC or GC",
     "files": "Any files",
 }
+# vendor data that is a folder: Agilent ChemStation, OpenLab CDS and MassHunter, Bruker MS (.d); Waters MassLynx (.raw)
+VENDOR_DIRS = (".d", ".raw")
+# vendor data that is a file (Thermo Xcalibur/Chromeleon .raw, Sciex .wiff, Shimadzu .lcd/.qgd/.gcd, netCDF .cdf,
+# .mzML) arrives as it is, like any other file in the folder, and so do PDF and CSV exports saved beside it
+COMPANIONS = {".wiff": (".scan",), ".wiff2": (".scan",)}  # Sciex keeps the spectra in a .wiff.scan beside the .wiff
+REPORTS = (".pdf", ".csv")  # inside a vendor folder: also attached on their own, so they open without the vendor software
 SYSTEM_USERNAME = "@instruments"  # can't be a real username (no '@' allowed), so it never clashes
 SECTION_TITLE = "Instrument data"
 EID = re.compile(r"(?<![A-Za-z0-9])EXP-(\d{5,})(?!\d)", re.IGNORECASE)
@@ -75,22 +83,53 @@ def discover(root: Path, kind: str) -> Iterator[tuple[str, Path]]:
         if len(here.parts) - root_depth >= MAX_DEPTH:
             dirnames[:] = []
         if kind == "bruker_nmr":
-            if "acqus" in filenames and here != root and not (here / "acqus").is_symlink():  # one experiment number: the whole folder is one arrival
-                dirnames[:] = []
+            if "acqus" in filenames and here != root and not (here / "acqus").is_symlink():
+                dirnames[:] = []  # one experiment number: the whole folder is one arrival
                 yield here.relative_to(root).as_posix(), here
             continue
+        if kind == "agilent_nmr":
+            for d in [d for d in dirnames if d.lower().endswith(".fid")]:
+                dirnames.remove(d)
+                if not (here / d).is_symlink():
+                    yield (here / d).relative_to(root).as_posix(), here / d
+            continue
+        if kind == "chromatography":
+            for d in [d for d in dirnames if d.lower().endswith(VENDOR_DIRS)]:
+                dirnames.remove(d)  # a vendor data folder is one arrival, whatever is inside
+                if not (here / d).is_symlink():
+                    yield (here / d).relative_to(root).as_posix(), here / d
         for f in sorted(filenames):
-            if not _skip(f):
-                p = here / f
-                if p.is_file() and not p.is_symlink():
-                    yield p.relative_to(root).as_posix(), p
+            if _skip(f) or _is_companion(here, f):
+                continue
+            fp = here / f
+            if fp.is_file() and not fp.is_symlink():
+                yield fp.relative_to(root).as_posix(), fp
+
+
+def _is_companion(here: Path, name: str) -> bool:
+    """A file that belongs to another arrival (a Sciex .wiff.scan travels with its .wiff)."""
+    low = name.lower()
+    for main, sufs in COMPANIONS.items():
+        for suf in sufs:
+            if low.endswith(main + suf) and (here / name[: -len(suf)]).is_file():
+                return True
+    return False
+
+
+def _companions(p: Path) -> list[Path]:
+    out = []
+    for suf in COMPANIONS.get(p.suffix.lower(), ()):
+        c = p.with_name(p.name + suf)
+        if c.is_file() and not c.is_symlink():
+            out.append(c)
+    return out
 
 
 def _files_in(p: Path) -> list[Path]:
     """The files of an arrival. Links are never followed: someone who can write to an instrument share
     mustn't be able to make Benchtop copy a file from elsewhere on the computer (its secret key, say)."""
     if p.is_file():
-        return [] if p.is_symlink() else [p]
+        return [] if p.is_symlink() else [p, *_companions(p)]
     out = []
     for dirpath, dirnames, filenames in os.walk(p, followlinks=False):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
@@ -109,19 +148,33 @@ def fingerprint(p: Path) -> tuple[str, int, float]:
         st = f.stat()
         total += st.st_size
         newest = max(newest, st.st_mtime)
-        h.update(f"{f.relative_to(p) if f != p else f.name}\0{st.st_size}\0{st.st_mtime_ns}\n".encode())
+        h.update(f"{f.relative_to(p) if p.is_dir() else f.name}\0{st.st_size}\0{st.st_mtime_ns}\n".encode())
     return h.hexdigest(), total, newest
 
 
 def describe_text(p: Path, kind: str) -> str:
-    """Extra text that may name the experiment: for Bruker, the title typed in TopSpin or IconNMR."""
+    """Extra text that may name the experiment: what was typed on the instrument as the title or sample name."""
+    def read(t: Path) -> str:
+        try:
+            return t.read_bytes()[:16384].decode("latin-1")
+        except OSError:
+            return ""
     if kind == "bruker_nmr" and p.is_dir():
-        for t in (p / "pdata" / "1" / "title", p / "title"):
-            try:
-                return t.read_bytes()[:4096].decode("latin-1")
-            except OSError:
-                continue
+        return read(p / "pdata" / "1" / "title") or read(p / "title")
+    if kind == "agilent_nmr" and p.is_dir():
+        return " ".join([read(p / "text"), *_procpar(read(p / "procpar"), ("samplename", "comment", "notebook", "page"))])
     return ""
+
+
+def _procpar(text: str, names: tuple[str, ...]) -> list[str]:
+    """String values of some VnmrJ parameters: a header line starting with the name, then `1 "value"`."""
+    out, lines = [], text.splitlines()
+    for i, line in enumerate(lines[:-1]):
+        if line.split(" ", 1)[0] in names:
+            m = re.match(r'\s*\d+\s+"(.*)"', lines[i + 1])
+            if m:
+                out.append(m.group(1))
+    return out
 
 
 # ====================================================================== storing what arrived
@@ -156,27 +209,53 @@ def _tmp_name() -> Path:
     return _incoming() / f"{os.getpid()}-{threading.get_ident()}-{time.monotonic_ns()}.part"
 
 
-def pack(rel: str, p: Path, kind: str) -> list[dict[str, Any]]:
-    """Copy an arrival into Benchtop's store: a file as it is, a dataset folder as one zip. A Bruker experiment
-    number goes in as <sample>/<expno>/…, which the spectrum viewer opens directly."""
+def _copy(src: Path, name: str) -> dict[str, Any]:
     tmp = _tmp_name()
     try:
-        if p.is_file():
-            with open(p, "rb") as fi, open(tmp, "wb") as fo:
-                shutil.copyfileobj(fi, fo, 1 << 20)
-            name = p.name
-        else:
-            parent = Path(rel).parent.name
-            name = f"{parent}_{p.name}.zip" if parent else f"{p.name}.zip"
-            top = Path(parent) / p.name if parent else Path(p.name)
-            with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-                for f in _files_in(p):
-                    z.write(f, (top / f.relative_to(p)).as_posix())
+        with open(src, "rb") as fi, open(tmp, "wb") as fo:
+            shutil.copyfileobj(fi, fo, 1 << 20)
         sha, size = _store(tmp)
     finally:
         tmp.unlink(missing_ok=True)
-    ctype = "application/zip" if name.endswith(".zip") else (mimetypes.guess_type(name)[0] or "application/octet-stream")
-    return [{"name": name, "sha256": sha, "size": size, "content_type": ctype}]
+    return {"name": name, "sha256": sha, "size": size, "content_type": mimetypes.guess_type(name)[0] or "application/octet-stream"}
+
+
+def _zip(files: list[tuple[Path, str]], name: str, compress: bool) -> dict[str, Any]:
+    tmp = _tmp_name()
+    try:
+        # raw vendor data is stored as it is: it barely compresses, and gigabytes would take minutes
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED if compress else zipfile.ZIP_STORED, allowZip64=True) as z:
+            for f, arc in files:
+                z.write(f, arc)
+        sha, size = _store(tmp)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return {"name": name, "sha256": sha, "size": size, "content_type": "application/zip"}
+
+
+def pack(rel: str, p: Path, kind: str) -> list[dict[str, Any]]:
+    """Copy an arrival into Benchtop's store, streaming (never whole files in memory).
+      * a file: as it is; with its companions (Sciex .wiff + .wiff.scan), as one zip;
+      * a dataset folder: one zip. A Bruker experiment number goes in as <sample>/<expno>/…, which the spectrum
+        viewer opens directly. PDF and CSV reports inside an LC/GC vendor folder are also attached on their own."""
+    if p.is_file():
+        extra = _companions(p)
+        if not extra:
+            return [_copy(p, p.name)]
+        return [_zip([(f, f.name) for f in [p, *extra]], f"{p.name}.zip", compress=False)]
+    if kind == "bruker_nmr":
+        parent = Path(rel).parent.name
+        top = Path(parent) / p.name if parent else Path(p.name)
+        name = f"{parent}_{p.name}.zip" if parent else f"{p.name}.zip"
+    else:
+        top, name = Path(p.name), f"{p.name}.zip"
+    files = _files_in(p)
+    out = [_zip([(f, (top / f.relative_to(p)).as_posix()) for f in files], name, compress=kind != "chromatography")]
+    if kind == "chromatography":
+        reports = [f for f in files if f.suffix.lower() in REPORTS and len(f.relative_to(p).parts) <= 3
+                   and f.stat().st_size <= 100_000_000][:20]
+        out += [_copy(f, f"{p.name} {f.name}") for f in reports]
+    return out
 
 
 # ====================================================================== deciding where it goes

@@ -23,6 +23,15 @@ from sqlalchemy import create_engine
 from sqlmodel import Session, select
 
 
+def _sha256(p: Path) -> str:
+    """In 1 MB pieces: instrument data can be gigabytes."""
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def _item(name: str, ok: bool, detail: str) -> dict[str, Any]:
     return {"name": name, "ok": ok, "detail": detail}
 
@@ -113,7 +122,7 @@ def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
                 p = attachments_dir / a.sha256[:2] / a.sha256
                 if not p.is_file():
                     missing.append(a.filename)
-                elif hashlib.sha256(p.read_bytes()).hexdigest() != a.sha256:
+                elif _sha256(p) != a.sha256:
                     damaged.append(a.filename)
             counts["attachments"] = n
             detail = f"all {n:,} present and unchanged"
