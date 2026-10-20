@@ -1,18 +1,22 @@
 """Outgoing email: witness requests, reminders and outcomes.
 
-Configured in Admin → Email (or BENCHTOP_SMTP_* variables). Messages are queued and sent by a background
-thread, so a slow mail server never holds up a request; failures are retried and shown in the admin's log.
+Configured in Admin → Email (or BENCHTOP_SMTP_* variables). Messages are queued in the database and sent by a
+background thread, so a slow mail server never holds up a request. If the server can't be reached (or says "try
+later") the message waits and is retried with growing gaps for about a day, including after Benchtop restarts;
+a message the server rejects outright (bad address) fails at once. Everything shows in the admin's log.
 Without an email server everything still works in the app (notifications), just without the emails.
 """
 from __future__ import annotations
 
 import html
+import json
 import logging
 import queue
 import smtplib
 import ssl
 import threading
 import time
+from datetime import timedelta
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 from typing import Any, Callable
@@ -30,7 +34,11 @@ _q: "queue.Queue[int]" = queue.Queue()
 _worker: threading.Thread | None = None
 _lock = threading.Lock()
 KEEP = 200
-RETRIES = 3
+# gaps between attempts while the mail server can't be reached: about a day in all, then the message fails
+BACKOFF = [timedelta(minutes=m) for m in (1, 5, 15, 60, 180, 360, 720)]
+SWEEP_SECONDS = 30
+_down_until = 0.0  # after a connection problem, new messages wait for the next sweep instead of each trying
+_unreachable = False  # the last failure was not reaching the server at all (offline, server down)
 
 
 def configured() -> bool:
@@ -92,6 +100,7 @@ def render(kind: str, **c: Any) -> tuple[str, str, str]:
     else:
         raise ValueError(kind)
     lines = [ln for ln in lines if ln]
+    subject = " ".join(subject.split())[:250]  # a line break in a record's title can't go in an email header
     plain = "\n\n".join(html.unescape(ln.replace("<b>", "").replace("</b>", "")) for ln in lines)
     if link:
         plain += f"\n\nOpen it: {link}"
@@ -106,10 +115,10 @@ def queue_email(session: Session, to: str, kind: str, **ctx: Any) -> None:
     if not configured() or not to:
         return
     subject, _, _ = render(kind, **ctx)
-    row = EmailLog(to=to, subject=subject, kind=kind)
+    row = EmailLog(to=to, subject=subject, kind=kind, context=json.dumps(ctx, default=str), attempts=0)
     session.add(row)
     session.flush()
-    session.info.setdefault("benchtop_mail", []).append((row.id, kind, ctx))
+    session.info.setdefault("benchtop_mail", []).append(row.id)
 
 
 def _build(to: str, kind: str, ctx: dict) -> EmailMessage:
@@ -162,48 +171,145 @@ def _explain(exc: Exception) -> str:
                 "in Applications → Python also fixes this")
     if isinstance(exc, smtplib.SMTPAuthenticationError):
         return "The email server refused the username or password (for Gmail or Outlook, use an app password)"
-    if isinstance(exc, (smtplib.SMTPConnectError, ConnectionRefusedError, TimeoutError, OSError)) and not isinstance(exc, smtplib.SMTPException):
-        return f"Couldn't reach the email server: {exc}"
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        (addr, (code, msg)), = list(exc.recipients.items())[:1] or [("", (0, b""))]
+        return f"The email server refused the address {addr}: {code} {_text(msg)}".strip()
+    if isinstance(exc, smtplib.SMTPResponseException):
+        later = " (it asked to try again later)" if 400 <= exc.smtp_code < 500 else ""
+        return f"The email server answered {exc.smtp_code} {_text(exc.smtp_error)}{later}".strip()
+    if isinstance(exc, (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected)) or \
+            (isinstance(exc, OSError) and not isinstance(exc, smtplib.SMTPException)):
+        return f"Couldn't reach the email server ({exc.__class__.__name__}: {exc})"
     return str(exc) or exc.__class__.__name__
 
 
-def deliver(log_id: int, kind: str, ctx: dict) -> None:
+def _text(v: Any) -> str:
+    return v.decode(errors="replace") if isinstance(v, bytes) else str(v)
+
+
+def _permanent(exc: Exception) -> bool:
+    """The server rejected this message for good (bad address, refused content): retrying won't help."""
+    if isinstance(exc, ValueError):  # the message itself can't be built
+        return True
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        return all(code >= 500 for code, _ in exc.recipients.values())
+    if isinstance(exc, smtplib.SMTPAuthenticationError):  # fixable in Admin → Email; keep the message until then
+        return False
+    if isinstance(exc, smtplib.SMTPResponseException):
+        return exc.smtp_code >= 500 and exc.smtp_code not in (502, 503, 504)
+    return False
+
+
+def deliver(log_id: int) -> bool:
+    """One attempt at one queued message. Returns False if the mail server couldn't take it right now."""
     from .db import engine
+    global _unreachable
     with Session(engine) as s:
         row = s.get(EmailLog, log_id)
-        if row is None:
-            return
-        cfg = sitesettings.get("email")
-        error = ""
-        for attempt in range(RETRIES):
-            try:
-                _smtp_send(_build(row.to, kind, ctx), cfg)
-                row.status, row.sent_at, row.error = "sent", utcnow(), ""
-                break
-            except Exception as exc:  # noqa: BLE001 - keep trying, then record why
-                error = _explain(exc)
-                if synchronous or isinstance(exc, smtplib.SMTPAuthenticationError):
-                    break
-                time.sleep(2 ** attempt * 5)
-        else:
-            row.status, row.error = "failed", error
-        if row.status != "sent":
-            row.status, row.error = "failed", error
-            log.warning("Email to %s failed: %s", row.to, error)
+        if row is None or row.status != "queued":
+            return True
+        if not configured():
+            return False
+        try:
+            ctx = json.loads(row.context or "{}")
+            _smtp_send(_build(row.to, row.kind, ctx), sitesettings.get("email"))
+            row.status, row.sent_at, row.error, row.next_try = "sent", utcnow(), "", None
+            ok = True
+        except Exception as exc:  # noqa: BLE001 - recorded for the admin
+            _unreachable = _connection_problem(exc)
+            row.attempts = (row.attempts or 0) + 1
+            row.error = _explain(exc)
+            if _permanent(exc) or not row.context or row.attempts > len(BACKOFF):
+                row.status, row.next_try = "failed", None
+            else:
+                row.next_try = utcnow() + BACKOFF[row.attempts - 1]
+            log.warning("Email to %s %s: %s", row.to, "failed" if row.status == "failed" else "not sent yet", row.error)
+            ok = row.status == "failed"  # a permanent failure says nothing about the server being down
         s.add(row)
-        old = s.exec(select(EmailLog).order_by(EmailLog.id.desc()).offset(KEEP)).all()
+        old = s.exec(select(EmailLog).where(EmailLog.status != "queued").order_by(EmailLog.id.desc()).offset(KEEP)).all()
         for o in old:
             s.delete(o)
         s.commit()
+        return ok
+
+
+def _connection_problem(exc: Exception) -> bool:
+    return isinstance(exc, (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected)) or \
+        (isinstance(exc, OSError) and not isinstance(exc, smtplib.SMTPException))
+
+
+def _probe() -> bool:
+    """Can we reach the mail server now? (Connects and says hello; doesn't log in or send.)"""
+    if transport is not None:
+        return True
+    cfg = sitesettings.get("email")
+    try:
+        if cfg["security"] == "ssl":
+            server: smtplib.SMTP = smtplib.SMTP_SSL(cfg["host"], cfg["port"] or 465, timeout=10, context=tls_context())
+        else:
+            server = smtplib.SMTP(cfg["host"], cfg["port"] or 587, timeout=10)
+        with server:
+            server.noop()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def sweep() -> int:
+    """Send queued messages that are due (retries, and anything left over from before a restart).
+
+    Stops at the first one the server can't take, so an outage costs one attempt per sweep, not one per
+    message. Once mail goes through again (or, after a connection problem, the server answers again), the
+    messages waiting out a retry gap are sent straight away instead of hours later."""
+    from .db import engine
+    global _down_until, _unreachable
+    if not configured():
+        return 0
+    now = utcnow()
+    with Session(engine) as s:
+        for old in s.exec(select(EmailLog).where(EmailLog.status == "queued", EmailLog.context == None,  # noqa: E711
+                                                 EmailLog.created_at < now - timedelta(minutes=10))):
+            old.status, old.error = "failed", "Benchtop restarted before it could send this"  # queued by an older version
+            s.add(old)
+        s.commit()
+        queued = s.exec(select(EmailLog.id, EmailLog.next_try).where(EmailLog.status == "queued", EmailLog.context.is_not(None))
+                        .order_by(EmailLog.id)).all()
+    due = [i for i, nt in queued if nt is None or nt <= now]
+    waiting = [i for i, nt in queued if nt is not None and nt > now]
+    sent = 0
+    for log_id in due:
+        if not deliver(log_id):
+            _down_until = time.monotonic() + SWEEP_SECONDS
+            return sent
+        sent += 1
+    _down_until = 0.0
+    if not waiting or not (sent or (_unreachable and _probe())):
+        return sent
+    _unreachable = False
+    for log_id in waiting:
+        if not deliver(log_id):
+            _down_until = time.monotonic() + SWEEP_SECONDS
+            break
+        sent += 1
+    return sent
 
 
 def _run() -> None:
+    global _down_until
+    last_sweep = 0.0
     while True:
-        item = _q.get()
         try:
-            deliver(*item)
+            log_id = _q.get(timeout=SWEEP_SECONDS)
+        except queue.Empty:
+            log_id = None
+        try:
+            if log_id is not None and time.monotonic() >= _down_until and not deliver(log_id):
+                _down_until = time.monotonic() + SWEEP_SECONDS
+            if time.monotonic() - last_sweep >= SWEEP_SECONDS:
+                last_sweep = time.monotonic()
+                sweep()
         except Exception:  # noqa: BLE001
-            log.exception("Email worker crashed on one message")
+            log.exception("Email worker hit a problem")
 
 
 def _ensure_worker() -> None:
@@ -214,12 +320,18 @@ def _ensure_worker() -> None:
             _worker.start()
 
 
+def start() -> None:
+    """At startup and hourly: make sure messages left queued (e.g. from before a restart) get sent."""
+    if configured() and not synchronous:
+        _ensure_worker()
+
+
 def flush_after_commit(session: Session) -> None:
-    for item in session.info.pop("benchtop_mail", None) or []:
+    for log_id in session.info.pop("benchtop_mail", None) or []:
         if synchronous:
-            deliver(*item)
+            deliver(log_id)
         else:
-            _q.put(item)  # type: ignore[arg-type]
+            _q.put(log_id)
             _ensure_worker()
 
 

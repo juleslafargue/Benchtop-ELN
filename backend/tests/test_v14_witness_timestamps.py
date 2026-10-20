@@ -33,6 +33,7 @@ def tsa(monkeypatch):
     monkeypatch.delenv("BENCHTOP_TIMESTAMPS", raising=False)
     monkeypatch.setattr(timestamps, "synchronous", True)
     monkeypatch.setattr(timestamps, "transport", fake)
+    monkeypatch.setattr(timestamps, "_skip_until", 0.0)
     sitesettings.update("timestamps", {"enabled": True, "tsa_url": "http://tsa.example.org"})
     yield fake
     sitesettings.update("timestamps", {"enabled": False})
@@ -167,7 +168,8 @@ def test_failed_sending_is_logged(client, users, notebook, admin, outbox, monkey
     e = _exp(client, users["alice"], notebook)
     client.post(f"/api/experiments/{e['id']}/sign", headers=users["alice"], json={"password": PW, "witness_id": _uid(client, users["bob"])})
     log = client.get("/api/admin/email", headers=admin).json()["log"]
-    assert log[0]["status"] == "failed" and "app password" in log[0]["error"]
+    # a wrong password can be fixed in Admin → Email, so the message waits and is retried rather than lost
+    assert log[0]["status"] == "retrying" and "app password" in log[0]["error"]
     r = client.post("/api/admin/email/test", headers=admin, json={"to": "me@example.org"})
     assert r.status_code == 400 and "password" in r.json()["detail"]
 

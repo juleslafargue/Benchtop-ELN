@@ -71,9 +71,20 @@ def validate(session: Session, exp: Experiment, witness_id: int) -> User:
     return w
 
 
+def lock(session: Session, exp: Experiment) -> None:
+    """Take the database's write lock, then re-read the record, so two clicks (or two people) asking or
+    reminding at the same moment are handled one after the other instead of both seeing "no open request"."""
+    from .audit import _take_write_lock
+    _take_write_lock(session)
+    session.refresh(exp)
+    if exp.status != ExperimentStatus.signed:
+        raise HTTPException(409, f"{exp.eid} isn't waiting for a witness any more")
+
+
 def request(session: Session, exp: Experiment, author: User, witness_id: int) -> WitnessRequest:
     """Ask a colleague to witness. Replaces any open request for this record."""
     w = validate(session, exp, witness_id)
+    lock(session, exp)
     now = utcnow()
     for old in session.exec(select(WitnessRequest).where(WitnessRequest.experiment_id == exp.id, WitnessRequest.status == "open")):
         old.status, old.closed_at, old.outcome = "cancelled", now, "reassigned"

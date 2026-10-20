@@ -973,6 +973,7 @@ def set_witness_request(exp_id: int, body: WitnessRequestIn, user: Writer, sessi
 @router.post("/experiments/{exp_id}/witness-request/remind")
 def remind_witness(exp_id: int, user: Writer, session: DB):
     exp = _request_owner(session, user, exp_id)
+    witness.lock(session, exp)
     r = witness.open_request(session, exp.id)
     if r is None:
         raise HTTPException(404, "Nobody has been asked to witness this record")

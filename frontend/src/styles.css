@@ -1181,6 +1181,13 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 .w-badge.overdue { background: color-mix(in srgb, var(--danger) 18%, transparent); }
 .pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--paper-2); color: var(--ink-2); border: 1px solid var(--rule); }
 .pill.ok { background: color-mix(in srgb, var(--witnessed) 16%, transparent); color: var(--ink); border-color: transparent; }
+.pill.warn { background: color-mix(in srgb, var(--signed) 18%, transparent); color: var(--ink); border-color: transparent; }
+.mail-log { font-size: 13px; width: 100%; }
+.mail-log td { vertical-align: top; padding-top: 7px; padding-bottom: 7px; }
+.mail-log td.st, .mail-log td.when { white-space: nowrap; }
+.mail-log td.st.failed { color: var(--danger); font-weight: 600; }
+.mail-log td.st.retrying { color: var(--signed); font-weight: 600; }
+@media (max-width: 640px) { .mail-log td:nth-child(2) { display: none; } .mail-log td.when { white-space: normal; } }
 /* Admin settings cards (Email, Witnessing, Trusted timestamps) */
 .admin-card { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
 .admin-card .card-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

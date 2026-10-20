@@ -71,11 +71,13 @@ def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
             counts["signed_records"] = n
             checks.append(_item("Signed records", not bad, f"all {n:,} match their signatures" if not bad
                                 else f"{len(bad)} of {n} no longer match: {', '.join(bad[:10])}{'…' if len(bad) > 10 else ''}"))
-            # 5. trusted timestamps still verify against what was signed
-            from .models import SignatureTimestamp
+            # 5. trusted timestamps still verify against what was signed, with the certificate they were fetched with
+            from .models import AuditEvent, SignatureTimestamp
             from . import timestamps as tsmod
             import base64 as _b64
-            good = bad = waiting = 0
+            fetched = {e.object_id: e.details or {} for e in s.exec(
+                select(AuditEvent).where(AuditEvent.action == "timestamp", AuditEvent.object_type == "signature"))}
+            good = bad = waiting = untraced = 0
             bad_ids = []
             for row in s.exec(select(SignatureTimestamp)):
                 if row.status != "ok":
@@ -84,17 +86,25 @@ def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
                 sig = s.get(Signature, row.signature_id)
                 same = sig is not None and hashlib.sha256(row.payload.encode()).hexdigest() == row.digest and \
                     tsmod.payload_for(s, sig) == row.payload
-                ok = same and tsmod.available() and tsmod.verify(_b64.b64decode(row.token or ""), bytes.fromhex(row.digest))["ok"]
+                info = tsmod.verify(_b64.b64decode(row.token or ""), bytes.fromhex(row.digest)) if same and tsmod.available() else {"ok": False}
+                rec = fetched.get(row.signature_id, {})
+                # the certificate must be the one recorded (in the tamper-evident audit trail) when it was fetched;
+                # whether it's still traced to a well-known authority is only noted: authorities do get retired
+                ok = info["ok"] and (not rec.get("cert_sha256") or rec["cert_sha256"] == info["cert_sha256"]) \
+                    and (not rec.get("digest") or rec["digest"] == row.digest)
                 if ok:
                     good += 1
+                    untraced += not info["trusted"]
                 else:
                     bad += 1
                     bad_ids.append(str(row.signature_id))
             counts["timestamps"] = good
             if good or bad or waiting:
+                note = (f"; {untraced} from a service whose certificate isn't traced to a well-known authority (e.g. FreeTSA)"
+                        if untraced else "")
                 checks.append(_item("Trusted timestamps", not bad,
                                     (f"all {good:,} verify" if not bad else f"{bad} don't verify (signatures {', '.join(bad_ids[:10])})")
-                                    + (f"; {waiting} still to fetch" if waiting else "")))
+                                    + note + (f"; {waiting} still to fetch" if waiting else "")))
             # 6. attached files
             missing, damaged, n = [], [], 0
             for a in s.exec(select(Attachment)):

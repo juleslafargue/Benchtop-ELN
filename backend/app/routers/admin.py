@@ -83,8 +83,11 @@ def get_email_settings(_: Admin, session: DB):
     from ..models import EmailLog
     from sqlmodel import select
     recent = session.exec(select(EmailLog).order_by(EmailLog.id.desc()).limit(25)).all()
-    return {**sitesettings.public("email"), "configured": mailer.configured(), "link_base": mailer.base_url(),
-            "log": [{"to": e.to, "subject": e.subject, "status": e.status, "error": e.error,
+    from sqlmodel import func
+    waiting = session.exec(select(func.count()).select_from(EmailLog).where(EmailLog.status == "queued", EmailLog.error != "")).one()
+    return {**sitesettings.public("email"), "configured": mailer.configured(), "link_base": mailer.base_url(), "waiting": waiting,
+            "log": [{"to": e.to, "subject": e.subject, "status": "retrying" if e.status == "queued" and e.error else e.status,
+                     "error": e.error, "next_try": e.next_try.isoformat() + "Z" if e.status == "queued" and e.next_try else None,
                      "at": (e.sent_at or e.created_at).isoformat() + "Z"} for e in recent]}
 
 
@@ -100,6 +103,10 @@ def set_email_settings(body: EmailSettingsIn, user: Admin, session: DB):
     for k in ("host", "username", "from_address", "from_name", "base_url"):
         if k in changes:
             changes[k] = changes[k].strip()[:300]
+            if any(ord(ch) < 32 for ch in changes[k]):
+                raise HTTPException(422, "Settings can't contain line breaks or tabs")
+    if changes.get("host") and any(ch in changes["host"] for ch in " /:@"):
+        raise HTTPException(422, "The email server should be just its name, like smtp.gmail.com (put the port in Port)")
     if changes.get("from_address") and "@" not in changes["from_address"]:
         raise HTTPException(422, "The From address should be an email address")
     out = sitesettings.update("email", changes)

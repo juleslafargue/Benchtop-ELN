@@ -63,7 +63,8 @@ async def _housekeeping_loop() -> None:
         except Exception:
             log.exception("Backup test failed to run")
         try:
-            from . import timestamps, witness
+            from . import mailer, timestamps, witness
+            mailer.start()
             n = await asyncio.to_thread(witness.send_due_reminders)
             if n:
                 log.info("Witness reminders sent: %s", n)

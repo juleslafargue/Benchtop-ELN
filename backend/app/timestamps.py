@@ -18,6 +18,7 @@ import logging
 import queue
 import secrets
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -36,14 +37,21 @@ TSAS = [  # free public RFC 3161 services
 ]
 synchronous = False
 transport: Callable[[str, bytes], bytes] | None = None  # tests: a fake TSA
+MAX_REPLY = 1_000_000  # bytes; real tokens are 2–10 KB
+TOTAL_SECONDS = 60
 MAX_ATTEMPTS = 48  # hourly retries for two days, then it's marked failed (an admin can retry)
 _q: "queue.Queue[int]" = queue.Queue()
 _worker: threading.Thread | None = None
 _lock = threading.Lock()
+_queued: set[int] = set()  # already waiting in _q (hourly retries and "Retry now" don't add duplicates)
+_skip_until = 0.0          # after the service couldn't be reached, don't spend a timeout on every waiting signature
+UNREACHABLE_PAUSE = 120    # seconds
 
 
 class TimestampError(RuntimeError):
-    pass
+    def __init__(self, msg: str, unreachable: bool = False):
+        super().__init__(msg)
+        self.unreachable = unreachable  # couldn't reach the service at all (vs. it answered badly)
 
 
 def available() -> bool:
@@ -100,12 +108,20 @@ def build_request(digest: bytes, nonce: int) -> bytes:
 def _post(url: str, body: bytes) -> bytes:
     if transport is not None:
         return transport(url, body)
-    r = httpx.post(url, content=body, timeout=20, follow_redirects=True,
-                   headers={"Content-Type": "application/timestamp-query", "Accept": "application/timestamp-reply",
-                            "User-Agent": f"Benchtop-ELN/{__version__}"})
-    if r.status_code != 200:
-        raise TimestampError(f"The timestamp service answered {r.status_code}")
-    return r.content
+    deadline = time.monotonic() + TOTAL_SECONDS
+    with httpx.stream("POST", url, content=body, timeout=20, follow_redirects=True,
+                      headers={"Content-Type": "application/timestamp-query", "Accept": "application/timestamp-reply",
+                               "User-Agent": f"Benchtop-ELN/{__version__}"}) as r:
+        if r.status_code != 200:
+            raise TimestampError(f"The timestamp service answered {r.status_code}")
+        buf = bytearray()
+        for chunk in r.iter_bytes():  # a token is a few KB: don't let a broken service fill memory or drip forever
+            buf += chunk
+            if len(buf) > MAX_REPLY:
+                raise TimestampError("The timestamp service sent far more than a timestamp")
+            if time.monotonic() > deadline:
+                raise TimestampError("The timestamp service is too slow to answer", unreachable=True)
+        return bytes(buf)
 
 
 def fetch_token(url: str, digest: bytes) -> tuple[bytes, dict[str, Any]]:
@@ -115,7 +131,7 @@ def fetch_token(url: str, digest: bytes) -> tuple[bytes, dict[str, Any]]:
     try:
         raw = _post(url, build_request(digest, nonce))
     except (httpx.HTTPError, OSError) as exc:
-        raise TimestampError(f"Couldn't reach the timestamp service ({exc.__class__.__name__})") from None
+        raise TimestampError(f"Couldn't reach the timestamp service ({exc.__class__.__name__})", unreachable=True) from None
     try:
         # read the status on its own first: a refusal carries no token, which the full structure would reject
         _, _, _, _, contents, _ = parser.parse(raw)
@@ -140,8 +156,9 @@ def fetch_token(url: str, digest: bytes) -> tuple[bytes, dict[str, Any]]:
 def verify(token: bytes, digest: bytes, nonce: int | None = None) -> dict[str, Any]:
     """Check a TimeStampToken: it's for this digest, its content is intact, and the TSA's signature is valid.
     (It doesn't check the TSA certificate's chain to a root; `openssl ts -verify` with the system roots does.)"""
-    from asn1crypto import cms
-    out: dict[str, Any] = {"ok": False, "error": "", "gen_time": None, "tsa_name": "", "serial": None}
+    from asn1crypto import cms, tsp  # noqa: F401 - importing tsp registers the TSTInfo content type with cms
+    out: dict[str, Any] = {"ok": False, "error": "", "gen_time": None, "tsa_name": "", "serial": None,
+                           "trusted": False, "cert_sha256": ""}
     try:
         ci = cms.ContentInfo.load(token)
         if ci["content_type"].native != "signed_data":
@@ -168,12 +185,67 @@ def verify(token: bytes, digest: bytes, nonce: int | None = None) -> dict[str, A
         eku = cert.extended_key_usage_value
         if eku is not None and "time_stamping" not in eku.native:
             raise TimestampError("the certificate isn't for timestamping")
+        out["cert_sha256"] = hashlib.sha256(cert.dump()).hexdigest()
+        out["trusted"] = _chain_trusted(sd, cert)
         out["ok"] = True
     except TimestampError as exc:
         out["error"] = str(exc)
     except Exception as exc:  # noqa: BLE001 - malformed token
         out["error"] = f"unreadable token ({exc.__class__.__name__})"
     return out
+
+
+_roots_cache: dict[bytes, list] | None = None
+
+
+def _roots() -> dict[bytes, list]:
+    """Certificate authorities trusted by browsers and operating systems (the certifi bundle), by subject."""
+    global _roots_cache
+    if _roots_cache is None:
+        from cryptography import x509 as cx
+        found: dict[bytes, list] = {}
+        try:
+            import certifi
+            import warnings
+            pem = open(certifi.where(), "rb").read()
+            for block in pem.split(b"-----BEGIN CERTIFICATE-----")[1:]:
+                try:  # one at a time: an oddly made root shouldn't stop the others loading
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        c = cx.load_pem_x509_certificate(b"-----BEGIN CERTIFICATE-----" + block)
+                    found.setdefault(c.subject.public_bytes(), []).append(c)
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001 - no bundle: nothing counts as trusted
+            log.warning("Couldn't load the list of trusted certificate authorities")
+        _roots_cache = found
+    return _roots_cache
+
+
+def _chain_trusted(sd, leaf) -> bool:
+    """Does the timestamp service's certificate lead, through the certificates in the token, to a well-known
+    authority? (So a token re-signed with a made-up certificate doesn't pass.) Expiry isn't checked: a
+    timestamp stays valid after the service's certificate expires."""
+    from cryptography import x509 as cx
+    try:
+        pool = [cx.load_der_x509_certificate(c.chosen.dump()) for c in (sd["certificates"] or []) if c.name == "certificate"]
+        cur = cx.load_der_x509_certificate(leaf.dump())
+        roots = _roots()
+        for _ in range(8):
+            for root in roots.get(cur.issuer.public_bytes(), []):
+                try:
+                    cur.verify_directly_issued_by(root)
+                    return True
+                except Exception:  # noqa: BLE001 - try the next root with that name
+                    continue
+            parent = next((c for c in pool if c.subject == cur.issuer and c != cur), None)
+            if parent is None:
+                return False
+            cur.verify_directly_issued_by(parent)
+            cur = parent
+    except Exception:  # noqa: BLE001 - a broken link anywhere: not trusted
+        return False
+    return False
 
 
 def _signer_cert(sd, si):
@@ -236,13 +308,18 @@ def _check_signature(si, cert, content: bytes) -> None:
 def process(ts_id: int) -> None:
     from .db import engine
     from . import audit
+    global _skip_until
+    got = False
     with Session(engine) as s:
         row = s.get(SignatureTimestamp, ts_id)
         if row is None or row.status == "ok":
             return
+        if row.attempts and time.monotonic() < _skip_until:
+            return  # a retry while the service is unreachable: stays pending (a new signature still tries, and its success catches up the rest)
         row.attempts += 1
         row.updated_at = utcnow()
-        url = row.tsa_url or sitesettings.get("timestamps")["tsa_url"]
+        # always the service chosen now: if an admin switched because the old one was down, retries go to the new one
+        url = sitesettings.get("timestamps")["tsa_url"] or row.tsa_url
         try:
             token, info = fetch_token(url, bytes.fromhex(row.digest))
             row.token, row.status, row.error, row.tsa_url = base64.b64encode(token).decode(), "ok", "", url
@@ -251,18 +328,28 @@ def process(ts_id: int) -> None:
             row.gen_time = gt.astimezone(timezone.utc).replace(tzinfo=None) if isinstance(gt, datetime) else None
             sig = s.get(Signature, row.signature_id)
             audit.record(s, None, "timestamp", "signature", row.signature_id, experiment_id=sig.experiment_id if sig else None,
-                         tsa=row.tsa_name, gen_time=row.gen_time.isoformat() + "Z" if row.gen_time else None, digest=row.digest)
+                         tsa=row.tsa_name, gen_time=row.gen_time.isoformat() + "Z" if row.gen_time else None, digest=row.digest,
+                         cert_sha256=info["cert_sha256"], trusted=info["trusted"])
+            got = True
         except TimestampError as exc:
-            row.error = str(exc)
+            row.error, row.tsa_url = str(exc), url
             row.status = "failed" if row.attempts >= MAX_ATTEMPTS else "pending"
+            if exc.unreachable:
+                _skip_until = time.monotonic() + UNREACHABLE_PAUSE
             log.info("Timestamp for signature %s not obtained yet: %s", row.signature_id, exc)
         s.add(row)
         s.commit()
+        if got:  # the service works again: fetch the others that are waiting now rather than at the next hourly retry
+            _skip_until = 0.0
+            for other in s.exec(select(SignatureTimestamp.id).where(SignatureTimestamp.status == "pending")).all():
+                _submit(other)
 
 
 def _run() -> None:
     while True:
         ts_id = _q.get()
+        with _lock:
+            _queued.discard(ts_id)
         try:
             process(ts_id)
         except Exception:  # noqa: BLE001
@@ -279,10 +366,22 @@ def _ensure_worker() -> None:
 
 def _submit(ts_id: int) -> None:
     if synchronous:
-        process(ts_id)
-    else:
-        _q.put(ts_id)
-        _ensure_worker()
+        with _lock:
+            if ts_id in _queued:
+                return
+            _queued.add(ts_id)
+        try:
+            process(ts_id)
+        finally:
+            with _lock:
+                _queued.discard(ts_id)
+        return
+    with _lock:
+        if ts_id in _queued:
+            return
+        _queued.add(ts_id)
+    _q.put(ts_id)
+    _ensure_worker()
 
 
 def _after_commit(session: Session) -> None:
@@ -293,8 +392,10 @@ def _after_commit(session: Session) -> None:
 def retry_pending(include_failed: bool = False) -> int:
     """Housekeeping (hourly), or an admin's "Retry now"."""
     from .db import engine
+    global _skip_until
     if not enabled():
         return 0
+    _skip_until = 0.0
     with Session(engine) as s:
         statuses = ["pending", "failed"] if include_failed else ["pending"]
         rows = s.exec(select(SignatureTimestamp).where(SignatureTimestamp.status.in_(statuses))).all()
@@ -325,7 +426,7 @@ def test_service(url: str) -> dict[str, Any]:
     try:
         _, info = fetch_token(url, hashlib.sha256(secrets.token_bytes(32)).digest())
         gt = info["gen_time"]
-        return {"ok": True, "tsa": info["tsa_name"], "gen_time": gt.isoformat() if gt else None}
+        return {"ok": True, "tsa": info["tsa_name"], "gen_time": gt.isoformat() if gt else None, "trusted": info["trusted"]}
     except TimestampError as exc:
         return {"ok": False, "error": str(exc)}
 

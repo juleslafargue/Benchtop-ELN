@@ -411,4 +411,8 @@ class EmailLog(SQLModel, table=True):
     error: str = ""
     created_at: NaiveDatetime = Field(default_factory=utcnow, index=True)
     sent_at: Optional[NaiveDatetime] = None
+    # what's needed to (re)build the message, so a queued email survives a restart or a mail-server outage
+    context: Optional[str] = None
+    attempts: Optional[int] = None
+    next_try: Optional[NaiveDatetime] = None
 

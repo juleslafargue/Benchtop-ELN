@@ -4,8 +4,8 @@ import { api, when } from '../api'
 
 interface EmailSettings {
   host: string; port: number; security: 'starttls' | 'ssl' | 'none'; username: string; password: string; password_set: boolean
-  from_address: string; from_name: string; base_url: string; fixed: string[]; configured: boolean; link_base: string
-  log: { to: string; subject: string; status: string; error: string; at: string }[]
+  from_address: string; from_name: string; base_url: string; fixed: string[]; configured: boolean; link_base: string; waiting?: number
+  log: { to: string; subject: string; status: string; error: string; at: string; next_try?: string | null }[]
 }
 
 /** Admin → Email: the server Benchtop sends witness requests, reminders and outcomes through. */
@@ -38,7 +38,8 @@ export function EmailSettingsPanel() {
   return (
     <section className="stack" style={{ gap: 10 }}>
       <div className="spread" style={{ alignItems: 'center' }}><h2 style={{ fontSize: 17 }}>Email</h2>
-        <span className={`pill ${s.configured ? 'ok' : ''}`}>{s.configured ? 'Sending' : 'Not set up'}</span></div>
+        <span className={`pill ${s.configured && !s.waiting ? 'ok' : s.waiting ? 'warn' : ''}`}>
+          {!s.configured ? 'Not set up' : s.waiting ? `${s.waiting} waiting to retry` : 'Sending'}</span></div>
       <p className="faint" style={{ margin: 0 }}>Benchtop emails people when they're asked to witness a record, reminds them while it waits, and tells authors when
         their record is witnessed or returned. Without an email server, all of this still appears as notifications in Benchtop.</p>
       <div className="panel admin-card">
@@ -71,8 +72,8 @@ export function EmailSettingsPanel() {
         </div>
       </div>
       {s.log.length > 0 && <details><summary className="faint">Recent emails ({s.log.length})</summary>
-        <table className="plain" style={{ marginTop: 6 }}><tbody>{s.log.map((e, i) => <tr key={i}>
-          <td className={e.status === 'failed' ? 'error' : ''}>{e.status}</td><td>{e.to}</td><td>{e.subject}{e.error && <div className="error" style={{ fontSize: 12 }}>{e.error}</div>}</td><td className="faint">{when(e.at)}</td>
+        <table className="plain mail-log" style={{ marginTop: 6 }}><tbody>{s.log.map((e, i) => <tr key={i}>
+          <td className={`st ${e.status}`}>{e.status}</td><td>{e.to}</td><td>{e.subject}{e.error && <div className={e.status === 'failed' ? 'error' : 'faint'} style={{ fontSize: 12 }}>{e.error}{e.next_try ? ` · next try ${when(e.next_try)}` : ''}</div>}</td><td className="faint when">{when(e.at)}</td>
         </tr>)}</tbody></table></details>}
     </section>
   )
