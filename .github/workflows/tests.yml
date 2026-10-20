@@ -79,3 +79,36 @@ jobs:
       - name: Open every page
         working-directory: backend
         run: python tests/smoke_browser.py
+
+  docker:
+    name: Lab-server setup (Docker image builds, starts and backs up)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DC: docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start the server setup (without the HTTPS proxy)
+        run: |
+          printf 'BENCHTOP_DOMAIN=eln.example.test\nBENCHTOP_SECRET_KEY=%s\nBENCHTOP_ADMIN_PASSWORD=ci-start-only\n' "$(openssl rand -hex 32)" > deploy/.env
+          $DC up -d --build app
+      - name: Benchtop answers, and writes its first backup to the host
+        run: |
+          for i in $(seq 1 60); do
+            if $DC exec -T app python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" 2>/dev/null \
+               && ls deploy/backups/benchtop-backup-*.zip >/dev/null 2>&1; then break; fi
+            sleep 3
+          done
+          ls -l deploy/backups/
+          ls deploy/backups/benchtop-backup-*.zip
+          $DC exec -T app python -m app.backup test
+      - name: A server that used Postgres refuses to start on an empty database
+        run: |
+          if docker compose -p guardcheck -f deploy/docker-compose.server.yml --env-file deploy/.env run --rm --no-deps \
+               -e BENCHTOP_LEGACY_POSTGRES=was-set app > guard.txt 2>&1; then
+            echo "It started, but it should have refused"; cat guard.txt; exit 1
+          fi
+          grep -q "still in Postgres" guard.txt || { cat guard.txt; exit 1; }
+      - name: Server log (if anything failed)
+        if: failure()
+        run: $DC logs app
