@@ -11,6 +11,9 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     BENCHTOP_DATA_DIR=/data BENCHTOP_STATIC_DIR=/app/static BENCHTOP_BUNDLED_PLUGINS_DIR=/app/plugins
 WORKDIR /app
+# RDKit draws structures with X rendering libraries the slim image leaves out; without them Benchtop can't start
+RUN apt-get update && apt-get install -y --no-install-recommends libxrender1 libxext6 \
+    && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt "psycopg[binary]>=3.2"
 COPY backend/app ./app
