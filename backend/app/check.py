@@ -55,8 +55,10 @@ def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
             # 3. audit trail
             chain = audit.verify_chain(s)
             counts["audit_events"] = chain["checked"]
+            fork_note = (f" ({chain['forks']} pair{'s' if chain['forks'] != 1 else ''} written at the same moment by an older version;"
+                         " both intact, not tampering)") if chain.get("forks") else ""
             checks.append(_item("Audit trail", chain["ok"],
-                                f"{chain['checked']:,} events, unbroken; latest fingerprint {chain['head'][:16]}…" if chain["ok"]
+                                f"{chain['checked']:,} events, unbroken{fork_note}; latest fingerprint {chain['head'][:16]}…" if chain["ok"]
                                 else f"broken at event {chain.get('broken_at')} ({chain.get('reason')})"))
             # 4. signed records still match their signatures
             bad, n = [], 0

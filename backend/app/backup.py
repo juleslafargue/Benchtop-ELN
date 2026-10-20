@@ -18,6 +18,7 @@ import os
 import shutil
 import sqlite3
 import sys
+import threading
 import time
 import zipfile
 from datetime import datetime, timezone
@@ -59,13 +60,22 @@ def newest_age_hours() -> float | None:
     return (time.time() - Path(b[0]["path"]).stat().st_mtime) / 3600
 
 
+_lock = threading.Lock()  # one backup at a time in this server (two clicks, or a click during the scheduled one)
+
+
 def create_backup(reason: str = "manual") -> dict[str, Any]:
+    with _lock:
+        return _create_backup(reason)
+
+
+def _create_backup(reason: str) -> dict[str, Any]:
     db = _sqlite_path()
     settings.backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     final = settings.backup_dir / f"{PREFIX}{stamp}.zip"
-    tmp_db = settings.backup_dir / f".snapshot-{stamp}.db"
-    tmp_zip = final.with_suffix(".zip.part")
+    unique = f"{stamp}-{os.getpid()}-{threading.get_ident()}"  # also safe beside a ./benchtop backup in another process
+    tmp_db = settings.backup_dir / f".snapshot-{unique}.db"
+    tmp_zip = settings.backup_dir / f".{PREFIX}{unique}.zip.part"
     try:
         src = sqlite3.connect(db)
         dst = sqlite3.connect(tmp_db)
@@ -87,7 +97,7 @@ def create_backup(reason: str = "manual") -> dict[str, Any]:
             plug = settings.data_dir / "plugins"
             for f in sorted(plug.glob("*.toml")) if plug.is_dir() else []:  # your lab's plugin files
                 z.write(f, f"plugins/{f.name}")
-        tmp_zip.rename(final)
+        final = _claim_name(tmp_zip, final)
     finally:
         tmp_db.unlink(missing_ok=True)
         tmp_zip.unlink(missing_ok=True)
@@ -146,6 +156,15 @@ def copy_dir() -> Path | None:
 
 def validate_copy_dir(raw: str) -> Path:
     """A folder that exists (or whose parent does), is writable, and isn't inside Benchtop's own data."""
+    try:
+        return _validate_copy_dir(raw)
+    except OSError as exc:  # a name too long, no permission, a drive that vanished…
+        raise BackupError(f"Benchtop can't use that folder: {exc.strerror or exc}") from None
+
+
+def _validate_copy_dir(raw: str) -> Path:
+    if len(raw) > 1024:
+        raise BackupError("That path is too long")
     p = Path(raw.strip()).expanduser()
     if not p.is_absolute():
         raise BackupError("Give the full path of the folder, e.g. /Volumes/MyDrive/Benchtop backups")
@@ -207,7 +226,7 @@ def copy_to_second_place(src: Path) -> dict[str, Any] | None:
     try:
         if not d.is_dir():
             raise BackupError(f"{d} isn't there. If it's on an external drive, plug it in; the next backup will be copied.")
-        part = d / f".{src.name}.part"
+        part = d / f".{src.name}.{os.getpid()}-{threading.get_ident()}.part"
         shutil.copyfile(src, part)
         if hashlib.sha256(part.read_bytes()).hexdigest() != hashlib.sha256(src.read_bytes()).hexdigest():
             part.unlink(missing_ok=True)
@@ -280,6 +299,26 @@ def health() -> dict[str, Any]:
     return {"copy_dir": str(copy_dir()) if copy_dir() else None, "copy_dir_from_env": "BENCHTOP_BACKUP_COPY_DIR" in os.environ,
             "last_copy": st.get("last_copy"), "last_check": st.get("last_check"), "copies": len(copy_backups()),
             "warnings": warnings}
+
+
+def _claim_name(tmp: Path, final: Path) -> Path:
+    """Give the finished zip its name without ever replacing another backup (two in the same second get -2, -3…)."""
+    n = 1
+    while True:
+        target = final if n == 1 else final.with_name(f"{final.stem}-{n}{final.suffix}")
+        try:
+            os.link(tmp, target)  # fails if the name is taken, unlike rename
+        except FileExistsError:
+            n += 1
+            continue
+        except OSError:  # file systems without hard links: fall back to a checked rename
+            if target.exists():
+                n += 1
+                continue
+            tmp.rename(target)
+            return target
+        tmp.unlink(missing_ok=True)
+        return target
 
 
 def prune(keep: int | None = None) -> None:

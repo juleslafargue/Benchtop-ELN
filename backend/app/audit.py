@@ -55,6 +55,7 @@ def record(
     **details: Any,
 ) -> AuditEvent:
     """Append an event. Caller commits (so the audit row is atomic with the change)."""
+    _take_write_lock(session)  # read the head and append as one step: no two writers chain onto the same event
     last = session.exec(select(AuditEvent).order_by(AuditEvent.id.desc()).limit(1)).first()
     prev = last.hash if last else GENESIS
     ev = AuditEvent(
@@ -74,14 +75,41 @@ def record(
     return ev
 
 
+def _take_write_lock(session: Session) -> None:
+    """Hold the database's write lock until this transaction commits, before reading the chain's head.
+
+    Without it, two requests whose first write is an audit event could both read the same head and both
+    chain onto it (a fork). SQLite has one writer at a time: a write statement (even one that changes no
+    rows) takes that lock for the rest of the transaction. Postgres: a transaction-scoped advisory lock."""
+    from sqlalchemy import text
+    dialect = session.get_bind().dialect.name
+    if dialect == "sqlite":
+        session.execute(text("UPDATE auditevent SET id = id WHERE 0"))
+    elif dialect == "postgresql":
+        session.execute(text("SELECT pg_advisory_xact_lock(72716)"))
+
+
+FORK_WINDOW = 64  # how far back a simultaneous write can have looked for "the latest event"
+
+
 def verify_chain(session: Session) -> dict[str, Any]:
+    """Every event must be intact (its hash matches its content) and chained onto an existing earlier event.
+
+    Normally that is the event just before it. Versions before 0.13.7 could, under simultaneous writes,
+    chain two events onto the same predecessor (a "fork"): both are intact and nothing is missing, so it is
+    reported separately and doesn't count as a break. Editing, deleting or reordering events still breaks it."""
+    from collections import deque
     prev = GENESIS
-    count = 0
+    recent: deque[str] = deque([GENESIS], maxlen=FORK_WINDOW)
+    count = forks = 0
     for ev in session.exec(select(AuditEvent).order_by(AuditEvent.id)):
         count += 1
-        if ev.prev_hash != prev:
-            return {"ok": False, "checked": count, "broken_at": ev.id, "reason": "prev_hash mismatch"}
-        if compute_hash(prev, ev) != ev.hash:
+        if compute_hash(ev.prev_hash, ev) != ev.hash:
             return {"ok": False, "checked": count, "broken_at": ev.id, "reason": "hash mismatch"}
+        if ev.prev_hash != prev:
+            if ev.prev_hash not in recent:
+                return {"ok": False, "checked": count, "broken_at": ev.id, "reason": "prev_hash mismatch"}
+            forks += 1
         prev = ev.hash
-    return {"ok": True, "checked": count, "head": prev}
+        recent.append(ev.hash)
+    return {"ok": True, "checked": count, "head": prev, "forks": forks}

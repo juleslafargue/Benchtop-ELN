@@ -1038,10 +1038,12 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 .att-img.resizing .att-img-tools { visibility: hidden; }
 
 /* the picture toolbar: placement, size, view */
-.att-img-tools { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); gap: 1px; padding: 3px; z-index: 4; align-items: center; line-height: 1;
+/* just below the picture (as in Google Docs), so it never covers a small picture or its handles */
+.att-img-tools { position: absolute; top: calc(100% + 8px); left: 0; gap: 1px; padding: 3px; z-index: 6; align-items: center; line-height: 1;
+  width: max-content; max-width: calc(100vw - 32px); flex-wrap: wrap;
   background: var(--paper); border: 1px solid var(--rule-strong); border-radius: 8px; box-shadow: 0 6px 18px rgba(10, 20, 30, .18); white-space: nowrap; }
-.align-right > .att-img-frame > .att-img-tools, .align-wrap-right > .att-img-frame > .att-img-tools { left: auto; right: 8px; transform: none; }
-.att-img:not(.align-center):not(.align-right):not(.align-wrap-right) > .att-img-frame > .att-img-tools { left: 8px; transform: none; }
+.align-center > .att-img-frame > .att-img-tools { left: 50%; transform: translateX(-50%); }
+.align-right > .att-img-frame > .att-img-tools, .align-wrap-right > .att-img-frame > .att-img-tools { left: auto; right: 0; }
 .att-img-tools button { display: grid; place-items: center; min-width: 28px; height: 26px; padding: 0 5px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-2); cursor: pointer; font: 600 12px/1 var(--sans); }
 .att-img-tools button:hover:not(:disabled) { background: var(--paper-2); color: var(--ink); }
 .att-img-tools button[aria-pressed='true'] { background: var(--accent-soft); color: var(--ink); }

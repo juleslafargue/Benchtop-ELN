@@ -24,7 +24,32 @@ import type { EntryEditorProps } from './EntryCard'
 // Colours that stay readable on paper and in dark mode; text keeps the theme's ink by default.
 // highlighter colours, like Word / Docs; stored by name (data-hl) so each theme can show them readably in light and dark
 const HIGHLIGHTS: [string, string][] = [['yellow', 'Yellow'], ['green', 'Green'], ['blue', 'Blue'], ['pink', 'Pink'], ['orange', 'Orange'], ['purple', 'Purple']]
+// Word and Google Docs mark highlights as a background colour on the text; map it to the nearest highlighter
+const NAMED: Record<string, string> = { yellow: '#ffff00', lime: '#00ff00', green: '#00ff00', brightgreen: '#00ff00', aqua: '#00ffff', cyan: '#00ffff',
+  turquoise: '#00ffff', teal: '#008080', blue: '#0000ff', navy: '#000080', darkblue: '#000080', magenta: '#ff00ff', fuchsia: '#ff00ff', pink: '#ff00ff',
+  red: '#ff0000', darkred: '#800000', maroon: '#800000', orange: '#ffa500', purple: '#800080', violet: '#8000ff', olive: '#808000', darkyellow: '#808000' }
+export function nearestHighlight(css: string): string | null | false {
+  let v = (css || '').trim().toLowerCase()
+  if (!v || v === 'transparent' || v === 'none' || v === 'inherit' || v === 'initial') return false
+  v = NAMED[v.replace(/[\s-]/g, '')] || v
+  let r: number, g: number, b: number
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(v), rgb = /^rgba?\(([^)]+)\)$/.exec(v)
+  if (hex) { const h = hex[1].length === 3 ? hex[1].split('').map(x => x + x).join('') : hex[1]; [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)) }
+  else if (rgb) { const parts = rgb[1].split(/[\s,/]+/).map(Number); [r, g, b] = parts; if (parts.length > 3 && parts[3] === 0) return false }
+  else return false
+  const mx = Math.max(r, g, b) / 255, mn = Math.min(r, g, b) / 255, l = (mx + mn) / 2, d = mx - mn
+  if (d < 0.12 || l > 0.96) return false  // white, grey or black backgrounds aren't highlights
+  let h = mx === r / 255 ? ((g - b) / 255 / d) % 6 : mx === g / 255 ? (b - r) / 255 / d + 2 : (r - g) / 255 / d + 4
+  h = (h * 60 + 360) % 360
+  const name = h < 15 || h >= 320 ? 'pink' : h < 42 ? 'orange' : h < 72 ? 'yellow' : h < 165 ? 'green' : h < 255 ? 'blue' : 'purple'
+  return name === 'yellow' ? null : name
+}
+
 const Highlighter = Highlight.extend({
+  parseHTML() {
+    const fromStyle = (value: string) => { const n = nearestHighlight(value); return n === false ? false : { color: n } }
+    return [{ tag: 'mark' }, { style: 'background-color', getAttrs: fromStyle as any }, { style: 'background', getAttrs: fromStyle as any }]
+  },
   addAttributes() {
     return {
       color: {

@@ -229,7 +229,7 @@ export default function Admin() {
         <div className="spread"><h2 style={{ fontSize: 17 }}>Audit trail</h2>
           <button className="btn sm" onClick={async () => setChain(await api.get('/api/audit/verify'))}>Verify hash chain</button></div>
         {chain && <p className={chain.ok ? 'notice' : 'error'} style={chain.ok ? { borderLeftColor: 'var(--witnessed)' } : undefined}>
-          {chain.ok ? `All ${chain.checked} events verified. Chain head ${chain.head.slice(0, 16)}…` : `Chain broken at event #${chain.broken_at} (${chain.reason}). Records from that point may have been altered.`}</p>}
+          {chain.ok ? `All ${chain.checked} events verified. Chain head ${chain.head.slice(0, 16)}…${chain.forks ? ` (${chain.forks} pair${chain.forks === 1 ? ' was' : 's were'} written at the same moment by an older version; both intact, not tampering.)` : ''}` : `Chain broken at event #${chain.broken_at} (${chain.reason}). Records from that point may have been altered.`}</p>}
         <div className="panel panel-pad">
           <ul className="timeline">{events.map(e => (
             <li key={e.id}><span className="faint">{when(e.ts)}</span><span>{e.username}</span>
