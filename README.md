@@ -67,6 +67,9 @@ and kept out of the integrals:
 | **Predicted NMR shifts** | When an experiment has a drawn product, its ¹H and ¹³C spectra show predicted shifts from [NMRShiftDB2](https://nmrshiftdb.nmr.uni-koeln.de), an open database of assigned spectra, as a purple lane above the spectrum. Each observed signal gets an *Assigned to* column (atom numbers match a numbered structure), and a panel lists every predicted group with its confidence and the observed shift it matched, flagging groups with no signal and signals no group explains. Prediction looks up each atom's surroundings out to four bonds (HOSE-style) in a table of 43,213 assigned structures (359,155 ¹³C and 125,904 ¹H shifts) that ships with Benchtop. It starts from the closest atoms and refines the estimate with each wider sphere that has data, weighted by how many examples back it, and uses outlier-trimmed averages so a mis-assigned database entry can't drag a prediction off. On 2,089 structures held out of the table: median error 0.89 ppm for ¹³C and 0.10 ppm for ¹H (mean 2.3 and 0.25 ppm); for "high" confidence atoms 0.45 and 0.06 ppm. Run `python -m app.nmrdata --benchmark <file.sd>` to reproduce this. A CH₂ next to a stereocentre is listed as two diastereotopic protons that can match separate signals. **It learns from your lab:** check the assignments in the panel (change any with its menu) and *Confirm*; once the experiment is signed, those shifts are used on top of NMRShiftDB2 for the same atom environments in future predictions (marked *lab*), and withdrawing or voiding takes them back out. Auto-analysis also uses the prediction so a product's own signals aren't mistaken for residual solvent. Benchtop checks for a newer NMRShiftDB2 export every 30 days and rebuilds the table on your computer when there is one (Admin → *Update now*, or `./benchtop update-nmr-data`). Second-order effects aren't modelled; it's a check, not a substitute for assigning. |
 | **Spectrum checks** | Auto-analysis flags residual lab solvents (EtOAc, hexane, acetone, DCM, Et₂O, THF, MeOH, toluene, DMF, Et₃N, silicone grease and more, from the Fulmer 2010 tables for CDCl₃, DMSO-d₆ and CD₃OD) only when every one of their signals is present, and reports each as mol% and wt% with an overall purity estimate. A checks panel compares the spectrum with the drawn product: total ¹H integral vs. the formula (allowing for exchangeable OH/NH), number of signals vs. symmetry-distinct H environments, ¹³C peaks vs. unique carbons, and warns when a minor set of signals looks like a second compound. *Compare* overlays up to four other spectra (starting material, crude, a reference), stacked or overlaid, and the overlay is saved with the record. |
 | **HRMS helper** | On HRMS/MS items, pick the adduct ([M+H]⁺, [M+Na]⁺, [M+K]⁺, [M+NH₄]⁺, M⁺, [M−H]⁻), get the calculated m/z from the product structure (monoisotopic, electron mass corrected), type the found value and see the error in ppm; *Use* writes the standard `calcd for … ; found …` line. |
+| **Instrument folders** | Point Benchtop at the folders your instruments save to (*Admin → Instruments*): a local folder, a mounted network drive, or OneDrive/Dropbox, one per instrument. A file or dataset whose name, folder or title carries an experiment number (`EXP-00042`) or a sample code (`JL-013`) is attached to that draft's *Instrument data* section once it has finished copying, and its author is notified. Bruker and Agilent/Varian NMR datasets arrive as one zip each (Bruker spectra open in the viewer straight away); LC-MS, HPLC and GC vendor data (Agilent/Bruker `.D`, Waters and Thermo `.raw`, Sciex `.wiff`, Shimadzu, mzML) is stored as it is, up to 2 GB per run, with any PDF or CSV report alongside. Benchtop only reads these folders, never moves or deletes anything, and what was already there when a folder was added is left alone. |
+| **Inbox** | Anything Benchtop can't place with certainty (no number, two numbers, a code nobody handed out, a typo) waits in the Inbox with a plain note saying why; it never guesses. Assign it to a draft in one click, or set it aside. Each person only sees what the sharing rules allow: files that name an experiment are shown to the people who can read it, a code's unknown number only to its owner, and unmatched files to everyone or to the groups an admin chose for that instrument. A file that landed in the wrong draft goes back with *Not mine*. |
+| **Sample codes & follow-ups** | Everyone picks their initials once (*Account → Sample codes*); *New sample code* on an experiment hands out the next number (`JL-013`) to write on the vial and type as the instrument's sample name. Signed records are never changed: results that come back later (HRMS, elemental analysis) go into a *follow-up*, a new draft linked to the signed record both ways, made from the Inbox or the record's page. |
 | **Dashboard** | The home page is a grid of widgets you arrange yourself: work lists (waiting for my witness signature, with what you've been asked to witness first and overdue ones marked; my records waiting for a witness; returned to me with the reason, my open experiments, recently edited, pinned), quick actions, sticky notes and section headings, a yield-over-time chart (click a point to open the experiment), this month's activity, recent spectra, and inventory alerts (lots below 20 % of what was received, or expiring within 30 days). *Customise* lets you drag, resize, add and remove widgets; the layout is saved to your account. Pin any experiment from its page. On a phone the widgets stack in one column. |
 | **Write-up drafts** | *Draft write-up* composes an SI-style experimental paragraph from the reaction table, conditions, work-up and characterisation (amounts with sensible significant figures, mol% for catalysts, yield). It never guesses: anything missing is listed instead. Copy as rich text or add it as a section. |
 | **Obsidian export** | Every experiment as a Markdown note with Dataview-ready front matter (status, product, yield, temperature, time…), the scheme as SVG, tables and attachments. `./benchtop export-obsidian <folder>` or set `BENCHTOP_OBSIDIAN_DIR` to sync hourly; an index note includes a ready-made Dataview table. |
@@ -171,6 +174,63 @@ For a shared server, run Postgres instead of SQLite: `docker compose --profile p
 and set `BENCHTOP_DATABASE_URL` as shown in `docker-compose.yml`. Put it behind HTTPS (Caddy,
 nginx, Tailscale) before anyone uses it over a network.
 
+## Instrument data: using it well
+
+Getting data from the NMR or the LC-MS into the right experiment without uploading anything by hand works best
+with a few habits.
+
+**Setting it up (an admin, once per instrument).**
+
+1. **One folder per instrument, as small as possible.** On a departmental NMR, choose your group's own subfolder,
+   not the whole data drive: it's quicker to look through every minute, and other groups' file names stay out of
+   your Inbox.
+2. **Choose the right type.** *Bruker NMR* and *Agilent / Varian NMR* keep each dataset together as one zip;
+   *LC-MS, HPLC or GC* keeps vendor data (`.D`, `.raw`, `.wiff`) together; *Any files* is for instruments that
+   export single files (IR, UV, PDF reports).
+3. **Use *Check folder* before saving.** It shows what Benchtop would do with the newest files, without doing it.
+   If most of them would go to the Inbox, sort out the naming first (see below).
+4. **Say who sees unmatched files.** For a shared instrument, limit it to your group: file names can give away
+   compounds and projects.
+5. **Match the quiet time to how files arrive.** Benchtop waits until nothing has changed for this long, so it
+   never takes half a file. 2 minutes suits NMR on a network drive; 5 minutes suits LC-MS runs, which keep writing
+   while they acquire; make it 10 minutes or more for OneDrive or slow USB copies.
+6. **Leave "only new files" on**, unless you really want older data. Then pick a start date and check the count
+   in *Check folder* first: ten years of departmental NMR data would flood the Inbox.
+7. **Give Benchtop read-only access** where you can (a read-only share or mount). It never changes anything,
+   but read-only means it can't, even by mistake.
+8. **Pause rather than remove** an instrument that's offline for a while (a service visit). Removing stops
+   watching for good, though everything it already brought in stays.
+
+**Every day (everyone).**
+
+1. **Choose your initials once**, in *Account → Sample codes* (e.g. `JL`).
+2. **Before you go to the instrument, click *New sample code*** on the experiment. Write the code on the vial
+   (`JL-013`) and type it as the sample name in TopSpin, IconNMR, VnmrJ or the LC software. Adding a date is
+   fine (`JL-013-20261021`). Typing the experiment number (`EXP-00042`) works too.
+3. **Use one code per sample, not per experiment.** The crude and the purified product get their own codes;
+   both can belong to the same experiment. Never give the same code to two experiments.
+4. **Keep the separator.** `JL-013`, `JL_013` and `JL 013` are understood; `jl13` isn't, on purpose, so a
+   stray "jl13" in a file name can't attach data to the wrong record.
+5. **Look at the Inbox when its number appears in the menu.** Files wait there with a reason. Assign each one
+   rather than downloading and uploading it again: the record then shows where it came from.
+6. **Use *Not mine*** if someone else's spectrum lands in your experiment (a mistyped number). It goes back to the
+   Inbox for its owner, and the audit trail records why.
+7. **Sign once the data is in.** Files that arrive for a signed record are never added to it. Late results
+   (HRMS, elemental analysis) go into a *follow-up*, which stays linked to the original.
+8. **Don't rename or reorganise files in a watched folder afterwards.** A renamed file is a new file to Benchtop
+   and arrives again. Reprocessing a dataset (in TopSpin, say) also arrives again, as a new version next to
+   the first, so both are kept.
+
+**Space and backups.** Instrument data is copied into Benchtop's data folder, so check the disk has room:
+NMR is small (about a megabyte per ¹H dataset), but LC-MS runs can be hundreds of MB each. Backups keep each file
+**once**, in the `benchtop-files` folder next to the backup zips, so they grow by about the same amount. When you
+copy or move backups, take that folder too. For a second copy of a busy lab's data, an external drive is a better
+fit than the free iCloud plan. Runs bigger than 2 GB wait in the Inbox unless you raise
+`BENCHTOP_INSTRUMENT_MAX_MB`; very large high-resolution MS data can also simply stay on the instrument's drive.
+
+**On a lab server** the feature works unchanged: mount each instrument share on the server (read-only) and use
+those paths. [docs/SERVER.md](docs/SERVER.md#instrument-folders) has the steps for a Mac, OneDrive and Docker.
+
 ## Development
 
 ```bash
@@ -220,6 +280,8 @@ covers. A Benchtop that finds data from a newer version refuses to start rather 
 | `BENCHTOP_SMTP_HOST`, `_PORT`, `_SECURITY`, `_USER`, `_PASSWORD`, `_FROM` | (set in Admin → Email) | Email server; when set here, the app shows them as fixed |
 | `BENCHTOP_TIMESTAMPS` | `on` | `off` turns trusted timestamps off |
 | `BENCHTOP_TSA_URL` | `http://timestamp.digicert.com` | RFC 3161 timestamp service |
+| `BENCHTOP_INSTRUMENT_SCAN_SECONDS` | `60` | How often instrument folders are looked through; `0` turns watching off |
+| `BENCHTOP_INSTRUMENT_MAX_MB` | `2048` | Largest instrument arrival copied in; bigger ones wait in the Inbox |
 | `BENCHTOP_PORT` | `8000` | Port used by `./benchtop` |
 | `BENCHTOP_OBSIDIAN_DIR` | unset | Vault folder to sync Markdown notes into every hour |
 | `BENCHTOP_PUBCHEM` | `on` | `off` stops all PubChem lookups (works fully offline with whatever was fetched before) |
@@ -258,8 +320,11 @@ backend/   FastAPI + SQLModel + RDKit
   app/nmrdata.py    NMRShiftDB2 download and rebuild (also a CLI)
   app/data/         bundled NMR shift table and its licence
   app/access.py     who can see and edit what (groups, notebook visibility, shares), used by every route
+  app/instruments.py instrument folders: watching, settling, packing, matching, the Inbox's visibility rules
+  app/samples.py    sample codes (JL-013): prefixes, numbering, finding codes in file names
   app/routers/      auth, sso, experiments (+signing, export), groups (+sharing), comments (+notifications),
-                    materials, chemistry, search, reactions (+similar), admin
+                    materials, chemistry, search, reactions (+similar), admin, instruments (+Inbox, follow-ups),
+                    samples
   tests/            API tests incl. signature tamper detection and audit-chain tamper detection
 ```
 
@@ -293,6 +358,9 @@ Tokens, webhooks (Slack, Teams, or signed JSON for your own code) and examples i
 - **First-run safety**: until setup is done, the built-in admin/admin login can't be used, and setup can only be completed from the computer Benchtop runs on, so nobody else on a shared network can claim the admin account.
 - **Phone hand-off**: the QR code carries a random one-time code that works once, for 5 minutes, and opens a separate session you can end from Account settings; API tokens can't create one.
 - **API tokens and webhooks**: tokens are stored only as SHA-256 hashes, can be read-only and expire, and can never sign records or change accounts or settings; webhook requests are signed (HMAC-SHA256) and carry identifiers, never record content. Plugin files contain no code and are checked before they load.
+- **Instrument folders** are only ever read. Links (symlinks) inside them are never followed, so someone who can
+  write to an instrument share can't make Benchtop copy a file from elsewhere on the computer. Inbox items follow
+  the sharing rules, and once a file is attached it is only reachable by people who can read that record.
 - **Browser protections**: a Content Security Policy (only Benchtop's own scripts run; pages can't be framed by other sites), `nosniff`, no referrer leaks, and API responses that aren't cached.
 - Report security problems privately as described in [SECURITY.md](SECURITY.md).
 
@@ -307,10 +375,10 @@ that work.
 
 ## Roadmap ideas
 
-- Next: instrument drop folders that attach files to the right experiment, compound and batch registration with a route view, phone barcode scanning for lots and samples, `.eln` import/export (ELN Consortium format), DOI references, a full-text search index for very large notebooks
+- Next: compound and batch registration with a route view, phone barcode scanning for lots and samples, `.eln` import/export (ELN Consortium format), DOI references, a full-text search index for very large notebooks
 - Code plugins (Python packages with hooks, extra pages and widgets), building on today's plugin files
 - Plate/sample-set entities and a sample-tracking view
-- Varian/JEOL raw FIDs, 2D NMR, and mzML for MS
+- Viewing Varian/JEOL raw FIDs (stored today, not yet opened in the viewer), 2D NMR, and mzML for MS
 - PDF/A archiving with an embedded signature manifest (today's PDF export is a regular PDF)
 
 ## Licence
