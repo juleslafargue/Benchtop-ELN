@@ -1058,6 +1058,8 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 .pic-viewer-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-img.missing { color: var(--ink-3); font-size: 13px; }
 .stale-note { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin: 0; }
+.update-note { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin: 0; border-left: 3px solid var(--accent); }
+.update-note code { white-space: nowrap; }
 .usual { margin-bottom: 12px; }
 .usual-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .usual-chip { font-size: 13px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--rule-strong); background: var(--paper); cursor: pointer; color: var(--ink); }

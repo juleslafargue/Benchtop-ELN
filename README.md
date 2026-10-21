@@ -122,7 +122,8 @@ to be running.
 ```bash
 ./benchtop status               # running? which version? where is the data?
 ./benchtop lab                  # share it with labmates on the same network
-./benchtop upgrade NEW.zip      # backs up, swaps in the new version, keeps your data
+./benchtop update               # install the newest version (see Updating, below)
+./benchtop rollback             # go back to the version from before the last update
 ./benchtop backup | backups | restore FILE
 ./benchtop check                # is everything intact? (database, audit trail, signed records, files)
 ./benchtop seed                 # demo data
@@ -130,6 +131,33 @@ to be running.
 ./benchtop update-nmr-data      # rebuild the NMR shift table from the latest NMRShiftDB2 export
 ./benchtop update-nmr-data FILE.sd   # …or from a nmrshiftdb2withsignals.sd you downloaded
 ```
+
+### Updating
+
+When a new version is out, the administrator's dashboard says so (Benchtop looks at its GitHub Releases page
+once a day; it never installs anything by itself). To update, close Benchtop's window, then in Terminal, in the
+Benchtop folder:
+
+```bash
+./benchtop update        # shows what's new and asks; then backs up, updates and gets everything ready
+./benchtop rollback      # if something isn't right: back to the version you had, your data as it is
+```
+
+`update` refuses while Benchtop is running, and changes nothing if the backup fails or the download is damaged.
+It works for both kinds of install: a copy cloned from GitHub (it moves to the newest *release*, so you only
+get versions that passed all the automatic tests; GitHub Desktop stays in step) and an unzipped release (it
+downloads the new zip and checks its fingerprint). Your data, settings and backups are never touched, nor
+anything else you keep in the Benchtop folder. `./benchtop update --check` only looks.
+
+Rolling back keeps your data as it is now, so nothing you recorded after the update is lost. Most updates
+don't change how the data is stored; if one did, `rollback` says so and offers the backup made just before
+the update instead (which would bring back the data as it was then).
+
+Versions before 0.19 don't have `update` yet. Once: with a GitHub clone, *Fetch origin* then *Pull origin* in
+GitHub Desktop (or `git pull`); with a zip, download `benchtop-eln-vX.Y.Z.zip` from the
+[Releases page](https://github.com/juleslafargue/benchtop-eln/releases) and run
+`./benchtop upgrade ~/Downloads/benchtop-eln-vX.Y.Z.zip`. A lab server updates with one command too:
+`deploy/update-server.sh` (docs/SERVER.md).
 
 Backups are automatic: one on start-up if the newest is more than a day old, then daily while running,
 keeping the newest 14. Each is a zip with a consistent database snapshot and the audit trail's latest
@@ -290,6 +318,8 @@ covers. A Benchtop that finds data from a newer version refuses to start rather 
 | `BENCHTOP_PUBCHEM` | `on` | `off` stops all PubChem lookups (works fully offline with whatever was fetched before) |
 | `BENCHTOP_SAFETY_REFRESH_DAYS` | `30` | Safety data older than this is re-checked by the hourly housekeeping |
 | `BENCHTOP_NMR_AUTO_UPDATE` | `on` | `off` stops the monthly check for a newer NMRShiftDB2 export (the bundled table is still used) |
+| `BENCHTOP_UPDATE_CHECK` | `on` | `off` stops the daily look at GitHub for a newer Benchtop (`./benchtop update` still works when you run it) |
+| `BENCHTOP_UPDATE_URL` | this repository's releases | The GitHub releases address (`https://api.github.com/repos/OWNER/REPO/releases`) a fork's copies check |
 | `BENCHTOP_OIDC_ISSUER` / `_CLIENT_ID` / `_CLIENT_SECRET` | unset | Single sign-on with any OpenID Connect provider (see docs/SERVER.md) |
 | `BENCHTOP_OIDC_NAME` | from the issuer | Sign-in button label, e.g. `Microsoft`, `UTORid` |
 | `BENCHTOP_OIDC_ALLOWED_DOMAINS` | any | Comma-separated email domains allowed to sign in |
@@ -325,6 +355,8 @@ backend/   FastAPI + SQLModel + RDKit
   app/access.py     who can see and edit what (groups, notebook visibility, shares), used by every route
   app/instruments.py instrument folders: watching, settling, packing, matching, the Inbox's visibility rules
   app/samples.py    sample codes (JL-013): prefixes, numbering, finding codes in file names
+  app/updates.py    the daily "newer version?" look at GitHub Releases (also a CLI, used by ./benchtop update)
+  app/install.py    swaps program files for update/upgrade/rollback, never touching data or your own files
   app/routers/      auth, sso, experiments (+signing, export), groups (+sharing), comments (+notifications),
                     materials, chemistry, search, reactions (+similar), admin, instruments (+Inbox, follow-ups),
                     samples
@@ -338,7 +370,7 @@ Design notes:
   so stored numbers can't drift from what the engine would produce.
 - **Saves are versioned and conflict-checked.** Each section save sends the version it was based
   on; a stale save returns 409 instead of silently overwriting a colleague's edit.
-- **Upgrades are in place and versioned.** On start-up, new tables and columns are added, then any numbered upgrade steps the database hasn't had run in order (`app/migrations.py`). `./benchtop upgrade` backs up first, and an older Benchtop refuses data from a newer one.
+- **Upgrades are in place and versioned.** On start-up, new tables and columns are added, then any numbered upgrade steps the database hasn't had run in order (`app/migrations.py`). `./benchtop update` backs up first and keeps the previous version for `./benchtop rollback`, and an older Benchtop refuses data from a newer one. Releases are published by GitHub only after every automatic test passes (the `release` job in `deploy/github-tests.yml`, built by `deploy/release.py`).
 - **Nothing is hard-deleted.** Sections are soft-deleted with a final version; lots go to
   `empty`/`disposed`; experiments are voided.
 

@@ -14,6 +14,7 @@ concurrency:
 
 env:
   BENCHTOP_NMR_AUTO_UPDATE: "off"
+  BENCHTOP_UPDATE_CHECK: "off"
   BENCHTOP_PUBCHEM: "off"
 
 jobs:
@@ -109,6 +110,64 @@ jobs:
             echo "It started, but it should have refused"; cat guard.txt; exit 1
           fi
           grep -q "still in Postgres" guard.txt || { cat guard.txt; exit 1; }
+      - name: The server updates to a newer release, and goes back (deploy/update-server.sh)
+        run: |
+          git checkout -q -B main
+          before=$(sed -nE 's/^__version__ = "([^"]+)".*/\1/p' backend/app/__init__.py)
+          # pretend a newer release is out: a commit with a higher version, tagged as releases are
+          sed -i -E 's/^__version__ = ".*"/__version__ = "99.0.0"/' backend/app/__init__.py
+          git -c user.name=CI -c user.email=ci@example.invalid commit -qam "v99.0.0: pretend release"
+          git tag v99.0.0
+          git reset -q --hard HEAD~1
+          n=$(ls deploy/backups/benchtop-backup-*.zip | wc -l)
+          deploy/update-server.sh --yes
+          v() { $DC exec -T app python -c "import json, urllib.request; print(json.load(urllib.request.urlopen('http://localhost:8000/api/health'))['version'])"; }
+          test "$(v)" = 99.0.0
+          test "$(ls deploy/backups/benchtop-backup-*.zip | wc -l)" -gt "$n"   # it backed up first
+          deploy/update-server.sh --rollback --yes
+          test "$(v)" = "$before"
       - name: Server log (if anything failed)
         if: failure()
         run: $DC logs app
+
+  release:
+    # When main has a version number with no release yet, and every test above passed: publish it on the Releases
+    # page, with notes from the commits and a ready-to-run zip (interface built, so no Node needed). That's what
+    # ./benchtop update, deploy/update-server.sh and the admin's "newer version" notice look for.
+    name: Publish a release (when the version changed on main)
+    needs: [backend, frontend, browser, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Is this version released yet?
+        id: v
+        run: |
+          v=$(sed -nE 's/^__version__ = "([^"]+)".*/\1/p' backend/app/__init__.py)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+            echo "new=no" >> "$GITHUB_OUTPUT"; echo "v$v is already released; nothing to do."
+          else
+            echo "new=yes" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v4
+        if: steps.v.outputs.new == 'yes'
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - name: Build the zip and the notes
+        if: steps.v.outputs.new == 'yes'
+        run: python3 deploy/release.py --out release
+      - name: Publish
+        if: steps.v.outputs.new == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          gh release create "v$V" "release/benchtop-eln-v$V.zip" --title "Benchtop $V" \
+            --notes-file release/notes.md --target "$GITHUB_SHA"

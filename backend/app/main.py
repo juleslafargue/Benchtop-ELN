@@ -85,6 +85,13 @@ async def _housekeeping_loop() -> None:
         except Exception:
             log.exception("NMR data update failed")
         try:
+            from . import updates
+            u = await asyncio.to_thread(updates.maybe_check)
+            if u and u["available"]:
+                log.info("Benchtop %s is available (this is %s)", u["available"]["version"], u["current"])
+        except Exception:
+            log.exception("Update check failed")
+        try:
             res = await asyncio.to_thread(_refresh_safety)
             if res and res["checked"]:
                 log.info("Safety data: %s checked, %s changed", res["checked"], res["changed"])

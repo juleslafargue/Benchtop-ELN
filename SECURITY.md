@@ -11,8 +11,9 @@ maintainer. Include what you found, how to reproduce it, and which version you t
 
 ## Supported versions
 
-Only the latest release gets security fixes. Upgrading keeps your data
-(`./benchtop upgrade NEW.zip` backs up first).
+Only the latest release gets security fixes. The administrator's dashboard says when one is out, and
+updating keeps your data (`./benchtop update` backs up first; `./benchtop rollback` undoes it; a lab
+server uses `deploy/update-server.sh`).
 
 ## Running it safely
 

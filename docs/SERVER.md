@@ -60,7 +60,7 @@ for something like `eln.yourlab.ca`). Ports 80 and 443 must be reachable; Caddy 
 the HTTPS certificate by itself.
 
 ```bash
-git clone <your Benchtop repository> benchtop && cd benchtop
+git clone https://github.com/juleslafargue/benchtop-eln.git benchtop && cd benchtop
 cp deploy/server.env.example deploy/.env
 nano deploy/.env          # domain, passwords (openssl rand -hex 32), single sign-on if you want it
 docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env up -d --build
@@ -83,8 +83,25 @@ Two more things to do once:
 To restore on a server: `docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env stop app`,
 then `docker compose … run --rm app python -m app.backup restore /backups/<file>.zip`, then start it again.
 
-To upgrade: `git pull` (or unzip the new version over the folder, keeping `deploy/.env`), then run the
-same `docker compose … up -d --build` command.
+### Updating
+
+The admin's dashboard says when a new version is out. On the server, in the Benchtop folder:
+
+```bash
+deploy/update-server.sh            # shows what's new and asks; then backs up, updates, rebuilds, restarts, checks
+deploy/update-server.sh --rollback # back to the version from before the last update (the data stays as it is)
+```
+
+It backs up with the version that's running (so the backup is one both versions can restore), moves to the
+newest release (tagged on GitHub only once every automatic test has passed, including a real update and
+rollback of this setup), rebuilds the image and waits until the new version answers. Benchtop is unavailable
+for the minute or two of the restart, so pick a quiet moment. If the new version doesn't come up, it says
+so and shows the log; `--rollback` goes back. `--check` only looks; `--yes` doesn't ask (for a scheduled job).
+
+It needs a Git clone of the repository (the `git clone` above). A server set up from a zip: unzip the
+new version over the folder (keeping `deploy/.env`), then run the same `docker compose … up -d --build` command.
+With the Postgres setup, take a `pg_dump` first, then
+`BENCHTOP_COMPOSE_FILE=deploy/docker-compose.server-postgres.yml deploy/update-server.sh --no-backup`.
 
 ### Postgres (advanced)
 

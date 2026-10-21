@@ -21,9 +21,10 @@ interface DashData {
   stats: { this_month: number; last_month: number; witnessed_this_month: number; yields: YieldPoint[] }
   spectra: { id: number; filename: string; experiment_id: number; eid: string; title: string; created_at: string }[]
   stale_days?: number
-  system?: { backup_warnings: string[] }
+  system?: { backup_warnings: string[]; update?: UpdateInfo | null }
   inventory: { low: InvRow[]; expiring: (InvRow & { expires_at: string; expired: boolean })[]; safety_changes?: { material_id: number | null; material: string; changed_at: string; change: { added: string[]; removed: string[] } | null }[]; low_fraction: number; expiry_days: number }
 }
+interface UpdateInfo { current: string; available: { version: string; name: string; url: string }; versions_behind: number; command: string; where: string }
 interface InvRow { lot_id: number; barcode: string; material_id: number; material: string; amount: number; unit: string; location: string; fraction?: number }
 
 const LIST_TITLES: Record<ListKind, string> = {
@@ -209,6 +210,7 @@ export default function Dashboard() {
       </div>
       {(data?.system?.backup_warnings?.length ?? 0) > 0 && <div className="notice dash-warning" role="status">
         <b>Backups:</b> {data!.system!.backup_warnings.join(' ')} <Link to="/admin">Open Admin → Backups</Link></div>}
+      {data?.system?.update && <UpdateNotice info={data.system.update} />}
       {(data?.lists.stale?.length ?? 0) > 0 && !quietDismissed && <div className="notice stale-note" role="status">
         <span><b>{data!.lists.stale.length} draft{data!.lists.stale.length === 1 ? '' : 's'}</b> untouched for {data!.stale_days ?? 14}+ days: {data!.lists.stale.slice(0, 3).map((e, i) =>
           <span key={e.id}>{i > 0 && ', '}<Link to={`/experiments/${e.id}`}>{e.eid}</Link> <span className="faint">{e.title.length > 40 ? e.title.slice(0, 40) + '…' : e.title}</span></span>)}
@@ -245,4 +247,22 @@ export default function Dashboard() {
       {newNb && <NewNotebookDialog onClose={() => setNewNb(false)} />}
     </div>
   )
+}
+
+
+// The admin's "a newer Benchtop is out" line. Benchtop never updates itself: it says how, and the command backs up first.
+// "Not now" hides it until the next version comes out (remembered in this browser only).
+function UpdateNotice({ info }: { info: UpdateInfo }) {
+  const key = 'benchtop.update-hidden'
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === info.available.version } catch { return false } })
+  if (hidden) return null
+  const v = info.available.version
+  return <div className="notice update-note" role="status">
+    <span><b>Benchtop {v} is available</b> (you have {info.current}{info.versions_behind > 1 ? `; ${info.versions_behind} versions behind` : ''}).{' '}
+      {info.available.url && <><a href={info.available.url} target="_blank" rel="noreferrer">What's new</a>. </>}
+      {info.command
+        ? <>To update, {info.where}, run <code>{info.command}</code>. It makes a backup first and can be undone.</>
+        : <>The README explains how to update; it keeps your data.</>}</span>
+    <button className="btn ghost sm" onClick={() => { setHidden(true); try { localStorage.setItem(key, v) } catch { /* ok */ } }}>Not now</button>
+  </div>
 }

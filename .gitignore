@@ -13,3 +13,5 @@ backend/.venv/
 /deploy/.env
 /deploy/backups/
 frontend/*.tsbuildinfo
+/.benchtop-previous/
+/deploy/.previous-version

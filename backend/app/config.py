@@ -45,6 +45,12 @@ class Settings:
         self.safety_refresh_days = float(os.environ.get("BENCHTOP_SAFETY_REFRESH_DAYS", "30"))
         # NMR shift table: re-check NMRShiftDB2 monthly and rebuild when it publishes a newer export
         self.nmr_auto_update = os.environ.get("BENCHTOP_NMR_AUTO_UPDATE", "on").lower() not in ("0", "off", "false", "no")
+        # Newer versions: look at Benchtop's GitHub releases once a day and tell the admin (never installs anything).
+        # BENCHTOP_UPDATE_URL points the check at a fork's releases instead.
+        self.update_check = os.environ.get("BENCHTOP_UPDATE_CHECK", "on").lower() not in ("0", "off", "false", "no")
+        self.update_url = os.environ.get("BENCHTOP_UPDATE_URL", "https://api.github.com/repos/juleslafargue/benchtop-eln/releases")
+        # how this copy was installed (set by ./benchtop and the Docker image), so the notice names the right command
+        self.install_kind = os.environ.get("BENCHTOP_INSTALL", "")
         # Single sign-on (OpenID Connect): Microsoft Entra ID / Microsoft 365, Google Workspace, Okta,
         # Keycloak, a university IdP… Register Benchtop there with the redirect URI
         # <public URL>/api/auth/sso/callback and set these three to switch it on.

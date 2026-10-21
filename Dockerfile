@@ -9,7 +9,8 @@ RUN npm run build
 # --- API + static files
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    BENCHTOP_DATA_DIR=/data BENCHTOP_STATIC_DIR=/app/static BENCHTOP_BUNDLED_PLUGINS_DIR=/app/plugins
+    BENCHTOP_DATA_DIR=/data BENCHTOP_STATIC_DIR=/app/static BENCHTOP_BUNDLED_PLUGINS_DIR=/app/plugins \
+    BENCHTOP_INSTALL=docker
 WORKDIR /app
 # RDKit's drawing code needs X rendering libraries and expat, which the slim image leaves out; without them
 # Benchtop can't start (checked by the "Lab-server setup" job in the tests: ldd lists nothing else missing)

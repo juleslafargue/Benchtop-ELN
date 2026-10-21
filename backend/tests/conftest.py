@@ -13,6 +13,7 @@ os.environ["BENCHTOP_PUBCHEM"] = "off"  # tests inject a mock PubChem
 os.environ["BENCHTOP_TIMESTAMPS"] = "off"  # no calls to real timestamp services; tests switch on a fake one
 os.environ["BENCHTOP_NMR_AUTO_UPDATE"] = "off"  # no NMRShiftDB2 download at start-up (tests build their own table)
 os.environ["BENCHTOP_INSTRUMENT_SCAN_SECONDS"] = "0"  # tests look at instrument folders explicitly (instruments.scan_all)
+os.environ["BENCHTOP_UPDATE_CHECK"] = "off"  # no calls to GitHub; tests feed releases in themselves
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402
