@@ -396,7 +396,8 @@ def export(session: Session, user: User, exps: Iterable[Experiment], out: Path, 
         crate.write_bytes("ro-crate-preview.html", preview)
         root_node = {"@id": "./", "@type": "Dataset", "conformsTo": [_ref(CRATE), _ref(ELN_SPEC)], "name": f"{root}.eln",
                      "description": description or f"{len(exps)} experiment{'s' if len(exps) != 1 else ''} exported from Benchtop ELN",
-                     "datePublished": now, "license": None, "hasPart": parts}
+                     "datePublished": now, "license": None, "hasPart": parts,
+                     "mentions": _ref("#export")}  # how this export was made (RO-Crate: the root mentions its actions)
         graph = [crate.graph.pop("ro-crate-metadata.json"), _clean(root_node), *crate.graph.values()]
         meta = json.dumps({"@context": CONTEXT, "@graph": graph}, ensure_ascii=False, indent=1).encode()
         crate.write_bytes("ro-crate-metadata.json", meta)
