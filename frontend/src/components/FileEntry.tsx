@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { api, downloadAuthed, type Attachment } from '../api'
 import { useApp } from '../App'
 import type { EntryEditorProps } from './EntryCard'
-import { hydrogensInFormula, SPECTRUM_EXT } from '../spectra'
+import { hydrogensInFormula } from '../spectra'
+import { canViewSpectrum } from '../viewable'
 import SpectrumViewer, { type SavedAnalysis } from './SpectrumViewer'
 
 function ImagePreview({ att }: { att: Attachment }) {
@@ -67,7 +68,7 @@ export default function FileEntry({ content, onChange, readOnly, experimentId, a
           {mine.map(a => (
             <li key={a.id} style={{ flexWrap: 'wrap' }}>
               <span className="grow"><b style={{ fontWeight: 600 }}>{a.filename}</b> <span className="faint">{size(a.size)} · sha256 {a.sha256.slice(0, 12)}…</span></span>
-              {SPECTRUM_EXT.test(a.filename) && <button className={`btn sm${viewing === a.id ? ' primary' : ''}`} onClick={() => setViewing(viewing === a.id ? null : a.id)}>{viewing === a.id ? 'Hide spectrum' : 'View spectrum'}</button>}
+              {canViewSpectrum(a) && <button className={`btn sm${viewing === a.id ? ' primary' : ''}`} onClick={() => setViewing(viewing === a.id ? null : a.id)}>{viewing === a.id ? 'Hide spectrum' : 'View spectrum'}</button>}
               <button className="btn sm" onClick={() => downloadAuthed(`/api/attachments/${a.id}`, a.filename)}>Download</button>
               {!readOnly && a.from_instrument && <button className="btn ghost sm" onClick={() => notMine(a)} title="It isn't this experiment's: send it back to the Inbox">Not mine</button>}
               {!readOnly && !a.from_instrument && <button className="btn ghost sm" onClick={() => onChange({ ...content, attachment_ids: ids.filter(i => i !== a.id) })}>Unlink</button>}

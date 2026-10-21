@@ -92,7 +92,29 @@ _lock = threading.Lock()  # one backup at a time in this server (two clicks, or 
 
 def create_backup(reason: str = "manual") -> dict[str, Any]:
     with _lock:
-        return _create_backup(reason)
+        try:
+            out = _create_backup(reason)
+        except Exception as exc:  # recorded so the admin dashboard says why, not just that backups are getting old
+            _note_failure(exc)
+            raise
+        _note_failure(None)
+        return out
+
+
+def _note_failure(exc: BaseException | None) -> None:
+    import errno
+    if exc is None:
+        if load_state().get("last_failure"):
+            _save_state(last_failure=None)
+        return
+    if isinstance(exc, OSError) and exc.errno == errno.ENOSPC:
+        msg = "the disk is full. Free some space (or choose a backup folder on a bigger disk)."
+    else:
+        msg = str(exc) or exc.__class__.__name__
+    try:
+        _save_state(last_failure={"at": datetime.now(timezone.utc).isoformat(), "error": msg})
+    except OSError:  # a full disk can't take the note either; the log still has it
+        pass
 
 
 def _create_backup(reason: str) -> dict[str, Any]:
@@ -444,7 +466,9 @@ def health() -> dict[str, Any]:
                         "another one (Postgres). Back up the database with pg_dump and copy the attached files yourself; "
                         "see “Postgres (advanced)” in docs/SERVER.md.")
     elif settings.backup_interval_hours > 0:
-        if newest is None:
+        if st.get("last_failure"):
+            warnings.append(f"The last backup failed: {st['last_failure']['error']}")
+        if newest is None and not st.get("last_failure"):
             warnings.append("No backups yet.")
         elif age_h is not None and age_h > max(72, settings.backup_interval_hours * 3):
             warnings.append(f"The newest backup is {age_h / 24:.0f} days old.")
@@ -484,7 +508,23 @@ def prune(keep: int | None = None) -> None:
     keep = settings.backup_keep if keep is None else keep
     for b in list_backups()[keep:]:
         Path(b["path"]).unlink(missing_ok=True)
+    _clear_leftovers()
     _collect_garbage(settings.backup_dir, [Path(b["path"]) for b in list_backups()])
+
+
+def _clear_leftovers() -> None:
+    """Pieces an interrupted backup or restore leaves behind (Benchtop stopped, the Mac turned off): a database
+    snapshot can be as big as the database, so they're removed once they're a day old."""
+    cutoff = time.time() - 86400
+    spots = [(settings.backup_dir, (".snapshot-*", f".{PREFIX}*.part")), (settings.data_dir, (".restore-*",))]
+    for folder, patterns in spots:
+        for pat in patterns:
+            for p in folder.glob(pat) if folder.is_dir() else []:
+                try:
+                    if p.stat().st_mtime < cutoff:
+                        shutil.rmtree(p) if p.is_dir() else p.unlink()
+                except OSError:
+                    continue
 
 
 def restore(zip_path: str, allow_missing: bool = False) -> Path:

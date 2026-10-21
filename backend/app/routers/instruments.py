@@ -26,9 +26,9 @@ router = APIRouter(prefix="/api", tags=["instruments"])
 # ====================================================================== Admin → Instruments
 
 def instrument_out(session: Session, i: Instrument) -> dict[str, Any]:
-    counts: dict[str, int] = {}
-    for st in session.exec(select(InstrumentFile.state).where(InstrumentFile.instrument_id == i.id)):
-        counts[st] = counts.get(st, 0) + 1
+    from sqlalchemy import func
+    counts: dict[str, int] = dict(session.exec(select(InstrumentFile.state, func.count()).where(
+        InstrumentFile.instrument_id == i.id).group_by(InstrumentFile.state)).all())
     groups = [{"id": g.id, "name": g.name} for g in (session.get(LabGroup, gid) for gid in i.audience or []) if g]
     return {"id": i.id, "name": i.name, "kind": i.kind, "kind_label": instruments.KINDS.get(i.kind, i.kind),
             "folder": i.folder, "audience": groups, "settle_minutes": round(i.settle_seconds / 60, 2), "enabled": i.enabled,

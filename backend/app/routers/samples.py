@@ -24,6 +24,7 @@ class PrefixIn(BaseModel):
 def set_prefix(body: PrefixIn, user: CurrentUser, session: DB):
     """Choose (or clear) the start of your sample codes. Codes already handed out keep theirs."""
     from .auth import user_out
+    audit._take_write_lock(session)  # check-then-save as one step: two people can't claim the same initials at once
     if body.prefix in (None, ""):
         new = None
     else:

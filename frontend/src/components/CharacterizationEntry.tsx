@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, type Attachment } from '../api'
-import { hydrogensInFormula, SPECTRUM_EXT } from '../spectra'
+import { hydrogensInFormula } from '../spectra'
+import { canViewSpectrum } from '../viewable'
 import SpectrumViewer, { type SavedAnalysis } from './SpectrumViewer'
 import HrmsHelper from './HrmsHelper'
 import type { EntryEditorProps } from './EntryCard'
@@ -39,7 +40,7 @@ export default function CharacterizationEntry({ content, onChange, readOnly, exp
       const a = await api.post<Attachment>(`/api/experiments/${experimentId}/attachments`, fd)
       onAttachmentsChanged()
       patch(i, { attachment_id: a.id })
-      if (SPECTRUM_EXT.test(a.filename)) setOpen(i)
+      if (canViewSpectrum(a)) setOpen(i)
     } catch (e: any) { setUploadErr(`${f.name}: ${e.message}`) } finally { setUploading(null) }
   }
 
@@ -49,7 +50,7 @@ export default function CharacterizationEntry({ content, onChange, readOnly, exp
     <div className="char-list">
       {items.map((it, i) => {
         const att = attachments.find(a => a.id === it.attachment_id)
-        const viewable = att && SPECTRUM_EXT.test(att.filename)
+        const viewable = att && canViewSpectrum(att)
         const defaultCond = TECHNIQUES.find(t => t[0] === it.technique)?.[1]
         return (
           <div key={i} className={`char-card${open === i ? ' open' : ''}`}>

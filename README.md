@@ -200,6 +200,8 @@ with a few habits.
    but read-only means it can't, even by mistake.
 8. **Pause rather than remove** an instrument that's offline for a while (a service visit). Removing stops
    watching for good, though everything it already brought in stays.
+9. **Glance at Admin → Instruments now and then.** Each folder says when it was last checked, and in red if
+   something needs you: a disconnected drive, a file Benchtop isn't allowed to read, or a full disk.
 
 **Every day (everyone).**
 
@@ -218,8 +220,9 @@ with a few habits.
 7. **Sign once the data is in.** Files that arrive for a signed record are never added to it. Late results
    (HRMS, elemental analysis) go into a *follow-up*, which stays linked to the original.
 8. **Don't rename or reorganise files in a watched folder afterwards.** A renamed file is a new file to Benchtop
-   and arrives again. Reprocessing a dataset (in TopSpin, say) also arrives again, as a new version next to
-   the first, so both are kept.
+   and arrives again (Benchtop won't attach the same content to a record twice, but a renamed file can end up in
+   the Inbox). Reprocessing a dataset (in TopSpin, say) also arrives again, as a new version next to the first,
+   so both are kept.
 
 **Space and backups.** Instrument data is copied into Benchtop's data folder, so check the disk has room:
 NMR is small (about a megabyte per ¹H dataset), but LC-MS runs can be hundreds of MB each. Backups keep each file

@@ -108,7 +108,7 @@ def test_a_file_with_a_sample_code_goes_to_its_experiment(client, prefixed, note
     c = code(client, h, exp)["code"]
     n = int(c[3:])
     for name in (f"{c}-20261021 1H.jdx", f"qa_{n} HPLC.csv", f"QA {n:05d} IR.csv"):
-        arrive(folder, name)
+        arrive(folder, name, name.encode())  # different contents: identical files are only attached once
     assert sorted(files_of(client, h, exp)) == sorted([f"{c}-20261021 1H.jdx", f"qa_{n} HPLC.csv", f"QA {n:05d} IR.csv"])
 
 

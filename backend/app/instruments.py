@@ -20,6 +20,7 @@ Inbox shows each person only what they're allowed to see.
 """
 from __future__ import annotations
 
+import errno
 import hashlib
 import logging
 import mimetypes
@@ -375,34 +376,66 @@ def _set_section_ids(session: Session, e: Entry, ids: list[int], actor: User, ex
 
 def attach(session: Session, row: InstrumentFile, inst: Instrument, exp: Experiment, actor: User, rule: str) -> list[int]:
     """Attach an arrival's files to a draft experiment. Raises NotOpen if it's no longer a draft.
-    The caller commits; everything here is one transaction with its audit events."""
+    A file already in the record (the same content: renamed, or copied in twice) isn't added again.
+    Returns the ids of attachments added. The caller commits; it's one transaction with its audit events."""
     audit._take_write_lock(session)
     _claim_open(session, exp)
     session.refresh(exp)
-    ids = []
+    already = {a.sha256: a.id for a in session.exec(select(Attachment).where(
+        Attachment.experiment_id == exp.id, Attachment.withdrawn_at == None))}  # noqa: E711
+    ids, added = [], []
     for f in row.files:
+        if f["sha256"] in already:
+            ids.append(already[f["sha256"]])
+            continue
         a = Attachment(experiment_id=exp.id, filename=f["name"], content_type=f["content_type"], size=f["size"],
                        sha256=f["sha256"], uploaded_by=actor.id, instrument_file_id=row.id)
         session.add(a)
         session.flush()
         audit.record(session, actor, "upload", "attachment", a.id, experiment=exp.eid, filename=a.filename,
                      sha256=a.sha256, size=a.size, instrument=inst.name, path=row.path)
+        already[a.sha256] = a.id
         ids.append(a.id)
-    sec = instrument_section(session, exp, actor)
-    _set_section_ids(session, sec, [*(sec.content or {}).get("attachment_ids", []), *ids], actor, exp)
-    exp.updated_at = utcnow()
-    session.add(exp)
+        added.append(a.id)
+    if added:
+        sec = instrument_section(session, exp, actor)
+        _set_section_ids(session, sec, [*(sec.content or {}).get("attachment_ids", []), *added], actor, exp)
+        exp.updated_at = utcnow()
+        session.add(exp)
+    else:
+        rule = "duplicate"
+        row.note = f"The same file is already in {exp.eid}, so it wasn't added again."
     row.state, row.experiment_id, row.attachment_ids, row.rule = "attached", exp.id, ids, rule
     row.handled_at = utcnow()
     session.add(row)
     audit.record(session, actor, "instrument_attach", "experiment", exp.id, experiment=exp.eid, instrument=inst.name,
                  path=row.path, revision=row.revision, rule=rule, files=[f["sha256"] for f in row.files])
-    return ids
+    return added
 
 
 def notify(session: Session, user_id: int, text: str, experiment_id: Optional[int] = None, kind: str = "instrument") -> None:
     session.add(Notification(user_id=user_id, kind=kind, actor_id=system_user(session).id,
                              experiment_id=experiment_id, text=text))
+
+
+def notify_attached(session: Session, exp: Experiment, inst: Instrument, row: InstrumentFile) -> None:
+    """Tell the record's owner, once: while their notification is unread, later arrivals update it rather than
+    adding one per file (an LC sequence can bring hundreds)."""
+    since = utcnow() - timedelta(hours=12)
+    n = session.exec(select(Notification).where(Notification.user_id == exp.owner_id, Notification.kind == "instrument",
+                                                Notification.experiment_id == exp.id, Notification.read_at == None,  # noqa: E711
+                                                Notification.created_at >= since).order_by(Notification.id.desc())).first()
+    if n is None:
+        k = len(row.files)
+        session.add(Notification(user_id=exp.owner_id, kind="instrument", actor_id=system_user(session).id,
+                                 experiment_id=exp.id, created_at=row.handled_at or utcnow(),  # later runs count from here
+                                 text=f"attached {k} file{'s' if k != 1 else ''} from {inst.name} ({row.path}) to {exp.eid}"))
+        return
+    count = 1 + len(session.exec(select(InstrumentFile.id).where(  # this one isn't saved yet
+        InstrumentFile.experiment_id == exp.id, InstrumentFile.state == "attached", InstrumentFile.rule != "duplicate",
+        InstrumentFile.handled_at >= n.created_at, InstrumentFile.id != row.id)).all())
+    n.text = f"attached files from {count} instrument runs to {exp.eid} (the latest: {row.path} from {inst.name})"
+    session.add(n)
 
 
 # ====================================================================== who sees an Inbox item
@@ -430,29 +463,42 @@ def _utc(ts: float) -> datetime:
     return datetime.fromtimestamp(ts, timezone.utc).replace(tzinfo=None)
 
 
-def _handle(session: Session, row: InstrumentFile, inst: Instrument, p: Path) -> None:
-    """A settled arrival: store it, decide, attach or send to the Inbox. Reading the files comes first, so an
-    unreadable arrival (a sync still downloading it) raises OSError before anything is written."""
+def _handle(session: Session, row: InstrumentFile, inst: Instrument, p: Path, now: datetime) -> str:
+    """A settled arrival: copy it in, decide, attach or send to the Inbox, and commit.
+
+    The copying happens with no database transaction open, so a 2 GB run never holds up anyone's saves; the
+    database work afterwards is one short transaction. Unreadable files (a sync still downloading them) raise
+    OSError before anything is written. Returns what happened: handled | changed."""
     max_bytes = settings.instrument_max_mb * 1024 * 1024
     if row.size > max_bytes:
         row.state, row.files = "inbox", []
         row.note = (f"It's {row.size / 1e6:,.0f} MB, more than the {settings.instrument_max_mb:,} MB limit, so it wasn't "
                     "copied into Benchtop. Raise BENCHTOP_INSTRUMENT_MAX_MB, or keep it on the instrument drive.")
         session.add(row)
-        return
+        session.commit()
+        return "handled"
     files = pack(row.path, p, inst.kind)
+    after, size, _ = fingerprint(p)
+    if after != row.fingerprint:  # it was still being written after all: take it once it's quiet again
+        row.fingerprint, row.size, row.changed_at = after, size, now
+        session.add(row)
+        session.commit()
+        return "changed"
     extra = describe_text(p, inst.kind)
     row.files = files
     d = decide(session, row.path, extra)
     row.matched_ids = d.matched_ids
     if d.action == "attach" and d.experiment is not None:
         try:
-            attach(session, row, inst, d.experiment, system_user(session), d.rule)
-            n = len(row.files)
-            notify(session, d.experiment.owner_id, f"attached {n} file{'s' if n != 1 else ''} from {inst.name} "
-                   f"({row.path}) to {d.experiment.eid}", d.experiment.id)
-            return
+            added = attach(session, row, inst, d.experiment, system_user(session), d.rule)
+            if added:
+                notify_attached(session, d.experiment, inst, row)
+            session.commit()
+            return "handled"
         except NotOpen:
+            session.rollback()
+            row = session.get(InstrumentFile, row.id)
+            row.files = files
             d = Decision("inbox", f"Matched {d.experiment.eid}, but it was signed just before the files arrived, so "
                                   "they weren't attached. Attach them to a follow-up experiment.", matched_ids=[d.experiment.id])
             row.matched_ids = d.matched_ids
@@ -466,39 +512,52 @@ def _handle(session: Session, row: InstrumentFile, inst: Instrument, p: Path) ->
         if exp:
             notify(session, exp.owner_id, f"has a file from {inst.name} ({row.path}) for {exp.eid} waiting in your Inbox",
                    kind="inbox")
+    session.commit()
+    return "handled"
 
 
-def scan(session: Session, inst: Instrument, now: Optional[datetime] = None) -> dict[str, int]:
-    """Look at one folder once. Returns counts of what happened."""
+def scan(session: Session, inst: Instrument, now: Optional[datetime] = None) -> dict[str, Any]:
+    """Look at one folder once. Returns counts of what happened, and any arrivals that couldn't be read.
+
+    Two phases, so nothing is held for long: first note what's there (committed in batches: a first look at a
+    departmental drive with tens of thousands of files mustn't lock the database), then handle each arrival
+    that has been quiet long enough, each in its own short transaction."""
     now = now or utcnow()
     root = Path(inst.folder)
-    counts = {"seen": 0, "new": 0, "handled": 0, "errors": 0}
+    counts: dict[str, Any] = {"seen": 0, "new": 0, "handled": 0, "errors": 0, "problems": []}
     if not root.is_dir():
         raise FileNotFoundError(f"{root} isn't there. If it's a network or external drive, check it's connected.")
     first = inst.baseline_at is None  # the first look: whatever is there already is noted, not taken
     quiet = timedelta(seconds=inst.settle_seconds)
+    inst_id, kind, since = inst.id, inst.kind, inst.import_since
     latest: dict[str, InstrumentFile] = {}
-    for r in session.exec(select(InstrumentFile).where(InstrumentFile.instrument_id == inst.id)
+    for r in session.exec(select(InstrumentFile).where(InstrumentFile.instrument_id == inst_id)
                           .order_by(InstrumentFile.revision)):
         latest[r.path] = r
-    for rel, p in discover(root, inst.kind):
+    seen: set[str] = set()
+    due: list[tuple[InstrumentFile, Path]] = []
+    session.autoflush = False  # new rows are written only at each commit, so the write lock is held only then
+    for rel, p in discover(root, kind):
+        seen.add(rel)
         counts["seen"] += 1
+        if counts["seen"] % 500 == 0:  # commit as we go: a first look at a big drive mustn't hold the database
+            session.commit()
         try:
             fp, size, newest = fingerprint(p)
-        except OSError:
+        except OSError as exc:
             counts["errors"] += 1
+            counts["problems"].append((rel, exc))
             continue
         row = latest.get(rel)
         if row is None:
-            row = InstrumentFile(instrument_id=inst.id, path=rel, fingerprint=fp, size=size, first_seen_at=now,
+            row = InstrumentFile(instrument_id=inst_id, path=rel, fingerprint=fp, size=size, first_seen_at=now,
                                  changed_at=now, state="baseline" if first else "settling")
             session.add(row)
-            session.flush()
             latest[rel] = row
             if not first:
                 counts["new"] += 1
         if row.state == "baseline":
-            if inst.import_since and _utc(newest) >= inst.import_since:
+            if since and _utc(newest) >= since:
                 # older data the admin asked for: already quiet, so it's taken now
                 row.state, row.fingerprint, row.size, row.changed_at = "settling", fp, size, now - quiet
                 counts["new"] += 1
@@ -509,28 +568,58 @@ def scan(session: Session, inst: Instrument, now: Optional[datetime] = None) -> 
             else:
                 continue
         elif row.fingerprint != fp:
-            if row.state == "settling":  # still being written or copied
-                row.fingerprint, row.size, row.changed_at = fp, size, now
-                session.add(row)
+            if row.state in ("settling", "vanished"):  # still being written or copied (or back again)
+                row.state, row.fingerprint, row.size, row.changed_at = "settling", fp, size, now
             else:  # it changed after being handled: the change arrives again, as the next revision
-                nxt = InstrumentFile(instrument_id=inst.id, path=rel, revision=row.revision + 1, fingerprint=fp,
+                nxt = InstrumentFile(instrument_id=inst_id, path=rel, revision=row.revision + 1, fingerprint=fp,
                                      size=size, first_seen_at=now, changed_at=now, state="settling")
                 session.add(nxt)
-                session.flush()
                 latest[rel] = nxt
                 counts["new"] += 1
             continue
         if row.state == "settling" and now - row.changed_at >= quiet:
-            try:
-                _handle(session, row, inst, p)
-                counts["handled"] += 1
-            except OSError as exc:  # unreadable for now (a sync still downloading it, permissions): try next time
-                log.warning("Couldn't read %s in %s: %s", rel, inst.name, exc)
-                counts["errors"] += 1
+            due.append((row, p))
+    for rel, row in latest.items():  # gone before it was taken (deleted, or renamed while being copied)
+        if row.state == "settling" and rel not in seen:
+            row.state = "vanished"
     if first:
         inst.baseline_at = now
         session.add(inst)
+    session.commit()  # the bookkeeping is done; nothing is held while files are copied
+    session.autoflush = True
+    for row, p in due:
+        rel = row.path
+        try:
+            if _handle(session, row, inst, p, now) == "handled":
+                counts["handled"] += 1
+        except OSError as exc:  # unreadable for now (a sync still downloading it, a full disk): try next time
+            session.rollback()
+            log.warning("Couldn't take %s from %s: %s", rel, inst.name, exc)
+            counts["errors"] += 1
+            counts["problems"].append((rel, exc))
+        except Exception as exc:  # noqa: BLE001 - one bad arrival mustn't stop the others
+            session.rollback()
+            log.exception("Couldn't take %s from %s", rel, inst.name)
+            counts["errors"] += 1
+            counts["problems"].append((rel, exc))
     return counts
+
+
+def arrival_problem(problems: list[tuple[str, BaseException]]) -> str:
+    """What the Admin page says when arrivals couldn't be taken (the folder itself is fine)."""
+    if not problems:
+        return ""
+    rel, exc = problems[0]
+    more = f" (and {len(problems) - 1} more)" if len(problems) > 1 else ""
+    if isinstance(exc, OSError) and exc.errno == errno.ENOSPC:
+        return ("The disk Benchtop keeps its data on is full, so new instrument files can't be copied in. Free some "
+                "space; Benchtop tries again every minute.")
+    if isinstance(exc, PermissionError):
+        return f"Benchtop isn't allowed to read “{rel}”{more}. Check the file's permissions on the instrument share."
+    if isinstance(exc, OSError):
+        return (f"Couldn't read “{rel}”{more} yet: {exc.strerror or exc}. If it's still syncing (OneDrive, a slow copy) "
+                "this clears by itself; Benchtop tries again every minute.")
+    return f"Something went wrong taking “{rel}”{more}: {exc}. Benchtop tries again every minute."
 
 
 _scan_lock = threading.Lock()
@@ -542,6 +631,7 @@ def scan_all(now: Optional[datetime] = None) -> dict[int, dict[str, Any]]:
     from .db import engine
     out: dict[int, dict[str, Any]] = {}
     with _scan_lock:
+        _clear_stale_incoming()
         with Session(engine) as s:
             ids = [i.id for i in s.exec(select(Instrument).where(Instrument.enabled == True,  # noqa: E712
                                                                  Instrument.archived == False))]  # noqa: E712
@@ -551,7 +641,8 @@ def scan_all(now: Optional[datetime] = None) -> dict[int, dict[str, Any]]:
                 t0 = time.monotonic()
                 try:
                     res: dict[str, Any] = scan(s, inst, now)
-                    inst.last_error = ""
+                    inst = s.get(Instrument, iid)
+                    inst.last_error = arrival_problem(res.pop("problems", []))
                 except Exception as exc:  # noqa: BLE001 - reported on the Admin page, never stops the others
                     s.rollback()
                     inst = s.get(Instrument, iid)
@@ -563,6 +654,17 @@ def scan_all(now: Optional[datetime] = None) -> dict[int, dict[str, Any]]:
                 s.commit()
                 out[iid] = res
     return out
+
+
+def _clear_stale_incoming() -> None:
+    """Half-copied files left by an interrupted import (Benchtop stopped, the Mac turned off) are removed after a day."""
+    cutoff = time.time() - 86400
+    for f in _incoming().glob("*.part"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+        except OSError:
+            continue
 
 
 def folder_problem(exc: BaseException) -> str:

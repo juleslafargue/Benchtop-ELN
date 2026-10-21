@@ -244,7 +244,7 @@ function finish(meta: Omit<Spectrum, 'x' | 'y'>, xs: number[], ys: number[]): Sp
   return { ...meta, x: Float64Array.from(idx.map(i => xs[i])), y: Float64Array.from(idx.map(i => ys[i])) }
 }
 
-export const SPECTRUM_EXT = /\.(jdx|dx|jcamp|jcm|csv|tsv|txt|xy|zip)$/i
+export { SPECTRUM_EXT, canViewSpectrum } from './viewable'
 
 export function parseSpectrumFile(raw: string, filename: string): Spectrum {
   if (/^\s*##/.test(raw)) return parseJcamp(raw)
