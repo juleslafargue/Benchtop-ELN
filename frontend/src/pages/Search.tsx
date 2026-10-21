@@ -139,7 +139,7 @@ export default function Search() {
         </div>}
         <div className="search-filters">
           <select className="select" value={status} onChange={e => setStatus(e.target.value)} aria-label="Status">
-            <option value="">Any status</option><option value="open">Open</option><option value="signed">Signed</option><option value="witnessed">Witnessed</option><option value="voided">Voided</option>
+            <option value="">Any status</option><option value="open">Open</option><option value="signed">Signed</option><option value="witnessed">Witnessed</option><option value="voided">Voided</option><option value="locked">Locked (imported)</option>
           </select>
           <select className="select" value={nb} onChange={e => setNb(e.target.value)} aria-label="Notebook">
             <option value="">All notebooks</option>{notebooks.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}

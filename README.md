@@ -73,6 +73,7 @@ and kept out of the integrals:
 | **Dashboard** | The home page is a grid of widgets you arrange yourself: work lists (waiting for my witness signature, with what you've been asked to witness first and overdue ones marked; my records waiting for a witness; returned to me with the reason, my open experiments, recently edited, pinned), quick actions, sticky notes and section headings, a yield-over-time chart (click a point to open the experiment), this month's activity, recent spectra, and inventory alerts (lots below 20 % of what was received, or expiring within 30 days). *Customise* lets you drag, resize, add and remove widgets; the layout is saved to your account. Pin any experiment from its page. On a phone the widgets stack in one column. |
 | **Write-up drafts** | *Draft write-up* composes an SI-style experimental paragraph from the reaction table, conditions, work-up and characterisation (amounts with sensible significant figures, mol% for catalysts, yield). It never guesses: anything missing is listed instead. Copy as rich text or add it as a section. |
 | **Obsidian export** | Every experiment as a Markdown note with Dataview-ready front matter (status, product, yield, temperature, time…), the scheme as SVG, tables and attachments. `./benchtop export-obsidian <folder>` or set `BENCHTOP_OBSIDIAN_DIR` to sync hourly; an index note includes a ready-made Dataview table. |
+| **Moving records in and out (.eln)** | Export one experiment, a notebook, or everything you can open as a **.eln** file, the shared format of electronic lab notebooks (the [ELN Consortium](https://github.com/TheELNConsortium/TheELNFileFormat)'s RO-Crate format, which eLabFTW, RSpace, Kadi4Mat, SampleDB, Chemotion and others read and write). Each record carries its printable report, every file with its SHA-256, structures as MOL/RXN files, comments, signatures with their timestamp proofs, and Benchtop's full record for a lossless move to another Benchtop. **Import** shows what's inside first (experiments, authors, files, which were signed), then brings in what you tick: write-ups, extra fields, steps, comments and files, each file checked against the fingerprint the other system recorded. Records signed or locked there arrive read-only; nothing is ever turned into a Benchtop signature. |
 | **Have we done this before?** | Under every reaction table, the most similar reactions anyone in the lab has already run (that you're allowed to see), as you draw it, even before there's a product. Reactions are compared by starting materials and products, by the transformation itself (which structural features appear and disappear) and by reagents and solvents, and labelled *same reaction*, *same transformation on a different substrate*, *same product* or *similar starting materials*. Each shows the scheme, who ran it and when, the conditions, the yield and the observations; *Use these conditions* copies the reagents, catalysts, solvents (as equivalents, so they scale) and conditions into your table. |
 | **Reactions overview** | Every reaction across notebooks in one table: scheme, scale, reagents, conditions, yield, purification, data recorded. Filter by text, substructure, yield and temperature; sort; download CSV. |
 | **Safety data (GHS)** | Hazard classifications come from PubChem's public API, which gathers them from the EU CLP harmonised classification (Annex VI), the ECHA C&L Inventory (with the share of notifiers behind each statement), Japan's NITE, Safe Work Australia and HSDB. Benchtop uses the most authoritative source for each chemical (harmonised, then the largest ECHA aggregate) and still lists anything other sources add. Every record shows its source and when it was fetched. Data older than 30 days is re-checked automatically while Benchtop runs. If a classification changes (say a new H350), the change goes into the audit log and onto your dashboard until someone marks it reviewed. Offline, the last data is kept and its age shown. Special hazards (pyrophoric, water-reactive, peroxide former, oxidiser, CMR, acid-gas, explosive) are flagged from the official codes. Supplier SDSs still take precedence. |
@@ -95,7 +96,7 @@ and kept out of the integrals:
 | **Everyday comforts** | Typing `EXP-00025` or `MAT-00007` in any text makes a link with a hover preview (title, status, structure). Paste or drop pictures straight into text sections; they're saved as files of the record. Removing a section offers *Undo*. ⌘S saves at once, and **?** lists every shortcut. *Add from registry* offers your usual reagents first, with the role and lot you last used. The dashboard nudges you about drafts untouched for two weeks. **Download PDF** gives an A4 record with scheme, tables, pictures, signatures and the content hash. |
 | **Plugins** | Add your lab's own section types and instrument-file readers with a small text file, no code: a glovebox log, a hydrogenation safety checklist, a cell-passage record; fields with units, dropdowns, warnings when a value is out of range, checklists and tables. Items marked *required* must be done before the author can sign. Readers teach Benchtop to open an instrument's CSV or text export (an HPLC trace, a UV-vis spectrum) as a chart. Admins add plugin files from *Users & audit*; each section keeps a copy of its definition, so records stay readable if a plugin changes or is removed. Three examples ship switched off. See [docs/PLUGINS.md](docs/PLUGINS.md). |
 | **API tokens & webhooks** | Personal access tokens (read only, or read & write, with an expiry) for scripts and instrument PCs; they act as you but can never sign records or change settings. Webhooks post to Slack, Teams or your own service when an experiment is signed, witnessed, returned, voided or commented on, signed with HMAC-SHA256, retried in the background, with a delivery history. Only identifiers and titles are sent, never record content. See [docs/API.md](docs/API.md). |
-| **Users & accounts** | Admin, scientist and read-only viewer roles. A fresh install opens on a setup screen where you create your own administrator account (the built-in admin login is then retired). **Single sign-on** with Microsoft 365 / Entra ID, Google Workspace or any OpenID Connect provider: people sign in with their university or company account, optionally limited to your email domains, with accounts created on first sign-in or matched to ones an admin added. Sign-ins can last 30 days. Everyone has an account page to change their name, email, username and password, and preferences (five colour themes, each in light and dark: Benchtop, Lab notebook, Fume hood, Litmus and High contrast; default notebook; open spectra full-screen) that follow them between computers. Signatures store the printed name at the moment of signing, so later name changes never alter signed records. Admins can edit any account. |
+| **Users & accounts** | Admin, scientist and read-only viewer roles. A fresh install opens on a setup screen where you create your own administrator account (the built-in admin login is then retired). **Single sign-on** with Microsoft 365 / Entra ID, Google Workspace or any OpenID Connect provider: people sign in with their university or company account, optionally limited to your email domains, with accounts created on first sign-in or matched to ones an admin added. Sign-ins can last 30 days. Everyone has an account page to change their name, email, username and password, and preferences (five colour themes, each in light and dark: Benchtop, Lab notebook, Fume hood, Litmus and High contrast; default notebook; open spectra full-screen) that follow them between computers. Signatures store the printed name at the moment of signing, so later name changes never alter signed records. An optional ORCID iD (checked for typos) names you in exports. Admins can edit any account. |
 
 ## Quick start (Mac)
 
@@ -262,6 +263,35 @@ fit than the free iCloud plan. Runs bigger than 2 GB wait in the Inbox unless yo
 **On a lab server** the feature works unchanged: mount each instrument share on the server (read-only) and use
 those paths. [docs/SERVER.md](docs/SERVER.md#instrument-folders) has the steps for a Mac, OneDrive and Docker.
 
+## Moving records in and out (.eln)
+
+A **.eln** file is a zip that any modern lab notebook can open: a folder per experiment with its files, and a
+description of each (title, people, dates, write-up, comments, tags). Benchtop writes the current version of the
+format (RO-Crate 1.2, ELN format 1.2+20260923), checked on every change by the consortium's own validator.
+
+**Taking your records with you.** *Account → Your records → Export everything (.eln)*: everything you can open,
+every file included. Good for the end of a degree, a thesis appendix, or a data repository such as Zenodo (which
+accepts RO-Crates). Each record has `report.html`, which reads in any browser, so the export is useful even with no
+lab notebook at all. A notebook's page has *Export (.eln)* for just that notebook, and each experiment has
+*Download .eln*.
+
+**Bringing records in.** In the other system, export in its **.eln** format (eLabFTW, RSpace, Kadi4Mat and others
+offer it among their export options), then open a Benchtop notebook and choose *Import .eln…*. Benchtop shows what's in the file before
+adding anything: each experiment with its date, authors, files and whether it was signed there, and anything already
+imported. Tick what you want and choose the notebook.
+
+- Each imported experiment is a **new record owned by you**, with a new EXP number. A banner on it says where it
+  came from, its original ID, dates and authors, and whether its files matched the fingerprints the other system
+  recorded. The record as the other system described it is kept as `original-record.json`.
+- Records **signed or locked there arrive read-only** (status *Locked*). Use *Make a follow-up* to carry the work on.
+  Their signatures are shown as history, never as Benchtop signatures: Benchtop can't vouch for another system's
+  signature. From another Benchtop, it also checks that the content is exactly what was signed.
+- A file that **doesn't match** its recorded fingerprint is still imported but flagged, on the banner and in the
+  *Imported files* table, since it may have been changed or damaged after export.
+- Moving between **two Benchtops** keeps sections, reaction tables, spectra analyses and files exactly. Links to the
+  other lab's inventory (lots and materials) are dropped, since they'd point at the wrong bottles here.
+- Imports are recorded in the audit trail, as are exports.
+
 ## Development
 
 ```bash
@@ -312,7 +342,8 @@ covers. A Benchtop that finds data from a newer version refuses to start rather 
 | `BENCHTOP_TIMESTAMPS` | `on` | `off` turns trusted timestamps off |
 | `BENCHTOP_TSA_URL` | `http://timestamp.digicert.com` | RFC 3161 timestamp service |
 | `BENCHTOP_INSTRUMENT_SCAN_SECONDS` | `60` | How often instrument folders are looked through; `0` turns watching off |
-| `BENCHTOP_INSTRUMENT_MAX_MB` | `2048` | Largest instrument arrival copied in; bigger ones wait in the Inbox |
+| `BENCHTOP_INSTRUMENT_MAX_MB` | `2048` | Largest instrument arrival copied in; bigger ones wait in the Inbox. Also the largest single file taken from a .eln import |
+| `BENCHTOP_IMPORT_MAX_MB` | `20480` | Largest .eln file accepted for import |
 | `BENCHTOP_PORT` | `8000` | Port used by `./benchtop` |
 | `BENCHTOP_OBSIDIAN_DIR` | unset | Vault folder to sync Markdown notes into every hour |
 | `BENCHTOP_PUBCHEM` | `on` | `off` stops all PubChem lookups (works fully offline with whatever was fetched before) |
@@ -357,6 +388,8 @@ backend/   FastAPI + SQLModel + RDKit
   app/samples.py    sample codes (JL-013): prefixes, numbering, finding codes in file names
   app/updates.py    the daily "newer version?" look at GitHub Releases (also a CLI, used by ./benchtop update)
   app/install.py    swaps program files for update/upgrade/rollback, never touching data or your own files
+  app/eln.py        .eln export (RO-Crate 1.2, ELN Consortium format): reports, files, structures, signatures
+  app/eln_import.py .eln import: safe reading, preview, mapping other ELNs' records, fingerprint checks
   app/routers/      auth, sso, experiments (+signing, export), groups (+sharing), comments (+notifications),
                     materials, chemistry, search, reactions (+similar), admin, instruments (+Inbox, follow-ups),
                     samples
@@ -396,6 +429,10 @@ Tokens, webhooks (Slack, Teams, or signed JSON for your own code) and examples i
 - **Instrument folders** are only ever read. Links (symlinks) inside them are never followed, so someone who can
   write to an instrument share can't make Benchtop copy a file from elsewhere on the computer. Inbox items follow
   the sharing rules, and once a file is attached it is only reachable by people who can read that record.
+- **.eln imports** are read member by member and never unpacked as a whole: paths that leave the folder, links,
+  encrypted members and zip bombs are refused before anything is stored, every write-up goes through the same HTML
+  cleaning as typed text, and an upload waiting for its preview can only be imported by the person who uploaded it
+  (it's deleted after the import, or after a day). Exports contain only records the person can open.
 - **Browser protections**: a Content Security Policy (only Benchtop's own scripts run; pages can't be framed by other sites), `nosniff`, no referrer leaks, and API responses that aren't cached.
 - Report security problems privately as described in [SECURITY.md](SECURITY.md).
 
@@ -410,7 +447,8 @@ that work.
 
 ## Roadmap ideas
 
-- Next: compound and batch registration with a route view, phone barcode scanning for lots and samples, `.eln` import/export (ELN Consortium format), DOI references, a full-text search index for very large notebooks
+- Next: phone barcode scanning for lots and samples, DOI references, compound and batch registration with a route view, a full-text search index for very large notebooks
+- Signed .eln exports (minisign), so another system can check an export came from your Benchtop
 - Code plugins (Python packages with hooks, extra pages and widgets), building on today's plugin files
 - Plate/sample-set entities and a sample-tracking view
 - Viewing Varian/JEOL raw FIDs (stored today, not yet opened in the viewer), 2D NMR, and mzML for MS

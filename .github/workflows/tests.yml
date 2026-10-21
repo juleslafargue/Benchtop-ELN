@@ -32,7 +32,26 @@ jobs:
       - run: pip install -r backend/requirements-dev.txt
       - name: Run the tests
         working-directory: backend
-        run: python -m pytest -q
+        env:
+          BENCHTOP_ELN_SAMPLE: /tmp/eln-sample  # one test leaves a .eln export here for the next step
+        run: mkdir -p /tmp/eln-sample && python -m pytest -q
+      - name: The .eln export passes the ELN Consortium's own checks
+        run: |
+          git clone -q https://github.com/TheELNConsortium/TheELNFileFormat.git /tmp/eln-spec
+          git -C /tmp/eln-spec checkout -q 89265e52d654254396c8bb2cbbcb53131bcd29f8
+          pip install -q jsonschema roc-validator rocrate
+          f=$(ls /tmp/eln-sample/*.eln)
+          cd /tmp/eln-spec
+          # the recommended rules too, reported as notes on the run
+          python tests/run_checks.py "$f" > /tmp/eln-all.txt 2>&1 || true
+          grep -E "ERROR|WARNING|failed" /tmp/eln-all.txt | head -40 | while IFS= read -r l; do echo "::notice title=.eln (recommended)::$l"; done
+          # the required rules must pass
+          if ! python tests/run_checks.py --no-recommend "$f" > /tmp/eln-req.txt 2>&1; then
+            cat /tmp/eln-req.txt
+            grep -E "ERROR|failed|Error" /tmp/eln-req.txt | head -40 | while IFS= read -r l; do echo "::error title=.eln check::$l"; done
+            exit 1
+          fi
+          cat /tmp/eln-req.txt
 
   frontend:
     name: Build the app

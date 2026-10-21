@@ -17,7 +17,7 @@ import { useBackTarget } from '../components/BackButton'
 import { parseSpectrumBuffer, techniqueFor } from '../spectra'
 import type { Attachment, Entry, User, UserBrief } from '../api'
 
-const STATUS_WORD = { open: 'Draft', signed: 'Signed', witnessed: 'Witnessed', voided: 'Voided' }
+const STATUS_WORD = { open: 'Draft', signed: 'Signed', witnessed: 'Witnessed', voided: 'Voided', locked: 'Locked' }
 const STEPS = ['Draft', 'Signed', 'Witnessed'] as const
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 
@@ -27,6 +27,7 @@ const StatusIcon = ({ status }: { status: Experiment['status'] }) => (
     {status === 'signed' && <><rect x="3" y="7" width="10" height="7" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 015 0v2" /></>}
     {status === 'witnessed' && <><path d="M8 1.8l5 2v4c0 3.2-2.2 5.4-5 6.4-2.8-1-5-3.2-5-6.4v-4z" /><path d="M5.6 8.2l1.7 1.7 3.2-3.4" /></>}
     {status === 'voided' && <><circle cx="8" cy="8" r="5.5" /><path d="M4.2 11.8l7.6-7.6" /></>}
+    {status === 'locked' && <><rect x="3" y="7" width="10" height="7" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 015 0v2" /><path d="M8 9.6v2" /></>}
   </svg>
 )
 
@@ -35,12 +36,13 @@ function StatusCard({ exp, fresh }: { exp: Experiment; fresh: boolean }) {
   const lastOf = (m: string) => [...exp.signatures].reverse().find(s => s.meaning === m)
   const who = (s?: Signature) => s ? `${s.signer_name || displayName(s.user)} · ${shortDate(s.signed_at)}` : ''
   const author = lastOf('author'), witness = lastOf('witness'), voided = lastOf('void')
-  const step = { open: 0, signed: 1, witnessed: 2, voided: -1 }[exp.status]
+  const step = { open: 0, signed: 1, witnessed: 2, voided: -1, locked: -1 }[exp.status]
   const line = exp.status === 'open' ? 'Editable until signed'
     : exp.status === 'signed' ? <>Signed by {who(author)}<br /><span className={exp.witness_request?.overdue ? 'overdue-text' : 'faint'}>
       {exp.witness_request ? `Waiting for ${displayName(exp.witness_request.witness)}${exp.witness_request.overdue ? ' · overdue' : ''}` : 'Waiting for a witness'}</span></>
       : exp.status === 'witnessed' ? <>Witnessed by {who(witness)}</>
-        : <>Voided by {who(voided)}</>
+        : exp.status === 'locked' ? <>Imported read-only from {exp.origin?.source || 'another ELN'}</>
+          : <>Voided by {who(voided)}</>
   return (
     <div className={`status-card ${exp.status}${fresh ? ' fresh' : ''}`} role="group" aria-label={`Status: ${STATUS_WORD[exp.status]}`}>
       <span className="sc-pill"><StatusIcon status={exp.status} />{STATUS_WORD[exp.status]}</span>
@@ -53,6 +55,34 @@ function StatusCard({ exp, fresh }: { exp: Experiment; fresh: boolean }) {
         ))}
       </ol>}
       <div className="sc-by">{line}</div>
+    </div>
+  )
+}
+
+/** Where an imported record came from, what was checked on the way in, and (when it was signed there) why it's read-only. */
+function OriginBanner({ exp, canFollowUp, onFollowUp }: { exp: Experiment; canFollowUp: boolean; onFollowUp: () => void }) {
+  const o = exp.origin!
+  const day = (iso: string | null) => iso ? shortDate(iso) : ''
+  const facts = [o.original_id && `original ID ${o.original_id}`, o.original_created && `created ${day(o.original_created)}`,
+    o.authors.length > 0 && `by ${o.authors.join(', ')}`].filter(Boolean).join(' · ')
+  return (
+    <div className="notice origin-banner" role="note">
+      <div><b>Imported from {o.source}</b> on {day(o.imported_at)} by {o.imported_by}{o.file ? ` (${o.file})` : ''}.
+        {facts && <> Originally: {facts}.</>}
+        {o.original_url && /^https?:\/\//.test(o.original_url) && <> <a href={o.original_url} target="_blank" rel="noreferrer noopener">Open the original</a>.</>}</div>
+      {o.files.imported > 0 && (o.files.mismatched
+        ? <div className="error">{o.files.mismatched} of {o.files.imported} files didn't match the fingerprint {o.source} recorded; see “Imported files”.</div>
+        : <div className="faint">{o.files.matched === o.files.imported
+          ? `All ${o.files.imported} file${o.files.imported === 1 ? '' : 's'} matched the fingerprints ${o.source} recorded.`
+          : `${o.files.imported} file${o.files.imported === 1 ? '' : 's'} imported (${o.files.matched} with a fingerprint to check, all matching).`}</div>)}
+      {o.signatures.length > 0 && <ul className="origin-sigs">
+        {o.signatures.map((s, i) => <li key={i}>{s.meaning === 'witness' ? 'Witnessed' : s.meaning === 'void' ? 'Voided' : s.meaning === 'rejected' ? 'Returned' : 'Signed'} in {o.source} by {s.signer}
+          {s.signed_at ? ` on ${day(s.signed_at)}` : ''}{s.matches ? '. The content matches what was signed (checked on import)' : '. The content could not be matched to this signature'}
+          {s.timestamp ? '; its trusted-timestamp proof is attached' : ''}.</li>)}
+      </ul>}
+      {exp.status === 'locked' && <div>Read-only: {o.locked_reason || `it was signed or locked in ${o.source}`}. Signatures from another system are
+        kept as history; they aren't Benchtop signatures.{canFollowUp && <> <button className="btn sm" onClick={onFollowUp}>Make a follow-up…</button> to continue the work.</>}</div>}
+      {o.warnings.map(w => <div key={w} className="faint">{w}</div>)}
     </div>
   )
 }
@@ -445,6 +475,7 @@ export default function ExperimentPage() {
               <button className="btn ghost sm" onClick={() => setImportNotes([])}>Dismiss</button></div>}
             {exp.status === 'signed' && <p className="notice">This record is signed and locked. {isOwner ? 'Withdraw your signature to make changes.' : 'Review it, then witness it or return it to the author.'}</p>}
             {exp.status === 'voided' && <p className="notice">This record has been voided. It is kept for reference.</p>}
+            {exp.origin && <OriginBanner exp={exp} canFollowUp={canWrite && exp.status === 'locked'} onFollowUp={() => setFollowUp(true)} />}
             <div style={{ marginTop: exp.status === 'open' ? 0 : 14 }}>
               {exp.entries.map((e, i) => (
                 <Fragment key={`${e.id}-${reloadKey}`}>
@@ -505,12 +536,14 @@ export default function ExperimentPage() {
                 }}>{pinned ? 'Pinned to dashboard' : 'Pin to dashboard'}</button>
               })()}
               {!exp.is_template && <button className="btn sm" onClick={() => setWriteup(true)}>Draft write-up</button>}
-              {canWrite && !exp.is_template && (exp.status === 'signed' || exp.status === 'witnessed') &&
+              {canWrite && !exp.is_template && (exp.status === 'signed' || exp.status === 'witnessed' || exp.status === 'locked') &&
                 <button className="btn sm" onClick={() => setFollowUp(true)} title="A new draft linked to this one, for results that came after signing">Make a follow-up…</button>}
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export?format=pdf`, `${exp.eid} ${exp.title.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').slice(0, 80)}.pdf`).catch(e => toast(e.message))}>Download PDF</button>
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export`, `${exp.eid}.html`, true)}>Open printable report</button>
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export?format=md`, `${exp.eid} ${exp.title.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').slice(0, 80)}.md`)}>Download Markdown</button>
               <button className="btn sm" onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export?format=json`, `${exp.eid}.json`)}>Download JSON</button>
+              {!exp.is_template && <button className="btn sm" title="The shared format of electronic lab notebooks: opens in eLabFTW, RSpace, Kadi4Mat or another Benchtop"
+                onClick={() => downloadAuthed(`/api/experiments/${exp.id}/export.eln`, `${exp.eid} - ${exp.title.replace(/[\\/:*?"<>|#^[\]{}%]+/g, ' ').slice(0, 70)}.eln`).catch(e => toast(e.message))}>Download .eln</button>}
               {canWrite && <button className="btn sm" onClick={() => clone(false)}>Duplicate</button>}
               {canWrite && !exp.is_template && <button className="btn sm" onClick={() => setScaling(true)}>Repeat at another scale…</button>}
               {canWrite && !exp.is_template && <button className="btn sm" onClick={() => clone(true)}>Save as template</button>}

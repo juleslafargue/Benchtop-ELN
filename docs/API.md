@@ -44,6 +44,24 @@ too, for programs that sort files:
 | `POST /api/experiments/{id}/follow-up` | a follow-up of a signed record, without a file |
 | `POST /api/attachments/{id}/not-mine` | send an instrument file back to the Inbox (drafts only) |
 
+Records travel between lab notebooks as **.eln** files (the ELN Consortium's format):
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/experiments/{id}/export.eln` | one experiment |
+| `GET /api/notebooks/{id}/export.eln` | every experiment in a notebook that you can open |
+| `GET /api/export.eln` | everything you can open |
+| `POST /api/eln/preview` (multipart `file`) | upload a .eln file; returns a `token` and what's inside (`items`, each with a `key`) without importing anything |
+| `POST /api/eln/import/{token}` `{"notebook_id": 3, "items": ["0", "2"]}` | import those experiments; returns `created` (new EXP numbers) and any `failed` |
+| `DELETE /api/eln/import/{token}` | discard an upload you decided not to import (otherwise deleted after a day) |
+
+```python
+with open("elabftw-export.eln", "rb") as f:
+    p = BT.post("/api/eln/preview", files={"file": f}).json()
+keep = [i["key"] for i in p["items"] if not i["already"]]          # skip ones imported before
+print(BT.post(f"/api/eln/import/{p['token']}", json={"notebook_id": 3, "items": keep}).json())
+```
+
 What tokens can and can't do:
 
 - A token acts as **you**. It sees what you can see, and everything it does is recorded in the audit trail under your name.

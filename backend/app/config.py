@@ -33,6 +33,8 @@ class Settings:
         self.legacy_postgres = bool(os.environ.get("BENCHTOP_LEGACY_POSTGRES", "").strip())
         self.instrument_scan_seconds = int(os.environ.get("BENCHTOP_INSTRUMENT_SCAN_SECONDS", "60"))
         self.instrument_max_mb = int(os.environ.get("BENCHTOP_INSTRUMENT_MAX_MB", "2048"))
+        # .eln import (0.20): the largest file accepted, in MB (each file inside it is also held to instrument_max_mb)
+        self.import_max_mb = int(os.environ.get("BENCHTOP_IMPORT_MAX_MB", "20480"))
         # Backups: point BENCHTOP_BACKUP_DIR at an iCloud/Dropbox folder to keep copies off-machine
         self.backup_dir = Path(os.environ.get("BENCHTOP_BACKUP_DIR", self.data_dir / "backups")).expanduser().resolve()
         self.backup_keep = int(os.environ.get("BENCHTOP_BACKUP_KEEP", "14"))

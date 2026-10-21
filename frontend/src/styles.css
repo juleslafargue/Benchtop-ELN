@@ -1261,3 +1261,22 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 .sample-chip button.mono { font-weight: 600; color: var(--ink); }
 .sample-chip button:hover { background: var(--accent-soft); }
 .sample-chip .x { padding: 1px 7px 1px 2px; color: var(--ink-3); }
+
+/* .eln import and export (0.20) */
+.status.locked { color: var(--ink-2); }
+.status-card.locked { --c: var(--ink-2); }
+.origin-banner { display: grid; gap: 6px; margin: 0 0 14px; border-left: 3px solid var(--ink-2); }
+.origin-banner .error { margin: 0; }
+.origin-sigs { margin: 0; padding-left: 18px; }
+.eln-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: min(46vh, 420px); overflow: auto; }
+.eln-items li { border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); }
+.eln-items li.on { border-color: var(--rule-strong); }
+.eln-items label { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; cursor: pointer; }
+.eln-items input { margin-top: 3px; flex: none; }
+.eln-item { display: grid; gap: 2px; min-width: 0; font-size: 14px; }
+.eln-title { font-weight: 600; overflow-wrap: anywhere; }
+.eln-item > * { overflow-wrap: anywhere; min-width: 0; }
+.eln-lock { color: var(--ink-2); font-size: 13px; }
+.eln-warn { color: var(--signed); font-size: 13px; }
+.eln-results { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.eln-results .badge { margin-left: 6px; font-size: 12px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--rule-strong); color: var(--ink-2); }

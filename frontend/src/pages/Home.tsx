@@ -17,7 +17,7 @@ export default function Home() {
 
   const open = mine.filter(e => e.status === 'open')
   const waiting = mine.filter(e => e.status === 'signed')
-  const done = mine.filter(e => e.status === 'witnessed' || e.status === 'voided')
+  const done = mine.filter(e => e.status === 'witnessed' || e.status === 'voided' || e.status === 'locked')
 
   return (
     <div className="stack" style={{ gap: 28 }}>

@@ -356,6 +356,7 @@ def get_experiment(exp_id: int, user: CurrentUser, session: DB):
         "attachments": [attachment_out(a) for a in atts],
         "signatures": signatures_out(session, exp.id),
         "witness_request": witness.summary(session, exp),
+        "origin": exp.origin,  # imported from another ELN (0.20): shown as a banner
         **_access_info(session, user, exp),
         **_links_and_samples(session, user, exp),
     }

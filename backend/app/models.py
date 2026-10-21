@@ -34,6 +34,7 @@ class ExperimentStatus(str, Enum):
     signed = "signed"        # author signed; content locked, awaiting witness
     witnessed = "witnessed"  # countersigned; final
     voided = "voided"        # withdrawn (content kept, flagged)
+    locked = "locked"        # imported from another ELN, where it was signed or locked: read-only here (0.20)
 
 
 class EntryKind(str, Enum):
@@ -64,6 +65,8 @@ class User(SQLModel, table=True):
     password_changed_at: Optional[NaiveDatetime] = Field(default=None, nullable=True)
     # added in 0.17: the start of this person's sample codes (JL → JL-013), unique across the lab
     sample_prefix: Optional[str] = Field(default=None, nullable=True)
+    # added in 0.20: ORCID iD (0000-0002-1825-0097), so exports credit the person properly
+    orcid: Optional[str] = Field(default=None, nullable=True)
 
 
 class AuthSession(SQLModel, table=True):
@@ -177,6 +180,9 @@ class Experiment(SQLModel, table=True):
     updated_at: NaiveDatetime = Field(default_factory=utcnow)
     # added in 0.16: the signed record this one follows up (results that came back after signing)
     follows_id: Optional[int] = Field(default=None, foreign_key="experiment.id", nullable=True)
+    # 0.20: imported from a .eln file: where from, original ID, dates and authors, what was checked (shown as a banner)
+    origin: Optional[dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+    origin_key: Optional[str] = Field(default=None, nullable=True, index=True)  # spots the same record imported twice
 
     @property
     def eid(self) -> str:

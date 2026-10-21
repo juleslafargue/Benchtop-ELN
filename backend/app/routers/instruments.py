@@ -362,8 +362,8 @@ class FollowUpIn(BaseModel):
 def create_follow_up(session: Session, user: User, original: Experiment, body: FollowUpIn) -> Experiment:
     """A new draft, owned by this person, linked to a signed record. The link is stored on the new record only,
     so nothing the original's signature covers changes."""
-    if original.is_template or original.status not in (ExperimentStatus.signed, ExperimentStatus.witnessed):
-        raise HTTPException(409, "Follow-ups are for signed or witnessed records; a draft can simply be edited")
+    if original.is_template or original.status not in (ExperimentStatus.signed, ExperimentStatus.witnessed, ExperimentStatus.locked):
+        raise HTTPException(409, "Follow-ups are for signed, witnessed or locked records; a draft can simply be edited")
     acc = access_for(session, user)
     nb_id = body.notebook_id
     if nb_id is None:

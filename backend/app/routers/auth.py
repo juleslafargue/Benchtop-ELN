@@ -32,7 +32,25 @@ def user_out(u: User) -> dict:
     return {"id": u.id, "username": u.username, "full_name": u.full_name, "email": u.email,
             "role": u.role.value, "active": u.active, "preferences": u.preferences or {},
             "has_password": has_password(u.password_hash), "must_change_password": bool(u.must_change_password),
-            "sample_prefix": u.sample_prefix}
+            "sample_prefix": u.sample_prefix, "orcid": u.orcid}
+
+
+def clean_orcid(value: str) -> str | None:
+    """An ORCID iD as 0000-0002-1825-0097 (pasting the https://orcid.org/… link works too), or None to remove it.
+    The last character is a checksum (ISO 7064 11,2), so a typo is caught here rather than on someone's thesis."""
+    v = re.sub(r"^\s*(https?://)?(www\.)?orcid\.org/", "", value or "", flags=re.I).strip().upper().replace(" ", "")
+    if not v:
+        return None
+    digits = v.replace("-", "")
+    if not re.fullmatch(r"\d{15}[\dX]", digits):
+        raise HTTPException(422, "An ORCID iD has 16 characters, like 0000-0002-1825-0097")
+    total = 0
+    for ch in digits[:15]:
+        total = (total + int(ch)) * 2
+    check = (12 - total % 11) % 11
+    if digits[15] != ("X" if check == 10 else str(check)):
+        raise HTTPException(422, "That ORCID iD has a typo: its last character doesn't match the others. Copy it from orcid.org")
+    return "-".join(digits[i:i + 4] for i in range(0, 16, 4))
 
 
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -112,6 +130,7 @@ def _clean_prefs(p: dict[str, Any]) -> dict[str, Any]:
 class ProfileIn(BaseModel):
     full_name: str | None = None
     email: str | None = None
+    orcid: str | None = None
     preferences: dict[str, Any] | None = None
 
 
@@ -130,6 +149,11 @@ def update_me(body: ProfileIn, user: CurrentUser, session: DB):
         if email != user.email:
             changes["email"] = {"from": user.email, "to": email}
             user.email = email
+    if body.orcid is not None:
+        orcid = clean_orcid(body.orcid)
+        if orcid != user.orcid:
+            changes["orcid"] = {"from": user.orcid, "to": orcid}
+            user.orcid = orcid
     if body.preferences is not None:
         prefs = {**(user.preferences or {}), **_clean_prefs(body.preferences)}
         if prefs != (user.preferences or {}):

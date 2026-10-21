@@ -1,11 +1,11 @@
 // Thin typed client for the Benchtop REST API.
 
 export type Role = 'admin' | 'scientist' | 'viewer'
-export type Status = 'open' | 'signed' | 'witnessed' | 'voided'
+export type Status = 'open' | 'signed' | 'witnessed' | 'voided' | 'locked'
 export type EntryKind = 'text' | 'reaction' | 'table' | 'file' | 'purification' | 'characterization' | 'safety' | 'screen' | 'custom'
 
 export interface Preferences { theme?: 'system' | 'light' | 'dark'; palette?: string; email_notify?: { witness?: boolean; results?: boolean }; default_notebook_id?: number | null; spectrum_expanded?: boolean; pinned?: number[]; nav?: string[]; nav_hidden?: string[]; dashboard?: { widgets: unknown[] } }
-export interface User { id: number; username: string; full_name: string; email: string; role: Role; active: boolean; preferences: Preferences; has_password?: boolean; must_change_password?: boolean; sample_prefix?: string | null }
+export interface User { id: number; username: string; full_name: string; email: string; role: Role; active: boolean; preferences: Preferences; has_password?: boolean; must_change_password?: boolean; sample_prefix?: string | null; orcid?: string | null }
 export interface UserBrief { id: number; username: string; full_name: string }
 export type Visibility = 'everyone' | 'group' | 'private'
 export interface Notebook {
@@ -56,6 +56,24 @@ export interface Experiment extends ExperimentSummary {
   can_edit: boolean; shared_with_me: 'view' | 'edit' | null; audience: Audience; open_comments: number
   follows?: LinkedExperiment | { hidden: true } | null; follow_ups?: LinkedExperiment[]
   samples?: SampleCode[]
+  origin?: ElnOrigin | null
+}
+/** Where an imported record came from (0.20), shown as a banner on it. */
+export interface ElnOrigin {
+  source: string; source_url: string; file: string | null; exported: string | null
+  original_id: string; original_url: string; original_title: string; original_created: string | null; original_modified: string | null
+  authors: string[]; imported_at: string; imported_by: string; locked_reason: string; warnings: string[]
+  signatures: { meaning: string; signer: string; signed_at: string; comment: string; matches: boolean; timestamp: boolean }[]
+  files: { imported: number; matched: number; mismatched: number }
+}
+export interface ElnPreview {
+  token: string; filename: string; size: number; source: string; source_url: string; exported: string | null
+  items: { key: string; title: string; identifier: string; created: string | null; authors: string[]; files: number; bytes: number
+    locked: boolean; lock_reason: string; from_benchtop: boolean; warnings: string[]; already: { id: number; eid: string } | null }[]
+}
+export interface ElnImportResult {
+  created: { id: number; eid: string; title: string; locked: boolean; warnings: string[] }[]
+  failed: { title: string; error: string }[]
 }
 export interface SampleCode { id: number; code: string; user: UserBrief | null; created_at: string }
 export interface LinkedExperiment { id: number; eid: string; title: string; status?: Status; notebook_id?: number | null }

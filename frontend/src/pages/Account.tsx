@@ -3,7 +3,7 @@ import { THEMES } from '../themeList'
 import { applyPalette } from '../theme'
 import { ApiTokens } from '../components/Integrations'
 import { useApp } from '../App'
-import { ago, api, when, type Preferences, type User } from '../api'
+import { ago, api, downloadAuthed, when, type Preferences, type User } from '../api'
 import { initials } from '../components/Layout'
 import PasswordDialog from '../components/PasswordDialog'
 import Modal from '../components/Modal'
@@ -33,15 +33,16 @@ export default function Account() {
   const { user, setUser, notebooks, toast } = useApp()
   const [name, setName] = useState(user.full_name)
   const [email, setEmail] = useState(user.email)
+  const [orcid, setOrcid] = useState(user.orcid || '')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [pw, setPw] = useState(false)
   const [uname, setUname] = useState(false)
-  const dirty = name.trim() !== user.full_name || email.trim() !== user.email
+  const dirty = name.trim() !== user.full_name || email.trim() !== user.email || orcid.trim() !== (user.orcid || '')
 
   const saveProfile = async () => {
     setBusy(true); setErr('')
-    try { setUser(await api.patch<User>('/api/auth/me', { full_name: name, email })); toast('Profile saved') }
+    try { const u = await api.patch<User>('/api/auth/me', { full_name: name, email, orcid }); setUser(u); setOrcid(u.orcid || ''); toast('Profile saved') }
     catch (e: any) { setErr(e.message) } finally { setBusy(false) }
   }
   const setPref = async (p: Preferences) => {
@@ -67,11 +68,27 @@ export default function Account() {
               <p className="help" style={{ marginTop: 6 }}>Records you've already signed keep the name you used at the time.</p>
             </div>
             <label className="field">Email<input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" placeholder="you@university.edu" /></label>
+            <label className="field">ORCID iD
+              <input className="input" value={orcid} onChange={e => setOrcid(e.target.value)} placeholder="0000-0002-1825-0097" spellCheck={false} autoComplete="off" />
+              <span className="help">Optional: your researcher ID from <a href="https://orcid.org" target="_blank" rel="noreferrer noopener">orcid.org</a>. Exports (.eln) name
+                you by it, so your records stay credited to you wherever they go.</span></label>
             {err && <p className="error" style={{ margin: 0 }}>{err}</p>}
             <div className="row"><button className="btn primary" disabled={!dirty || busy}>Save profile</button>
-              {dirty && <button type="button" className="btn ghost" onClick={() => { setName(user.full_name); setEmail(user.email) }}>Discard changes</button>}</div>
+              {dirty && <button type="button" className="btn ghost" onClick={() => { setName(user.full_name); setEmail(user.email); setOrcid(user.orcid || '') }}>Discard changes</button>}</div>
           </div>
         </form>
+
+        <div><h2>Your records</h2><p className="help">Take them with you: when you finish your degree, for a thesis appendix, a data
+          repository such as Zenodo, or another lab's notebook.</p></div>
+        <div className="panel"><div className="section stack" style={{ gap: 8 }}>
+          <div className="spread" style={{ alignItems: 'center', gap: 12 }}>
+            <span>Everything you can open in Benchtop (your experiments, your groups', and those shared with you), with every file,
+              in the <b>.eln</b> format that eLabFTW, RSpace, Kadi4Mat and other lab notebooks read.</span>
+            <button className="btn" onClick={() => { toast('Preparing the export; a big one takes a minute…'); downloadAuthed('/api/export.eln', `Benchtop - ${(user.full_name || user.username).replace(/[\\/:*?"<>|#^[\]{}%]+/g, ' ')} - ${new Date().toISOString().slice(0, 10)}.eln`).catch(e => toast(e.message)) }}>Export everything (.eln)</button>
+          </div>
+          <p className="help" style={{ margin: 0 }}>Each record comes with its printable report, so it can be read without any software. To bring records
+            in from another notebook, open a notebook and choose <b>Import .eln…</b></p>
+        </div></div>
 
         <div><h2>Sample codes</h2><p className="help">Short labels for your samples, like JL-013, that instruments understand. Type one as the sample
           name on the NMR or HPLC, and the data goes straight into the right experiment.</p></div>

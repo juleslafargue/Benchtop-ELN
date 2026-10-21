@@ -60,10 +60,20 @@ def _backups_keep_files_beside_the_zip(conn: Connection) -> None:
     one (it would bring back the records without their files) and says to install the newer version first."""
 
 
+def _locked_status_for_imports(conn: Connection) -> None:
+    """Records imported from another ELN, where they were signed or locked, arrive read-only with status "locked".
+    SQLite stores the status as text, so nothing changes there; Postgres keeps a list of allowed values. This step also
+    raises the version, so an older Benchtop (which doesn't know "locked" and would fail on such a record) refuses
+    the data and says to install this version, instead of breaking on the first imported record."""
+    if conn.dialect.name == "postgresql":
+        conn.execute(text("ALTER TYPE experimentstatus ADD VALUE IF NOT EXISTS 'locked'"))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "Start tracking database upgrades", _baseline),
     Migration(2, "Indexes for labs with thousands of experiments", _indexes_for_large_labs),
     Migration(3, "Backups keep attached files once, beside the zips", _backups_keep_files_beside_the_zip),
+    Migration(4, "Read-only status for records imported from other ELNs", _locked_status_for_imports),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1].number
 assert [m.number for m in MIGRATIONS] == list(range(1, len(MIGRATIONS) + 1)), "migration numbers must be 1, 2, 3…"

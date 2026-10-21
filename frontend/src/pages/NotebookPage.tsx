@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useApp } from '../App'
-import { api, displayName, type ExperimentSummary, type Status } from '../api'
+import { api, displayName, downloadAuthed, type ExperimentSummary, type Status } from '../api'
 import ExperimentList from '../components/ExperimentList'
 import NewExperimentDialog from '../components/NewExperimentDialog'
 import Modal from '../components/Modal'
+import ImportElnDialog from '../components/ImportElnDialog'
 import { AudienceBadge, AudiencePicker, type AudienceValue } from '../components/Audience'
 
 export default function NotebookPage() {
@@ -14,6 +15,7 @@ export default function NotebookPage() {
   const [items, setItems] = useState<ExperimentSummary[]>([])
   const [filter, setFilter] = useState<Status | ''>('')
   const [creating, setCreating] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [audEdit, setAudEdit] = useState<AudienceValue | null>(null)
   const saveAudience = async () => {
     try {
@@ -43,10 +45,15 @@ export default function NotebookPage() {
               onClick={() => setAudEdit({ visibility: nb.visibility, group_id: nb.group?.id ?? null })}>Change who can open it</button>}
           </div>
         </div>
-        {canWrite && <button className="btn primary" onClick={() => setCreating(true)}>New experiment</button>}
+        <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+          {nb.experiment_count > 0 && <button className="btn" title="Every experiment here you can open, in the shared format of lab notebooks (.eln)"
+            onClick={() => { toast('Preparing the export…'); downloadAuthed(`/api/notebooks/${nb.id}/export.eln`, `${nb.name.replace(/[\\/:*?"<>|#^[\]{}%]+/g, ' ').slice(0, 80)} - ${new Date().toISOString().slice(0, 10)}.eln`).catch(e => toast(e.message)) }}>Export (.eln)</button>}
+          {canWrite && !nb.archived && <button className="btn" onClick={() => setImporting(true)} title="Bring experiments in from eLabFTW, RSpace, another Benchtop…">Import .eln…</button>}
+          {canWrite && <button className="btn primary" onClick={() => setCreating(true)}>New experiment</button>}
+        </div>
       </div>
       <div className="row" role="group" aria-label="Filter by status">
-        {(['', 'open', 'signed', 'witnessed', 'voided'] as const).map(s => (
+        {(['', 'open', 'signed', 'witnessed', 'voided', ...(nb.status_counts.locked ? ['locked'] as const : [])] as const).map(s => (
           <button key={s} className={`btn sm${filter === s ? ' primary' : ''}`} onClick={() => setFilter(s)}>
             {s ? `${s[0].toUpperCase()}${s.slice(1)} (${nb.status_counts[s] ?? 0})` : `All (${nb.experiment_count})`}
           </button>
@@ -55,6 +62,7 @@ export default function NotebookPage() {
       <div className="panel"><ExperimentList items={items} showNotebook={false} empty="No experiments here yet." /></div>
       {more && <div style={{ textAlign: 'center' }}><button className="btn" onClick={() => load(items.length)}>Show older experiments</button></div>}
       {creating && <NewExperimentDialog notebookId={nb.id} onClose={() => setCreating(false)} />}
+      {importing && <ImportElnDialog notebookId={nb.id} onClose={() => setImporting(false)} onDone={() => { refreshNotebooks(); load(0) }} />}
       {audEdit && <Modal title={`Who can open ${nb.name}`} onClose={() => setAudEdit(null)} footer={<>
         <button className="btn" onClick={() => setAudEdit(null)}>Cancel</button>
         <button className="btn primary" onClick={saveAudience}>Save</button></>}>
