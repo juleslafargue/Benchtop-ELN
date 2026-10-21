@@ -131,6 +131,17 @@ def sweep(sync_playwright) -> list[tuple[str, str, str, str]]:
                 shown = pg.evaluate("document.documentElement.dataset.palette || 'benchtop'")
                 if shown != palette:
                     note("theme", f"expected the {palette} theme, page shows {shown}")
+                if path.startswith("/experiments/") and not phone:
+                    # the sidebar follows you down the page: none of it may end up stuck below the window
+                    # (0.20.0: taller than the window, its lower half only appeared at the very end of the page)
+                    hidden = pg.evaluate("""() => {
+                        const r = document.querySelector('.rail'); if (!r) return 0
+                        window.scrollTo(0, (document.documentElement.scrollHeight - innerHeight) / 2)
+                        const b = r.getBoundingClientRect(), sticky = getComputedStyle(r).position === 'sticky'
+                        window.scrollTo(0, 0)
+                        return sticky ? Math.round(Math.max(0, b.bottom - innerHeight)) : 0 }""")
+                    if hidden > 1:
+                        note("sidebar cut off", f"{hidden}px of the sidebar is below the window and can't be scrolled to")
                 over = pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
                 if over > 2:
                     note("too wide", f"page is {over}px wider than the screen")
