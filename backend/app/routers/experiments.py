@@ -60,7 +60,36 @@ def nesting_depth(html: str) -> int:
     return deepest
 
 
+# elements a browser closes by itself when the next one starts: they never pile up, so they aren't counted
+_SELF_CLOSING = {"p", "li", "dt", "dd", "tr", "td", "th", "thead", "tbody", "tfoot", "option", "optgroup", "rb", "rt", "rp", "colgroup"}
+MAX_OPEN = 1000  # far deeper than any real document; the HTML cleaner slows down sharply past it
+# a tag in raw HTML; it ends at the next "<" too, so text full of unfinished tags is still read in one pass
+_RAW_TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)[^<>]*?(/?)>")
+
+
+def open_depth(html: str) -> int:
+    """How deeply tags are left open in raw HTML, before any cleaning. A closing tag only counts when something of
+    that name is open (a stray one, like a browser, changes nothing). Quick on any input."""
+    open_: dict[str, int] = {}
+    depth = deepest = 0
+    for close, tag, selfclose in _RAW_TAG_RE.findall(html or ""):
+        t = tag.lower()
+        if t in _VOID or t in _SELF_CLOSING or selfclose:
+            continue
+        if close:
+            if open_.get(t):
+                open_[t] -= 1
+                depth -= 1
+        else:
+            open_[t] = open_.get(t, 0) + 1
+            depth += 1
+            deepest = max(deepest, depth)
+    return deepest
+
+
 def clean_html(html: str) -> str:
+    if open_depth(html) > MAX_OPEN:  # thousands of levels: no document is like that, and cleaning it would take minutes
+        html = _RAW_TAG_RE.sub(" ", html)
     out = nh3.clean(html or "", tags=nh3.ALLOWED_TAGS | {"label"}, attributes=_ATTRS,
                     filter_style_properties={"color", "text-align", "background-color", "font-size"}, link_rel="noopener noreferrer")
     return _FONT_SIZE.sub(_font_size, out) if "font-size" in out else out
@@ -521,7 +550,10 @@ def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
     plugin) is brought to the shape the app writes, so one odd record can't break search or export."""
     content = dict(content or {})
     if kind == EntryKind.text:
-        content["html"] = clean_html(_str(content.get("html"), 5_000_000))
+        raw = _str(content.get("html"), 5_000_000)
+        if open_depth(raw) > MAX_OPEN:
+            raise HTTPException(422, "This text has formatting nested too deeply to store; paste it as plain text instead")
+        content["html"] = clean_html(raw)
         if nesting_depth(content["html"]) > MAX_NESTING:
             raise HTTPException(422, "This text has formatting nested too deeply to store; paste it as plain text instead")
     elif kind == EntryKind.reaction:
@@ -615,7 +647,10 @@ def _clean_filename(name: str | None) -> str:
     """Just the file's own name: no folders, no control characters."""
     base = re.split(r"[\\/]", name or "")[-1]
     base = re.sub(r"[\x00-\x1f\x7f]", "", base).strip().lstrip(".") or "file"
-    return base[:200]
+    if len(base) <= 200:
+        return base
+    stem, _, ext = base.rpartition(".")  # a very long name is shortened in the middle: the extension says what it is
+    return f"{stem[:199 - len(ext)]}.{ext}" if stem and 0 < len(ext) <= 10 else base[:200]
 
 
 @router.post("/experiments/{exp_id}/entries", status_code=201)
@@ -796,9 +831,11 @@ def download_attachment(att_id: int, user: CurrentUser, session: DB, inline: boo
             h.update(chunk)
     if h.hexdigest() != a.sha256:
         raise HTTPException(500, "Attachment failed integrity check")
-    resp = FileResponse(path, media_type=a.content_type, filename=a.filename,
+    from ..eln_import import content_type
+    media = content_type(a.content_type)  # an odd type stored by an import (0.20.0–0.20.2) can't add headers
+    resp = FileResponse(path, media_type=media, filename=a.filename,
                         content_disposition_type="inline" if inline else "attachment")
-    if a.content_type != "application/pdf":  # an uploaded .html/.svg can never run script on Benchtop's address
+    if media != "application/pdf":  # an uploaded .html/.svg can never run script on Benchtop's address
         resp.headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'"
     return resp
 

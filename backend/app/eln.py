@@ -50,10 +50,32 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+_RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\.|$)", re.I)  # names Windows keeps for itself
+MAX_NAME_BYTES = 200  # every system allows 255 bytes per name; a character can take up to 4 of them (Chinese, emoji)
+
+
+def _cut(s: str, limit: int) -> str:
+    """At most `limit` characters and MAX_NAME_BYTES bytes, never splitting a character."""
+    s = s[:limit]
+    while len(s.encode()) > MAX_NAME_BYTES:
+        s = s[:-1]
+    return s
+
+
 def _safe(name: str, limit: int = 80) -> str:
-    """A file or folder name that works on Mac, Windows and Linux."""
+    """A file or folder name that works on Mac, Windows and Linux: no characters they refuse, not too long (the file
+    extension is kept when a long name is shortened), and none of the names Windows reserves."""
     s = re.sub(r'[\\/:*?"<>|#^\[\]{}%\x00-\x1f\x7f]+', " ", name or "").strip()
-    return re.sub(r"\s+", " ", s)[:limit].strip(" .") or "untitled"
+    s = re.sub(r"\s+", " ", s).strip(" .")
+    stem, dot, ext = s.rpartition(".")
+    if dot and stem and 0 < len(ext) <= 10 and " " not in ext:
+        ext = "." + ext
+        s = _cut(stem, max(1, limit - len(ext))).strip(" .") + ext
+    else:
+        s = _cut(s, limit).strip(" .")
+    if _RESERVED.match(s):
+        s = "_" + s
+    return s or "untitled"
 
 
 def _ref(i: str) -> dict[str, str]:

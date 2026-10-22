@@ -18,6 +18,7 @@ and members that expand absurdly (zip bombs) are refused before anything is stor
 """
 from __future__ import annotations
 
+import bisect
 import hashlib
 import html
 import json
@@ -27,6 +28,7 @@ import secrets
 import stat
 import time
 import zipfile
+import zlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -53,6 +55,41 @@ class ElnImportError(ValueError):
     """Something about the file, said so the person can act on it."""
 
 
+MAX_DEPTH = 100  # nesting in a description; real exports stay under 20
+
+
+def _too_deep(doc: Any, limit: int = MAX_DEPTH) -> bool:
+    """Is this JSON nested more than `limit` levels? (Checked without recursion, so it can't overflow itself.)"""
+    stack = [(doc, 1)]
+    while stack:
+        v, d = stack.pop()
+        if d > limit:
+            return True
+        if isinstance(v, dict):
+            stack.extend((x, d + 1) for x in v.values() if isinstance(x, (dict, list)))
+        elif isinstance(v, list):
+            stack.extend((x, d + 1) for x in v if isinstance(x, (dict, list)))
+    return False
+
+
+def _load_json(raw: bytes) -> Any:
+    """JSON from inside the file, refused plainly when it's nested absurdly deep (it would crash the reader)."""
+    try:
+        doc = json.loads(raw.decode("utf-8-sig"))
+    except RecursionError:
+        doc = None
+    else:
+        if not _too_deep(doc):
+            return doc
+    raise ElnImportError("The description inside is nested thousands of levels deep; that isn't a normal export.")
+
+
+def content_type(v: Any) -> str:
+    """A file type as the other ELN gave it, if it's a plain "type/subtype"; otherwise a generic one."""
+    t = v.split(";")[0].strip().lower() if isinstance(v, str) else ""
+    return t if re.fullmatch(r"[a-z0-9][a-z0-9!#$&^_.+-]{0,62}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}", t) else "application/octet-stream"
+
+
 # ---------------------------------------------------------------------------------------------------- reading a crate
 
 def _types(node: dict[str, Any]) -> set[str]:
@@ -76,6 +113,8 @@ def _str(v: Any, limit: int = 2000) -> str:
         return ""
     if isinstance(v, dict):
         v = v.get("@value", v.get("name", v.get("@id", "")))
+        if isinstance(v, dict):
+            return ""  # an object inside an object: nothing readable to show
     if isinstance(v, list):
         return ", ".join(_str(x, limit) for x in v if x is not None)[:limit]
     return str(v).strip()[:limit]
@@ -88,7 +127,7 @@ def _date(v: Any) -> Optional[str]:
     try:
         d = datetime.fromisoformat(s.replace("Z", "+00:00"))
         return (d if d.tzinfo else d.replace(tzinfo=timezone.utc)).astimezone(timezone.utc).isoformat(timespec="seconds")
-    except ValueError:
+    except (ValueError, OverflowError):  # not a date, or one past the calendar's ends (year 9999 with a time zone)
         return s
 
 
@@ -156,7 +195,9 @@ class Crate:
         if meta.file_size > MAX_METADATA:
             raise ElnImportError("The description file inside is over 200 MB; that isn't a normal export.")
         try:
-            doc = json.loads(self.z.read(meta).decode("utf-8-sig"))
+            doc = _load_json(self.z.read(meta))
+        except ElnImportError:
+            raise
         except (ValueError, UnicodeDecodeError) as e:
             raise ElnImportError(f"The description inside (ro-crate-metadata.json) isn't valid JSON: {e}") from e
         graph = doc.get("@graph") if isinstance(doc, dict) else None
@@ -180,6 +221,10 @@ class Crate:
             rel = name[len(prefix):]
             if rel and rel not in ("ro-crate-metadata.json", "ro-crate-metadata.json.minisig", "ro-crate-preview.html"):
                 self.members[rel] = i
+        # every folder in the archive, and the files in sorted order: big exports are looked up, never searched through
+        self.folders = {str(PurePosixPath(rel).parents[k]) + "/" for rel in self.members
+                        for k in range(len(PurePosixPath(rel).parents) - 1)}
+        self.sorted = sorted(self.members)
         pub = self.by_id.get((_refs(desc.get("sdPublisher")) or [""])[0]) or {}
         software = next((n for n in self.by_id.values() if "SoftwareApplication" in _types(n)), {})
         self.source = _str(pub.get("name") or software.get("name") or "", 120) or "another ELN"
@@ -208,7 +253,16 @@ class Crate:
         if not node_id.startswith("./") or node_id == "./":
             return None
         f = re.sub(r"/{2,}", "/", unquote(node_id[2:])).rstrip("/") + "/"
-        return f if node_id.endswith("/") or any(k.startswith(f) for k in self.members) else None
+        return f if node_id.endswith("/") or f in self.folders else None
+
+    def under(self, folder: str) -> list[str]:
+        """The files inside a folder (and its sub-folders)."""
+        i = bisect.bisect_left(self.sorted, folder)
+        out = []
+        while i < len(self.sorted) and self.sorted[i].startswith(folder):
+            out.append(self.sorted[i])
+            i += 1
+        return out
 
     def name_of(self, node_id: str) -> str:
         n = self.by_id.get(node_id) or {}
@@ -238,9 +292,10 @@ class Crate:
             base = self.folder(it.node_id)
             if not base:
                 continue
-            nested = [self.folder(c) for c in it.children]
-            for rel, info in self.members.items():
-                if info.filename in claimed or not rel.startswith(base) or any(n and rel.startswith(n) for n in nested):
+            nested = [n for n in (self.folder(c) for c in it.children) if n]
+            for rel in self.under(base):
+                info = self.members[rel]
+                if info.filename in claimed or any(rel.startswith(n) for n in nested):
                     continue
                 sub = str(PurePosixPath(rel[len(base):]).parent)
                 it.files.append(CrateFile(node_id=rel, name=PurePosixPath(rel).name, info=info, size=info.file_size,
@@ -278,7 +333,7 @@ class Crate:
             name += PurePosixPath(info.filename).suffix  # a title without the extension: keep the real one
         return CrateFile(node_id=node_id, name=name, info=info, size=info.file_size if info else 0,
                          sha256=_str(n.get("sha256"), 64).lower() if re.fullmatch(r"[0-9a-fA-F]{64}", _str(n.get("sha256"), 64)) else "",
-                         folder=folder, content_type=_str(n.get("encodingFormat"), 120).split(";")[0].strip() or "application/octet-stream")
+                         folder=folder, content_type=content_type(_str(n.get("encodingFormat"), 200)))
 
     def _collect(self, it: Item, node_id: str, folder: str, importable: set[str], claimed: set[str], seen: set[str]) -> None:
         if node_id in seen:
@@ -305,12 +360,12 @@ class Crate:
         if rec is None or rec.size > 100 * 1024 * 1024:
             return
         try:
-            data = json.loads(self.z.read(rec.info))
-        except (ValueError, OSError):
+            data = _load_json(self.z.read(rec.info))
+        except (ValueError, OSError, zipfile.BadZipFile):
             it.warnings.append("Its Benchtop record couldn't be read, so it's imported like any other ELN's.")
             return
         if isinstance(data, dict) and data.get("format") == RECORD_FORMAT and isinstance(data.get("entries"), list):
-            it.record = data
+            it.record = _tidy_record(data)
 
     def _lock_reason(self, it: Item) -> str:
         if it.record:
@@ -341,6 +396,33 @@ class Crate:
         if it.record and (it.record.get("experiment") or {}).get("owner"):
             return [it.record["experiment"]["owner"].get("name") or "Someone"]
         return [self.name_of(a) for a in _refs(it.node.get("author"))][:20]
+
+
+def _tidy_record(data: dict[str, Any]) -> dict[str, Any]:
+    """A record.benchtop.json as Benchtop wrote it, whatever was edited or damaged since: each part the right kind of
+    thing (text, a list, an object) or left out, so a bad part costs that part, never the whole import."""
+    def text(v: Any) -> Optional[str]:
+        return v if isinstance(v, str) else None
+
+    def person(v: Any) -> Optional[dict[str, Any]]:
+        return {"name": text(v.get("name")), "username": text(v.get("username"))} if isinstance(v, dict) else None
+    exp = data.get("experiment") if isinstance(data.get("experiment"), dict) else {}
+    exp = {**exp, "owner": person(exp.get("owner"))}
+    for k in ("eid", "follows", "status", "title", "description", "created_at", "updated_at", "notebook"):
+        exp[k] = text(exp.get(k))
+    exp["tags"] = [t for t in exp.get("tags") or [] if isinstance(t, str)] if isinstance(exp.get("tags"), list) else []
+    atts = []
+    for a in data.get("attachments") or [] if isinstance(data.get("attachments"), list) else []:
+        if isinstance(a, dict):
+            atts.append({**a, "filename": text(a.get("filename")), "content_type": content_type(a["content_type"]) if a.get("content_type") else None,
+                         "sha256": text(a.get("sha256"))})
+    comments = []
+    for c in data.get("comments") or [] if isinstance(data.get("comments"), list) else []:
+        if isinstance(c, dict) and isinstance(c.get("body"), str):
+            comments.append({**c, "author": person(c.get("author")), "created_at": text(c.get("created_at"))})
+    lists = {k: [x for x in data.get(k) if isinstance(x, dict)] if isinstance(data.get(k), list) else []
+             for k in ("entries", "signatures")}
+    return {**data, "experiment": exp, "attachments": atts, "comments": comments, **lists}
 
 
 # ---------------------------------------------------------------------------------------------------- the preview
@@ -450,14 +532,16 @@ def _store(crate: Crate, f: CrateFile) -> tuple[str, int]:
                     raise ElnImportError(f"{f.name} is larger than it said")
                 out.write(chunk)
         return store_tmp(tmp)
+    except (zipfile.BadZipFile, zlib.error, EOFError):
+        raise ElnImportError(f"{f.name} is damaged inside the .eln file (it doesn't match the zip's own check), "
+                             "so this experiment wasn't imported. Export it again, or copy the file over again.") from None
     finally:
         tmp.unlink(missing_ok=True)
 
 
 def _clean_name(name: str) -> str:
-    base = re.split(r"[\\/]", name or "")[-1]
-    base = re.sub(r"[\x00-\x1f\x7f]", "", base).strip().lstrip(".") or "file"
-    return base[:200]
+    from .routers.experiments import _clean_filename
+    return _clean_filename(name)
 
 
 def _text_to_html(text: str, fmt: str = "") -> str:
@@ -469,7 +553,7 @@ def _text_to_html(text: str, fmt: str = "") -> str:
         h = clean_html(text)
         if nesting_depth(h) <= MAX_NESTING:
             return h
-        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"<[^<>]+>", " ", text)  # stops at the next "<": one pass, whatever the text
     out, para, items = [], [], []
 
     def flush():
@@ -676,6 +760,22 @@ def _new_entry(session: Session, exp: Experiment, kind: EntryKind, title: str, c
 
 def import_items(session: Session, user: User, token: str, notebook: Notebook, keys: list[str]) -> dict[str, Any]:
     path, meta = staged(token, user)
+    # one import per upload at a time: a double click, a second tab or a retried request mustn't make the records twice
+    busy = path.with_suffix(".importing")
+    try:
+        fd = os.open(busy, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        raise ElnImportError("This file is already being imported; its experiments will appear in the notebook when it's done.") from None
+    os.close(fd)
+    try:
+        path, meta = staged(token, user)  # the import just before this one may have finished (and tidied the file away)
+        return _import_items(session, user, path, meta, token, notebook, keys)
+    finally:
+        busy.unlink(missing_ok=True)
+
+
+def _import_items(session: Session, user: User, path: Path, meta: dict[str, Any], token: str, notebook: Notebook,
+                  keys: list[str]) -> dict[str, Any]:
     crate = Crate(path)
     created, failed = [], []
     try:
@@ -696,11 +796,11 @@ def import_items(session: Session, user: User, token: str, notebook: Notebook, k
                     msg = "the disk is full"
                 failed.append({"title": it.title, "error": msg[:300]})
         # a Benchtop follow-up whose original came in the same import is linked to it again
-        by_eid = {((it.record or {}).get("experiment") or {}).get("eid"): new_of[it.node_id]
-                  for it in items if it.record and it.node_id in new_of}
+        by_eid = {it.record["experiment"]["eid"]: new_of[it.node_id]
+                  for it in items if it.record and it.node_id in new_of and it.record["experiment"]["eid"]}
         for it in items:
             follows = ((it.record or {}).get("experiment") or {}).get("follows")
-            if it.node_id in new_of and follows in by_eid:
+            if it.node_id in new_of and follows and follows in by_eid:
                 new_of[it.node_id].follows_id = by_eid[follows].id
                 session.add(new_of[it.node_id])
         session.commit()

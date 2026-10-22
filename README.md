@@ -291,6 +291,8 @@ imported. Tick what you want and choose the notebook.
 - Moving between **two Benchtops** keeps sections, reaction tables, spectra analyses and files exactly. Links to the
   other lab's inventory (lots and materials) are dropped, since they'd point at the wrong bottles here.
 - Imports are recorded in the audit trail, as are exports.
+- Folder and file names in an export unzip on any computer: shortened to fit (Chinese, Japanese and emoji names
+  included) with the file extension kept, and never a name Windows reserves such as `CON` or `NUL`.
 
 ## Development
 
@@ -430,9 +432,11 @@ Tokens, webhooks (Slack, Teams, or signed JSON for your own code) and examples i
   write to an instrument share can't make Benchtop copy a file from elsewhere on the computer. Inbox items follow
   the sharing rules, and once a file is attached it is only reachable by people who can read that record.
 - **.eln imports** are read member by member and never unpacked as a whole: paths that leave the folder, links,
-  encrypted members and zip bombs are refused before anything is stored, every write-up goes through the same HTML
-  cleaning as typed text, and an upload waiting for its preview can only be imported by the person who uploaded it
-  (it's deleted after the import, or after a day). Exports contain only records the person can open.
+  encrypted members, zip bombs and descriptions nested absurdly deep are refused before anything is stored, every
+  write-up goes through the same HTML cleaning as typed text, and a file type is kept only when it's a plain type
+  (so it can't add anything to a download). An upload waiting for its preview can only be imported by the person who
+  uploaded it, one import at a time (it's deleted after the import, or after a day). Exports contain only records the
+  person can open.
 - **Browser protections**: a Content Security Policy (only Benchtop's own scripts run; pages can't be framed by other sites), `nosniff`, no referrer leaks, and API responses that aren't cached.
 - Report security problems privately as described in [SECURITY.md](SECURITY.md).
 

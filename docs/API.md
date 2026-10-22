@@ -52,7 +52,7 @@ Records travel between lab notebooks as **.eln** files (the ELN Consortium's for
 | `GET /api/notebooks/{id}/export.eln` | every experiment in a notebook that you can open |
 | `GET /api/export.eln` | everything you can open |
 | `POST /api/eln/preview` (multipart `file`) | upload a .eln file; returns a `token` and what's inside (`items`, each with a `key`) without importing anything |
-| `POST /api/eln/import/{token}` `{"notebook_id": 3, "items": ["0", "2"]}` | import those experiments; returns `created` (new EXP numbers) and any `failed` |
+| `POST /api/eln/import/{token}` `{"notebook_id": 3, "items": ["0", "2"]}` | import those experiments; returns `created` (new EXP numbers) and any `failed`. While one import of an upload is running, another of the same upload gets 422 |
 | `DELETE /api/eln/import/{token}` | discard an upload you decided not to import (otherwise deleted after a day) |
 
 ```python
