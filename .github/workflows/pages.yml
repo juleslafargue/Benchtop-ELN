@@ -1,0 +1,42 @@
+# Publishes Benchtop's website (site/) on GitHub Pages: https://juleslafargue.github.io/benchtop-eln/
+# Runs when the site, the screenshots or the logo change on main. Needs Settings → Pages → Source: "GitHub Actions".
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "docs/screenshots/**", "docs/logo.svg", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish the website
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Put the site together (the page, the logo, the screenshots it shows)
+        run: |
+          mkdir -p _site/img
+          cp site/index.html _site/
+          cp docs/logo.svg _site/favicon.svg
+          for f in $(grep -o 'img/[a-z0-9_-]*\.png' site/index.html | sort -u); do cp "docs/screenshots/${f#img/}" "_site/$f"; done
+          touch _site/.nojekyll
+          ls -R _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

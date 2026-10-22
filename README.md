@@ -10,6 +10,8 @@ inventory, and an author/witness e-signature workflow backed by a tamper-evident
 This is a clean-room implementation built from publicly documented ELN concepts. It contains
 no code, assets or data formats from any proprietary product and is not affiliated with Revvity.
 
+**Website:** [juleslafargue.github.io/benchtop-eln](https://juleslafargue.github.io/benchtop-eln/) · **Download:** [latest release](https://github.com/juleslafargue/benchtop-eln/releases/latest)
+
 ![An experiment in Benchtop: reaction scheme, conditions and stoichiometry table, signature stamp and discussion panel](docs/screenshots/reaction.png)
 
 ## A look around

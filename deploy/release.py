@@ -25,7 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TRAILERS = re.compile(r"^(Co-Authored-By|Claude-Session|Signed-off-by|Reviewed-by|Change-Id):", re.I)
-LEAVE_OUT = (".github/",)  # GitHub's own settings; updates never touch them anyway
+LEAVE_OUT = (".github/", "site/")  # GitHub's own settings (updates never touch them) and the project website
 
 
 def git(*args: str, root: Path = ROOT) -> str:
