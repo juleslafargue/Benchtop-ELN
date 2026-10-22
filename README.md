@@ -98,6 +98,15 @@ and kept out of the integrals:
 | **API tokens & webhooks** | Personal access tokens (read only, or read & write, with an expiry) for scripts and instrument PCs; they act as you but can never sign records or change settings. Webhooks post to Slack, Teams or your own service when an experiment is signed, witnessed, returned, voided or commented on, signed with HMAC-SHA256, retried in the background, with a delivery history. Only identifiers and titles are sent, never record content. See [docs/API.md](docs/API.md). |
 | **Users & accounts** | Admin, scientist and read-only viewer roles. A fresh install opens on a setup screen where you create your own administrator account (the built-in admin login is then retired). **Single sign-on** with Microsoft 365 / Entra ID, Google Workspace or any OpenID Connect provider: people sign in with their university or company account, optionally limited to your email domains, with accounts created on first sign-in or matched to ones an admin added. Sign-ins can last 30 days. Everyone has an account page to change their name, email, username and password, and preferences (five colour themes, each in light and dark: Benchtop, Lab notebook, Fume hood, Litmus and High contrast; default notebook; open spectra full-screen) that follow them between computers. Signatures store the printed name at the moment of signing, so later name changes never alter signed records. An optional ORCID iD (checked for typos) names you in exports. Admins can edit any account. |
 
+## Which computer?
+
+| You have | Go to |
+|---|---|
+| A Mac | [Quick start (Mac)](#quick-start-mac) |
+| A Linux computer | [Quick start (Linux)](#quick-start-linux) |
+| A Windows PC | [On Windows](#on-windows) |
+| Labmates who should use your Benchtop | Nothing to install for them: they open it in their browser, on any computer or phone. See [docs/SERVER.md](docs/SERVER.md) |
+
 ## Quick start (Mac)
 
 Double-click **Benchtop.command** in the folder, or run:
@@ -187,13 +196,85 @@ spectra to analyse. The sign-in page lists everyone; click a name to see Benchto
 (`./benchtop lab`), the same over Tailscale from anywhere, or a server with HTTPS, backups and single
 sign-on (`deploy/`).
 
+## Quick start (Linux)
+
+Benchtop runs on Linux with the same `./benchtop` launcher as on a Mac (GitHub tests every change on Ubuntu).
+These steps are for Ubuntu or Debian; other distributions need the same three things from their own package manager.
+
+1. Check you have Python 3.11 or newer: `python3 --version` (Ubuntu 24.04 has 3.12; Ubuntu 22.04's 3.10 is too old).
+2. Install what the launcher uses:
+
+   ```bash
+   sudo apt update && sudo apt install -y python3-venv curl unzip
+   ```
+
+3. Download `benchtop-eln-vX.Y.Z.zip` from the [Releases page](https://github.com/juleslafargue/benchtop-eln/releases),
+   then unzip it and start Benchtop:
+
+   ```bash
+   cd ~ && unzip ~/Downloads/benchtop-eln-v*.zip
+   cd ~/benchtop && ./benchtop
+   ```
+
+The first start sets everything up (a minute or two), then opens your browser; if it can't, it prints the address
+to open (http://localhost:8000). Leave that terminal window open while you work; close it or press Ctrl+C to stop.
+
+From here everything works as on a Mac: the commands listed in [Quick start (Mac)](#quick-start-mac), updating and
+rolling back, backups, `./benchtop demo` and `./benchtop lab` for labmates on the same network. The Mac-only parts are
+double-clicking `Benchtop.command` (on Linux, run `./benchtop` in a terminal) and Safari's *Add to Dock* (Chrome's
+*Install Benchtop* works on Linux too).
+
+## On Windows
+
+**Labmates on Windows don't need anything installed.** When Benchtop runs on a Mac (`./benchtop lab`) or a lab server,
+they open it in Edge or Chrome like any website.
+
+**To run your own copy on a Windows PC**, use WSL, Microsoft's free "Linux inside Windows". Benchtop then runs exactly
+as it does on Linux. There's no double-click starter for Windows itself yet (it's on the [roadmap](#roadmap-ideas)).
+
+1. Open **PowerShell as administrator** (right-click the Start button → *Terminal (Admin)*, or *Windows PowerShell
+   (Admin)* on Windows 10), run `wsl --install`, then restart the PC. This installs Ubuntu. On a university- or
+   company-managed PC this may need your IT team.
+2. Open **Ubuntu** from the Start menu and choose a username and password when asked (this is only for Ubuntu).
+3. In the Ubuntu window, install what the launcher uses:
+
+   ```bash
+   sudo apt update && sudo apt install -y python3-venv curl unzip
+   ```
+
+4. Download `benchtop-eln-vX.Y.Z.zip` from the [Releases page](https://github.com/juleslafargue/benchtop-eln/releases)
+   with your usual browser, then in the Ubuntu window (put your Windows user name in place of `YOU`):
+
+   ```bash
+   cd ~ && unzip /mnt/c/Users/YOU/Downloads/benchtop-eln-v*.zip
+   cd ~/benchtop && ./benchtop
+   ```
+
+5. Open http://localhost:8000 in Edge or Chrome. Leave the Ubuntu window open while you work; close it or press
+   Ctrl+C to stop. Next time, open Ubuntu and run `cd ~/benchtop && ./benchtop`.
+
+Good to know:
+
+- **Unzip it inside Ubuntu, as above**, not with Windows' File Explorer, and don't run a copy that sits in a Windows
+  folder (`/mnt/c/…`). Windows tools can change the launcher's line endings or permissions, and then it won't start.
+  For the same reason, if you use Git, clone inside Ubuntu rather than with GitHub Desktop for Windows.
+- **Your records live inside Ubuntu.** File Explorer shows them under *Linux → Ubuntu → home → (your Ubuntu name)
+  → benchtop → backend → data* (on Windows 10, type `\\wsl$\Ubuntu\home` in the address bar). For a backup copy
+  outside Ubuntu, make a folder in Windows, then type its path as the *second copy* in **Admin → Backups**, for example
+  `/mnt/c/Users/YOU/OneDrive/Benchtop backups`.
+- **Updating** works as on a Mac: `./benchtop update` in the Ubuntu window ([Updating](#updating)).
+- **Sharing with labmates** (`./benchtop lab`) isn't set up for WSL: Windows keeps WSL hidden from the network by
+  default. For a lab, run Benchtop on a Mac, a Linux computer or a server ([docs/SERVER.md](docs/SERVER.md)).
+- **Docker Desktop** is another way: [Quick start (Docker)](#quick-start-docker) works on Windows too.
+
 ## Quick start (Docker)
 
 ```bash
 docker compose up -d --build
 docker compose exec app python -m app.seed   # optional demo data
-open http://localhost:8000
 ```
+
+Then open http://localhost:8000 in your browser (on a Mac, Linux, or Windows with Docker Desktop).
 
 Sign in as `admin` with the password in `BENCHTOP_ADMIN_PASSWORD` (default in compose: `change-me-now`).
 The demo seed adds **alice** (author) and **bob** (witness), both `benchtop123`, a reagent
@@ -451,6 +532,8 @@ that work.
 
 ## Roadmap ideas
 
+- Native Windows support: a double-click starter, and updates and rollback without WSL, tested on Windows by GitHub
+  on every change (today Windows runs Benchtop through WSL, and labmates on Windows just use the browser)
 - Next: phone barcode scanning for lots and samples, DOI references, compound and batch registration with a route view, a full-text search index for very large notebooks
 - Signed .eln exports (minisign), so another system can check an export came from your Benchtop
 - Code plugins (Python packages with hooks, extra pages and widgets), building on today's plugin files

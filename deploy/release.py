@@ -76,7 +76,8 @@ def notes(root: Path = ROOT, v: str | None = None) -> str:
            f"`./benchtop upgrade ~/Downloads/benchtop-eln-v{v}.zip` once. "
            f"A lab server updates with `deploy/update-server.sh` (docs/SERVER.md).\n\n"
            f"**New install:** download **benchtop-eln-v{v}.zip** below, unzip it, and double-click Benchtop.command "
-           f"(README: Quick start). It includes the ready-built interface, so you only need Python.")
+           f"(README: Quick start (Mac)). On Linux, or on Windows through WSL, follow the README's Quick start (Linux) "
+           f"or On Windows. It includes the ready-built interface, so you only need Python.")
     # "---" separates what changed from how to install it; ./benchtop update shows only the first part
     return "\n\n".join(parts) + "\n\n---\n\n" + how + "\n"
 
