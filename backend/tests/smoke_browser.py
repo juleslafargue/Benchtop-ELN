@@ -132,16 +132,19 @@ def sweep(sync_playwright) -> list[tuple[str, str, str, str]]:
                 if shown != palette:
                     note("theme", f"expected the {palette} theme, page shows {shown}")
                 if path.startswith("/experiments/") and not phone:
-                    # the sidebar follows you down the page: none of it may end up stuck below the window
-                    # (0.20.0: taller than the window, its lower half only appeared at the very end of the page)
-                    hidden = pg.evaluate("""() => {
-                        const r = document.querySelector('.rail'); if (!r) return 0
-                        window.scrollTo(0, (document.documentElement.scrollHeight - innerHeight) / 2)
-                        const b = r.getBoundingClientRect(), sticky = getComputedStyle(r).position === 'sticky'
+                    # the sidebar is part of the page: it scrolls with everything else, never in a box of its own
+                    # (0.20.0 pinned it so its lower half was out of reach; 0.20.1 made it a small scrolling menu)
+                    bad = pg.evaluate("""() => {
+                        const r = document.querySelector('.rail'); if (!r) return ''
+                        if (r.scrollHeight > r.clientHeight + 1) return 'it has a scrollbar of its own'
+                        const room = document.documentElement.scrollHeight - innerHeight
+                        if (room < 50) return ''
+                        const before = r.getBoundingClientRect().top
+                        window.scrollTo(0, room); const moved = before - r.getBoundingClientRect().top
                         window.scrollTo(0, 0)
-                        return sticky ? Math.round(Math.max(0, b.bottom - innerHeight)) : 0 }""")
-                    if hidden > 1:
-                        note("sidebar cut off", f"{hidden}px of the sidebar is below the window and can't be scrolled to")
+                        return Math.abs(moved - room) > 2 ? `it moved ${Math.round(moved)}px when the page scrolled ${Math.round(room)}px` : '' }""")
+                    if bad:
+                        note("sidebar", f"the sidebar doesn't scroll with the page: {bad}")
                 over = pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
                 if over > 2:
                     note("too wide", f"page is {over}px wider than the screen")
