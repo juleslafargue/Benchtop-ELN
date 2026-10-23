@@ -245,6 +245,7 @@ function finish(meta: Omit<Spectrum, 'x' | 'y'>, xs: number[], ys: number[]): Sp
 }
 
 export { SPECTRUM_EXT, canViewSpectrum } from './viewable'
+import { solventKey } from './solvents'
 
 export function parseSpectrumFile(raw: string, filename: string): Spectrum {
   if (/^\s*##/.test(raw)) return parseJcamp(raw)
@@ -389,16 +390,6 @@ const C13: Record<string, Marker[]> = {
   ACETONE: [{ label: 'acetone-d₆', ppm: 29.84 }, { label: 'acetone-d₆', ppm: 206.26 }], CD3CN: [{ label: 'CD₃CN', ppm: 1.32 }, { label: 'CD₃CN', ppm: 118.26 }],
 }
 
-function solventKey(solvent?: string) {
-  const s = (solvent || '').toUpperCase().replace(/[\s_]/g, '')
-  if (!s) return ''
-  if (s.startsWith('DMSO')) return 'DMSO'
-  if (s.startsWith('ACETONE')) return 'ACETONE'
-  if (s.includes('CHLOROFORM')) return 'CDCL3'
-  if (s.includes('METHANOL')) return 'CD3OD'
-  if (s.includes('BENZENE')) return 'C6D6'
-  return s.replace(/-D\d+$/, '')
-}
 
 export function solventMarkers(s: Spectrum): Marker[] {
   if (s.kind !== 'nmr') return []
