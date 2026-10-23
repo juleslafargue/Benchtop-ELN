@@ -110,8 +110,9 @@ def from_csl(item: Any, doi: str = "") -> dict[str, Any]:
     journal = next((j for j in (_text(item.get(k), FIELDS["journal"]) for k in
                                 ("container-title-short", "short-container-title", "container-title", "publisher")) if j), "")
     pages = _text(item.get("page"), FIELDS["pages"]) or _text(item.get("article-number"), FIELDS["pages"])
-    return clean_item({
-        "doi": normalise(item.get("DOI")) or doi, "title": _text(item.get("title"), FIELDS["title"]), "authors": authors,
+    given = normalise(item.get("DOI"))
+    return clean_item({  # registrars change a DOI's capitals (DOIs ignore case): keep it as it was pasted
+        "doi": doi if doi and given.lower() in ("", doi.lower()) else given or doi, "title": _text(item.get("title"), FIELDS["title"]), "authors": authors,
         "journal": journal, "year": _year(item), "volume": _text(item.get("volume"), FIELDS["volume"]),
         "issue": _text(item.get("issue"), FIELDS["issue"]), "pages": pages, "note": "",
     })

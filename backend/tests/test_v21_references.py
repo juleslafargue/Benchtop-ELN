@@ -130,6 +130,11 @@ def test_crossref_answer_becomes_a_reference(registry):
                             "as Trace Impurities. J. Org. Chem. 1997, 62 (21), 7512–7515. DOI: 10.1021/jo971176v")
 
 
+def test_the_doi_keeps_the_capitals_it_was_pasted_with(registry):
+    assert doi.lookup("10.1021/JO971176V")["doi"] == "10.1021/JO971176V"  # Crossref answers 10.1021/jo971176v
+    assert doi.lookup("10.5281/zenodo.1234")["doi"] == "10.5281/zenodo.1234"  # DataCite answers 10.5281/ZENODO.1234
+
+
 def test_markup_in_titles_is_taken_out_and_article_numbers_stand_in_for_pages(registry):
     r = doi.lookup("10.1002/anie.201000000")
     assert r["title"] == "Synthesis of C60–tert-Butyl Adducts via π-Stacking"
@@ -140,7 +145,6 @@ def test_markup_in_titles_is_taken_out_and_article_numbers_stand_in_for_pages(re
 def test_datacite_answer_uses_the_publisher_and_group_authors(registry):
     r = doi.lookup("10.5281/zenodo.1234")
     assert r["journal"] == "Zenodo" and r["authors"] == ["Patel, Priya", "Benchtop Demo Lab"] and r["year"] == "2025"
-    assert r["doi"] == "10.5281/ZENODO.1234"
 
 
 def test_a_hundred_and_fifty_authors_are_cut_to_a_hundred_with_et_al(registry):
