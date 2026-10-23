@@ -167,6 +167,11 @@ Rolling back keeps your data as it is now, so nothing you recorded after the upd
 don't change how the data is stored; if one did, `rollback` says so and offers the backup made just before
 the update instead (which would bring back the data as it was then).
 
+However the new version arrived (`update`, merging in GitHub Desktop, `git pull`, a copied folder), Benchtop
+backs up your data by itself on its first start whenever it is about to change how the data is stored, and
+says so in the Terminal window. That backup keeps the old format, so the previous version can restore it. If
+the backup fails, Benchtop doesn't start and changes nothing.
+
 Versions before 0.19 don't have `update` yet. Once: with a GitHub clone, *Fetch origin* then *Pull origin* in
 GitHub Desktop (or `git pull`); with a zip, download `benchtop-eln-vX.Y.Z.zip` from the
 [Releases page](https://github.com/juleslafargue/benchtop-eln/releases) and run
@@ -423,7 +428,7 @@ covers. A Benchtop that finds data from a newer version refuses to start rather 
 | `BENCHTOP_STATIC_DIR` | unset | Serve the built frontend from this directory |
 | `BENCHTOP_BACKUP_DIR` | `<data dir>/backups` | Where backups are written |
 | `BENCHTOP_BACKUP_KEEP` | `14` | Number of backups kept |
-| `BENCHTOP_BACKUP_INTERVAL_HOURS` | `24` | `0` turns automatic backups off |
+| `BENCHTOP_BACKUP_INTERVAL_HOURS` | `24` | `0` turns automatic backups off, including the one before a database upgrade |
 | `BENCHTOP_BACKUP_COPY_DIR` | (set in Admin → Backups) | Second folder every backup is copied to |
 | `BENCHTOP_SMTP_HOST`, `_PORT`, `_SECURITY`, `_USER`, `_PASSWORD`, `_FROM` | (set in Admin → Email) | Email server; when set here, the app shows them as fixed |
 | `BENCHTOP_TIMESTAMPS` | `on` | `off` turns trusted timestamps off |

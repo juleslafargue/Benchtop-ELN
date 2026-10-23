@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -7,6 +9,8 @@ from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine
 
 from .config import settings
+
+log = logging.getLogger("benchtop")
 
 _connect_args = {"check_same_thread": False, "timeout": 30} if settings.database_url.startswith("sqlite") else {}
 # FastAPI runs each request on a thread pool (40 threads); with SQLite's default 5+10 connections, busy
@@ -41,11 +45,47 @@ def check_not_moved_from_postgres() -> None:
         "  To start afresh on the standard database instead: remove the POSTGRES_PASSWORD line from deploy/.env.")
 
 
+class BackupBeforeUpgradeFailed(RuntimeError):
+    """The database needs upgrading, and the backup that comes first didn't work."""
+
+
+def backup_before_upgrade() -> dict | None:
+    """Back up when this version is about to upgrade the database. `./benchtop update` backs up first, but code that
+    arrived another way (merged in GitHub Desktop, git pull, a copied folder) would otherwise upgrade with no backup
+    from just before. The backup keeps the old database version, so the previous Benchtop can restore it."""
+    from sqlalchemy import inspect
+
+    from . import backup, migrations
+
+    if not settings.database_url.startswith("sqlite:///") or settings.backup_interval_hours <= 0:
+        return None  # Postgres is backed up by its admin; 0 turns automatic backups off (demo, tests)
+    db = Path(settings.database_url.removeprefix("sqlite:///"))
+    if not db.exists() or not inspect(engine).has_table("experiment"):
+        return None  # a new, empty database: nothing to keep
+    have = migrations.current_version(engine)
+    if have >= migrations.SCHEMA_VERSION:
+        return None
+    newest = backup.newest_backup_info()
+    if newest and newest["schema_version"] == have and newest["age_minutes"] < 10:
+        return None  # ./benchtop update made one a moment ago
+    try:
+        made = backup.create_backup("before-upgrade")
+    except Exception as exc:  # noqa: BLE001 - whatever it was, don't upgrade without the backup
+        raise BackupBeforeUpgradeFailed(
+            f"This version of Benchtop upgrades the database (to version {migrations.SCHEMA_VERSION}), and backs up "
+            f"your data first, but the backup didn't work: {exc}\n  Nothing was changed. Fix that (for example, free "
+            "some disk space), then start Benchtop again.") from exc
+    log.warning("Backed up your data before upgrading the database (version %s to %s): %s",
+                have, migrations.SCHEMA_VERSION, made["path"])
+    return made
+
+
 def init_db() -> None:
     from . import migrations, models  # noqa: F401  (register tables)
 
     check_not_moved_from_postgres()  # before anything creates an empty database file
     migrations.check_not_too_new(engine)  # before touching anything: an older Benchtop mustn't alter newer data
+    backup_before_upgrade()  # before the tables, columns and steps below change anything
     SQLModel.metadata.create_all(engine)
     add_missing_columns()
     migrations.upgrade(engine)

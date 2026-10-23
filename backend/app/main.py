@@ -102,11 +102,11 @@ async def _housekeeping_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    from .db import MovedFromPostgres
+    from .db import BackupBeforeUpgradeFailed, MovedFromPostgres
     from .migrations import TooNew
     try:
         init_db()
-    except (TooNew, MovedFromPostgres) as exc:
+    except (TooNew, MovedFromPostgres, BackupBeforeUpgradeFailed) as exc:
         log.error("\n\n  Benchtop can't open this data.\n  %s\n", exc)
         raise
     ensure_admin()

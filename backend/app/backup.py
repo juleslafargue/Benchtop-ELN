@@ -87,6 +87,20 @@ def newest_age_hours() -> float | None:
     return (time.time() - Path(b[0]["path"]).stat().st_mtime) / 3600
 
 
+def newest_backup_info() -> dict[str, Any] | None:
+    """The newest backup's database version (from its manifest) and age in minutes; None without a readable one."""
+    b = list_backups()
+    if not b:
+        return None
+    try:
+        with zipfile.ZipFile(b[0]["path"]) as z:
+            manifest = json.loads(z.read("manifest.json"))
+    except (OSError, KeyError, ValueError, zipfile.BadZipFile):
+        return None
+    return {"path": b[0]["path"], "schema_version": manifest.get("schema_version"),
+            "age_minutes": (time.time() - Path(b[0]["path"]).stat().st_mtime) / 60}
+
+
 _lock = threading.Lock()  # one backup at a time in this server (two clicks, or a click during the scheduled one)
 
 
