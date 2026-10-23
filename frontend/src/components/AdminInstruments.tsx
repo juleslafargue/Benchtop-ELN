@@ -112,11 +112,79 @@ function InstrumentForm({ kinds, editing, onClose, onSaved }: {
   )
 }
 
+interface OldItem { path: string; gone: boolean; size: number; modified?: string; action?: string; note?: string; experiment?: string | null }
+
+const mb = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} kB`)
+
+/** What was already in a folder when it was added: pick the ones to bring in after all. */
+function OldData({ inst, onClose, onTaken }: { inst: Instrument; onClose: () => void; onTaken: () => void }) {
+  const { toast } = useApp()
+  const [q, setQ] = useState('')
+  const [items, setItems] = useState<OldItem[]>([])
+  const [total, setTotal] = useState(0)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState<'' | 'load' | 'take'>('load')
+  const [err, setErr] = useState('')
+  const load = async (offset = 0) => {
+    setBusy('load'); setErr('')
+    try {
+      const r = await api.get<{ total: number; items: OldItem[] }>(`/api/instruments/${inst.id}/old?q=${encodeURIComponent(q)}&offset=${offset}`)
+      setItems(offset ? [...items, ...r.items] : r.items); setTotal(r.total)
+    } catch (e: any) { setErr(e.message) } finally { setBusy('') }
+  }
+  useEffect(() => { const t = setTimeout(() => load(0), 250); return () => clearTimeout(t) }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
+  const takeable = items.filter(x => !x.gone)
+  const allShown = takeable.length > 0 && takeable.every(x => picked.has(x.path))
+  const toggle = (p: string) => { const n = new Set(picked); n.has(p) ? n.delete(p) : n.add(p); setPicked(n) }
+  const take = async () => {
+    setBusy('take'); setErr('')
+    try {
+      const r = await api.post<{ taken: string[]; gone: string[]; not_old: string[] }>(`/api/instruments/${inst.id}/take`, { paths: [...picked] })
+      const skipped = r.gone.length + r.not_old.length
+      toast(`Took ${r.taken.length}${skipped ? `; ${skipped} no longer there or already taken` : ''}. See where they went in the Inbox and the drafts.`)
+      onTaken()
+    } catch (e: any) { setErr(e.message); setBusy('') }
+  }
+  return (
+    <Modal wide title={`Already in ${inst.name} when it was added`} onClose={onClose} footer={<>
+      <button className="btn ghost" onClick={onClose}>Cancel</button>
+      <button className="btn primary" disabled={!picked.size || busy === 'take'} onClick={take}>
+        {busy === 'take' ? 'Taking…' : `Take ${picked.size || ''} ${picked.size === 1 ? 'dataset' : 'datasets'}`}</button>
+    </>}>
+      <div className="stack" style={{ gap: 10 }}>
+        <p className="faint" style={{ margin: 0 }}>These were in the folder when you added it, so Benchtop left them alone. Tick the ones to
+          bring in: each is then handled like a new arrival, attached to the draft its name points to, or put in the Inbox.</p>
+        <input className="input" value={q} onChange={e => setQ(e.target.value)} placeholder="Filter by name, e.g. EXP-00042 or JL-013" aria-label="Filter" />
+        {err && <p className="error" style={{ margin: 0 }}>{err}</p>}
+        {total === 0 && busy !== 'load' ? <p className="faint" style={{ margin: 0 }}>{q ? `Nothing matches “${q}”.` : 'Nothing left: everything that was there has been taken or has changed since.'}</p>
+          : <>
+            <label className="row old-all" style={{ gap: 8 }}><input type="checkbox" checked={allShown} disabled={!takeable.length}
+              onChange={() => { const n = new Set(picked); takeable.forEach(x => (allShown ? n.delete(x.path) : n.add(x.path))); setPicked(n) }} />
+              Select all {items.length < total ? `${items.length} shown` : 'of them'} <span className="faint">({total.toLocaleString()} {q ? 'matching' : 'in all'})</span></label>
+            <ul className="old-list">{items.map(x => (
+              <li key={x.path} className={x.gone ? 'gone' : ''}>
+                <label>
+                  <input type="checkbox" disabled={x.gone} checked={picked.has(x.path)} onChange={() => toggle(x.path)} />
+                  <span className="old-main"><span className="mono old-path">{x.path}</span>
+                    <span className="faint old-meta">{x.gone ? 'No longer in the folder' : `${mb(x.size)}${x.modified ? ` · ${new Date(x.modified).toLocaleDateString()}` : ''}`}</span>
+                    {!x.gone && x.action !== 'attach' && x.note && <span className="old-note">{x.note}</span>}</span>
+                  {!x.gone && <span className={`old-where ${x.action === 'attach' ? 'ok-text' : 'faint'}`}>
+                    {x.action === 'attach' ? `→ ${x.experiment}` : '→ Inbox'}</span>}
+                </label>
+              </li>))}</ul>
+            {items.length < total && <button className="btn sm" disabled={busy === 'load'} onClick={() => load(items.length)}>{busy === 'load' ? 'Loading…' : 'Show more'}</button>}
+          </>}
+      </div>
+    </Modal>
+  )
+}
+
 /** Admin → Instruments: the folders Benchtop watches. */
 export default function InstrumentsPanel() {
   const { toast } = useApp()
   const [data, setData] = useState<ListOut | null>(null)
   const [form, setForm] = useState<Instrument | 'new' | null>(null)
+  const [old, setOld] = useState<Instrument | null>(null)
   const [busy, setBusy] = useState(false)
   const load = () => api.get<ListOut>('/api/instruments').then(setData).catch(() => {})
   useEffect(() => { load(); const t = setInterval(load, 30_000); return () => clearInterval(t) }, [])
@@ -153,9 +221,12 @@ export default function InstrumentsPanel() {
                 <span>{i.audience.length ? `shown to ${i.audience.map(g => g.name).join(', ')}` : 'shown to everyone'}</span></div>
               {i.last_error && <p className="error" style={{ margin: '0 0 4px' }}>{i.last_error}</p>}
               <div className="card-foot"><span>{i.last_scan_at ? `Checked ${ago(i.last_scan_at)}${i.last_scan_ms != null && i.last_scan_ms >= 1000 ? ` (took ${(i.last_scan_ms / 1000).toFixed(0)} s)` : ''}` : 'Not checked yet'}
-                {' · '}{c.attached || 0} attached · {(c.inbox || 0)} waiting{c.settling ? ` · ${c.settling} arriving` : ''} · {c.baseline || 0} already there</span></div>
+                {' · '}{c.attached || 0} attached · {(c.inbox || 0)} waiting{c.settling ? ` · ${c.settling} arriving` : ''}</span>
+                {c.baseline ? <span className="foot-group"><span className="faint">{c.baseline.toLocaleString()} left alone: {c.baseline === 1 ? 'it was' : 'they were'} there before you added the folder</span>
+                  <button className="btn ghost sm" disabled={!i.enabled} title={i.enabled ? undefined : 'Resume this folder first'} onClick={() => setOld(i)}>Choose some to take</button></span> : null}</div>
             </div>)
         })}</div>}
+      {old && <OldData inst={old} onClose={() => setOld(null)} onTaken={() => { setOld(null); load() }} />}
       {form && <InstrumentForm kinds={data.kinds} editing={form === 'new' ? null : form} onClose={() => setForm(null)} onSaved={() => { setForm(null); load() }} />}
     </section>
   )

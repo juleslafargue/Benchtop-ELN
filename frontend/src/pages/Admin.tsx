@@ -212,7 +212,7 @@ export default function Admin() {
 
   return (
     <div className="stack" style={{ gap: 26 }}>
-      <div><h1 className="page-title">Users &amp; audit</h1><p className="lede">Manage accounts, plugins, webhooks and backups, and check that the audit trail has not been altered.</p></div>
+      <div><h1 className="page-title">Admin</h1><p className="lede">Accounts, backups, instruments, email, signing, plugins and webhooks, and a check that the audit trail hasn't been altered.</p></div>
       <section className="stack" style={{ gap: 8 }}>
         <div className="spread"><h2 style={{ fontSize: 17 }}>Users</h2><button className="btn sm" onClick={() => setAdding(true)}>Add user</button></div>
         <div className="panel grid-wrap" style={{ border: 0 }}>

@@ -730,6 +730,60 @@ def preview(session: Session, folder: str, kind: str, import_since: Optional[dat
     return out
 
 
+def old_items(session: Session, inst: Instrument, q: str = "", offset: int = 0, limit: int = 100) -> dict[str, Any]:
+    """What was already in the folder when it was added (left alone), each with what would happen if it were taken
+    now, so an admin can pick the ones to bring in. Sorted by path; `q` filters on it."""
+    from sqlalchemy import func
+    cond = [InstrumentFile.instrument_id == inst.id, InstrumentFile.state == "baseline"]
+    if q.strip():
+        cond.append(func.lower(InstrumentFile.path).contains(q.strip().lower(), autoescape=True))
+    total = session.exec(select(func.count()).select_from(InstrumentFile).where(*cond)).one()
+    rows = session.exec(select(InstrumentFile).where(*cond).order_by(InstrumentFile.path)
+                        .offset(max(0, offset)).limit(max(1, min(limit, 200)))).all()
+    root = Path(inst.folder)
+    items = []
+    for r in rows:
+        p = root / r.path
+        try:
+            if not p.exists():
+                raise FileNotFoundError(p)
+            _, size, newest = fingerprint(p)
+        except OSError:  # gone, or the drive isn't there: nothing to take
+            items.append({"path": r.path, "gone": True, "size": r.size})
+            continue
+        d = decide(session, r.path, describe_text(p, inst.kind))
+        items.append({"path": r.path, "gone": False, "size": size, "modified": _utc(newest).isoformat() + "Z",
+                      "action": d.action, "note": d.note, "experiment": d.experiment.eid if d.experiment else None})
+    return {"total": total, "offset": offset, "items": items}
+
+
+MAX_TAKE = 1000
+
+
+def take_old(session: Session, inst: Instrument, paths: list[str]) -> dict[str, Any]:
+    """Bring in some of what was already there: each becomes an ordinary arrival, taken at the next look (and
+    matched like any other: attached to a draft it names, or waiting in the Inbox). Unchanged since Benchtop
+    noted it, it's already quiet, so it doesn't wait the quiet time again."""
+    now = utcnow()
+    root = Path(inst.folder)
+    wanted = list(dict.fromkeys(p for p in paths if isinstance(p, str)))[:MAX_TAKE]
+    taken, gone, not_old = [], [], []
+    with _scan_lock:  # not while a look at the folders is half-way through its bookkeeping
+        for rel in wanted:
+            row = session.exec(select(InstrumentFile).where(InstrumentFile.instrument_id == inst.id, InstrumentFile.path == rel)
+                               .order_by(InstrumentFile.revision.desc())).first()
+            if row is None or row.state != "baseline":
+                not_old.append(rel)
+            elif not (root / rel).exists():
+                gone.append(rel)
+            else:
+                row.state, row.changed_at = "settling", now - timedelta(seconds=inst.settle_seconds)
+                session.add(row)
+                taken.append(rel)
+        session.commit()
+    return {"taken": taken, "gone": gone, "not_old": not_old}
+
+
 def _hints(root: Path, seconds: float) -> list[str]:
     hints = []
     s = str(root)

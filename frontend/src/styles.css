@@ -1270,6 +1270,19 @@ textarea.exp-title-input { resize: none; overflow: hidden; display: block; line-
 .preview-list { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
 .preview-list li { display: flex; gap: 10px; padding: 3px 0; border-top: 1px solid var(--rule); font-size: 13px; }
 .preview-list .grow { min-width: 0; overflow-wrap: anywhere; }
+.old-list { list-style: none; margin: 0; padding: 0; max-height: min(420px, 55vh); overflow-y: auto; border: 1px solid var(--rule); border-radius: 8px; }
+.old-list li { border-top: 1px solid var(--rule); }
+.old-list li:first-child { border-top: 0; }
+.old-list label { display: flex; gap: 10px; align-items: flex-start; padding: 7px 10px; cursor: pointer; }
+.old-list li.gone label { cursor: default; opacity: .6; }
+.old-list input { margin-top: 3px; flex-shrink: 0; }
+.old-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.old-path { font-size: 13px; overflow-wrap: anywhere; }
+.old-meta { font-size: 12.5px; }
+.old-note { font-size: 13px; color: var(--ink-2); }
+.old-where { font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+.old-all { font-size: 14px; }
+@media (max-width: 600px) { .old-list label { flex-wrap: wrap; } .old-where { margin-left: 26px; } }
 .field-group { border: 1px solid var(--rule); border-radius: 8px; padding: 10px 14px 12px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .field-group legend { font-size: 14px; font-weight: 600; padding: 0 4px; }
 .chip input { margin: 0 4px 0 0; vertical-align: -1px; }

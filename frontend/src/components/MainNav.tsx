@@ -15,7 +15,7 @@ const ITEMS = [
   { key: 'inventory', to: '/inventory', label: 'Inventory' },
   { key: 'templates', to: '/templates', label: 'Templates' },
   { key: 'groups', to: '/groups', label: 'Groups' },
-  { key: 'admin', to: '/admin', label: 'Users & audit', admin: true },
+  { key: 'admin', to: '/admin', label: 'Admin', admin: true },
 ] as const
 type Key = typeof ITEMS[number]['key']
 type Item = typeof ITEMS[number]

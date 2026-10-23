@@ -170,6 +170,36 @@ async def check_folder(body: PreviewIn, _: Admin, session: DB):
         raise HTTPException(400, str(exc)) from None
 
 
+@router.get("/instruments/{iid}/old")
+async def old_data(iid: int, _: Admin, session: DB, q: str = "", offset: int = 0, limit: int = 100):
+    """What was already in the folder when it was added, and what would happen to each if taken now."""
+    inst = get_or_404(session, Instrument, iid)
+    return await run_in_threadpool(instruments.old_items, session, inst, q, offset, limit)
+
+
+class TakeIn(BaseModel):
+    paths: list[str]
+
+
+@router.post("/instruments/{iid}/take")
+async def take_old_data(iid: int, body: TakeIn, user: Admin, session: DB):
+    """Bring in chosen datasets that were already there: they're handled like new arrivals, straight away."""
+    inst = get_or_404(session, Instrument, iid)
+    if inst.archived:
+        raise HTTPException(404, "Not found")
+    if not inst.enabled:
+        raise HTTPException(409, f"{inst.name} is paused. Resume it first.")
+    if len(body.paths) > instruments.MAX_TAKE:
+        raise HTTPException(422, f"Choose at most {instruments.MAX_TAKE:,} at a time")
+    res = await run_in_threadpool(instruments.take_old, session, inst, body.paths)
+    if res["taken"]:
+        audit.record(session, user, "take_old", "instrument", inst.id, name=inst.name, count=len(res["taken"]),
+                     paths=res["taken"][:100])
+        session.commit()
+        await run_in_threadpool(instruments.scan_all)
+    return res
+
+
 @router.post("/instruments/scan")
 async def scan_now(_: Admin):
     """Look at every folder now, rather than at the next minute."""
