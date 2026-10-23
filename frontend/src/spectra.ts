@@ -559,19 +559,37 @@ function baseline(s: Spectrum) {
 /** Group lines above the noise into signals, skipping anything inside `cuts`. */
 function segment(s: Spectrum, cuts: { lo: number; hi: number }[]) {
   const noise = noiseLevel(s), base = baseline(s)
-  let max = 0
-  for (let i = 0; i < s.y.length; i++) if (s.y[i] > max) max = s.y[i]
+  let max = 0  // the tallest line that isn't cut out: a huge solvent peak mustn't make the compound's look like noise
+  for (let i = 0; i < s.y.length; i++) if (s.y[i] > max && !cuts.some(c => s.x[i] >= c.lo && s.x[i] <= c.hi)) max = s.y[i]
   const on = base + Math.max(8 * noise, 0.006 * (max - base))
   const freq = s.frequency || 400
   const gap = 12 / freq // merge lines closer than ~12 Hz into one signal
   const pad = 4 / freq
+  const cut = (x: number) => cuts.some(c => x >= c.lo && x <= c.hi)
+  // a stretch that starts right at a cut and only falls away from it is the tail of what was cut (a big solvent
+  // peak's tails reach far at high field); anything that rises again on the way out is a signal of its own
+  const rise = 6 * noise
+  const tail = (i0: number, i1: number) => {
+    const fromLeft = i0 > 0 && cut(s.x[i0 - 1]), fromRight = i1 < s.y.length - 1 && cut(s.x[i1 + 1])
+    if (fromLeft === fromRight) return false  // between two cuts, or touching none
+    let low = Infinity
+    for (let k = 0; k <= i1 - i0; k++) {
+      const v = s.y[fromLeft ? i0 + k : i1 - k]
+      if (v > low + rise) return false
+      low = Math.min(low, v)
+    }
+    return true
+  }
   const runs: { a: number; b: number }[] = []
   let start = -1
   for (let i = 0; i < s.y.length; i++) {
-    const x = s.x[i]
-    const above = s.y[i] > on && !cuts.some(c => x >= c.lo && x <= c.hi)
+    const above = s.y[i] > on && !cut(s.x[i])
     if (above && start < 0) start = i
-    if ((!above || i === s.y.length - 1) && start >= 0) { runs.push({ a: s.x[start], b: s.x[i] }); start = -1 }
+    if ((!above || i === s.y.length - 1) && start >= 0) {
+      const end = above ? i : i - 1
+      if (!tail(start, end)) runs.push({ a: s.x[start], b: s.x[i] })
+      start = -1
+    }
   }
   const merged: { a: number; b: number }[] = []
   for (const r of runs) {
@@ -598,10 +616,73 @@ function segment(s: Spectrum, cuts: { lo: number; hi: number }[]) {
  *    is expected to have one isn't evidence for the solvent: ibuprofen's 3.70 q and 1.85 m look exactly
  *    like THF, and its aromatic doublets like toluene. A solvent then needs two signals the product
  *    can't explain. */
+// residuals that are multiplets (H–D coupling): their centre line is the tallest
+const MULTIPLET_RESIDUALS = new Set(['DMSO-d₅', 'CHD₂OD', 'acetone-d₅', 'CHD₂CN', 'CHDCl₂'])
+
+/** The nearest line to `at` (within `search` ppm) that stands out from what's around it: a noise wiggle on a big
+ * peak's tail doesn't count. For a multiplet residual, the multiplet's centre (its tallest line, within 5 Hz). */
+function nearestLine(s: Spectrum, at: number, search: number, label = ''): number {
+  const freq = s.frequency || 400, noise = noiseLevel(s), base = baseline(s)
+  const i0 = Math.max(1, lowerBound(s.x, at - search)), i1 = Math.min(lowerBound(s.x, at + search), s.x.length - 2)
+  const step = Math.abs(s.x[1] - s.x[0]) || 1e-9
+  const k = Math.max(2, Math.round(3 / freq / step))  // look 3 Hz either side for the valleys
+  let best = -1
+  for (let i = i0; i <= i1; i++) {
+    if (!(s.y[i] > s.y[i - 1] && s.y[i] >= s.y[i + 1]) || s.y[i] - base < 10 * noise) continue
+    let left = s.y[i], right = s.y[i]
+    for (let j = Math.max(0, i - k); j < i; j++) left = Math.min(left, s.y[j])
+    for (let j = i + 1; j <= Math.min(s.x.length - 1, i + k); j++) right = Math.min(right, s.y[j])
+    if (s.y[i] - Math.max(left, right) < 5 * noise) continue  // not a line of its own
+    if (best < 0 || Math.abs(s.x[i] - at) < Math.abs(s.x[best] - at)) best = i
+  }
+  if (best >= 0 && MULTIPLET_RESIDUALS.has(label)) {
+    const span = 5 / freq
+    let top = best
+    for (let i = lowerBound(s.x, s.x[best] - span); i < s.x.length && s.x[i] <= s.x[best] + span; i++) if (s.y[i] > s.y[top]) top = i
+    best = top
+  }
+  return best
+}
+
+/** Where a solvent's residual and water lines actually are in this spectrum, and how wide: each is looked for near
+ * its usual position (water moves with temperature and concentration, so further), then followed out from its top
+ * until it has fallen back to the baseline, or starts rising into a neighbouring signal. A residual's multiplet
+ * (CHD₂OD and DMSO-d₅ are quintets) is always covered whole. Capped, so it can't swallow the compound's own signals. */
+export function solventCuts(s: Spectrum, solventShift = 0, productShifts: number[] = []): { lo: number; hi: number }[] {
+  const freq = s.frequency || 400
+  const noise = noiseLevel(s), base = baseline(s)
+  const out: { lo: number; hi: number }[] = []
+  for (const m of solventMarkers(s)) {
+    const water = m.label === 'H₂O' || m.label === 'HDO'
+    const at = m.ppm + solventShift
+    const search = water ? 0.08 : 0.03
+    // always cut a multiplet residual whole (a quintet spans about ±4 Hz); a single line only needs its top
+    const core = (MULTIPLET_RESIDUALS.has(m.label) ? 6 : 2) / freq, cap = water ? Math.max(0.04, 30 / freq) : 25 / freq
+    const top = nearestLine(s, at, search, m.label)
+    const ours = top >= 0 && water && productShifts.some(p => Math.abs(p + solventShift - s.x[top]) < 0.05)  // the product's own signal
+    if (top < 0 || ours || s.y[top] - base < 20 * noise) { out.push({ lo: at - 3.5 / freq, hi: at + 3.5 / freq }); continue }  // as before
+    const c = s.x[top], floor = base + Math.max(4 * noise, 0.01 * (s.y[top] - base))
+    const rise = Math.max(6 * noise, 0.03 * (s.y[top] - base))  // a real neighbouring signal, not noise on the tail
+    const follow = (dir: 1 | -1) => {
+      let i = top, low = s.y[top]
+      while (i + dir >= 0 && i + dir < s.x.length) {
+        const nx = i + dir, d = Math.abs(s.x[nx] - c)
+        if (d > cap) break
+        if (d > core && (s.y[nx] < floor || s.y[nx] > low + rise)) break  // back at the baseline, or another signal
+        low = Math.min(low, s.y[nx]); i = nx
+      }
+      return s.x[i]
+    }
+    const a = follow(-1), b = follow(1)
+    out.push({ lo: Math.min(a, b), hi: Math.max(a, b) })
+  }
+  return out
+}
+
 export function autoAnalyse1H(s: Spectrum, expectedH: number | null, solventShift = 0, productMW: number | null = null, productShifts: number[] = []): AutoResult {
   const freq = s.frequency || 400
   const point = (p: number) => ({ lo: p - 3.5 / freq, hi: p + 3.5 / freq })
-  const fixed = [...solventMarkers(s).map(m => m.ppm), 0].map(p => point(p + solventShift))
+  const fixed = [...solventCuts(s, solventShift, productShifts), point(solventShift)]  // the solvent's lines, and TMS
   const explained = (w: { lo: number; hi: number }) => productShifts.some(p => p + solventShift > w.lo - 0.12 && p + solventShift < w.hi + 0.12)
   const cands = findImpurityCandidates(s, solventShift)
     .filter(c => c.def.signals.filter(g => g.mult !== 'm').length <= c.windows.length || c.windows.length === c.def.signals.length)
@@ -682,11 +763,15 @@ export function findResidual(s: Spectrum): { label: string; expected: number; fo
   const win = /13C/i.test(s.nucleus || '') ? 1.0 : 0.15
   const i0 = lowerBound(s.x, m.ppm - win), i1 = Math.min(lowerBound(s.x, m.ppm + win), s.x.length - 1)
   if (i1 - i0 < 3) return null
+  const noise = noiseLevel(s)
+  if (win < 1) {  // ¹H: the nearest line that stands out (not a noise wiggle on the residual's own tail), centred if a multiplet
+    const i = nearestLine(s, m.ppm, win, m.label)
+    return i < 0 ? null : { label: m.label, expected: m.ppm, found: s.x[i] }
+  }
   let best = -1
   for (let i = i0 + 1; i < i1; i++) {
     if (s.y[i] > s.y[i - 1] && s.y[i] >= s.y[i + 1] && (best < 0 || Math.abs(s.x[i] - m.ppm) < Math.abs(s.x[best] - m.ppm))) {
-      // only consider real peaks (above 10x noise)
-      if (s.y[i] > 10 * noiseLevel(s)) best = i
+      if (s.y[i] > 10 * noise) best = i
     }
   }
   return best < 0 ? null : { label: m.label, expected: m.ppm, found: s.x[best] }
