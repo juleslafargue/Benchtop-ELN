@@ -12,10 +12,11 @@ import VersionsDialog from './VersionsDialog'
 import SafetyEntry from './SafetyEntry'
 import ScreenEntry from './ScreenEntry'
 import CustomEntry from './CustomEntry'
+import ReferencesEntry from './ReferencesEntry'
 import { useCollapsed } from '../collapse'
 
 type SaveState = 'saved' | 'dirty' | 'saving' | 'error'
-const KIND_LABEL = { text: 'Text', reaction: 'Reaction & stoichiometry', table: 'Data table', file: 'Files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening grid', custom: 'Plugin section' }
+const KIND_LABEL = { text: 'Text', reaction: 'Reaction & stoichiometry', table: 'Data table', file: 'Files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening grid', references: 'References', custom: 'Plugin section' }
 
 export interface EntryEditorProps {
   content: any
@@ -145,6 +146,7 @@ export default function EntryCard({ entry, readOnly, experimentId, attachments, 
         {entry.kind === 'characterization' && <CharacterizationEntry {...props} />}
         {entry.kind === 'safety' && <SafetyEntry {...props} />}
         {entry.kind === 'screen' && <ScreenEntry {...props} />}
+        {entry.kind === 'references' && <ReferencesEntry {...props} />}
         {entry.kind === 'custom' && <CustomEntry {...props} />}
         </ErrorBoundary>
       </div>
@@ -171,6 +173,7 @@ function peek(kind: string, c: any): string {
   if (kind === 'file') return `${(c.attachment_ids || []).length} file${(c.attachment_ids || []).length === 1 ? '' : 's'}`
   if (kind === 'table') return `${(c.rows || []).length} row${(c.rows || []).length === 1 ? '' : 's'} × ${(c.columns || []).length} columns`
   if (kind === 'screen') return `${c.y_name || ''} × ${c.x_name || ''}`
+  if (kind === 'references') { const n = (c.items || []).length; return n ? `${n} reference${n === 1 ? '' : 's'}: ${cut((c.items || []).map((r: any) => r.title).filter(Boolean).join(' · '))}` : 'No references yet' }
   if (kind === 'safety') return c.snapshot ? `${(c.snapshot.chemicals || []).length} chemicals assessed` : 'Hazards not recorded yet'
   if (kind === 'custom') return cut(Object.entries(c.values || {}).filter(([, v]) => v !== null && v !== '' && v !== false).slice(0, 4).map(([k, v]) => `${(c.schema?.fields || []).find((f: any) => f.id === k)?.label || k}: ${v === true ? '✓' : v}`).join(' · '))
   return ''

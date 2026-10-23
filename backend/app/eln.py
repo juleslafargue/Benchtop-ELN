@@ -376,9 +376,42 @@ def _experiment(session: Session, crate: _Crate, exp: Experiment, folders: _Uniq
         "url": f"{settings.public_url}/experiments/{exp.id}" if settings.public_url.startswith("http") else None,
         "comment": comment_refs, "mentions": mentions, "isBasedOn": _ref(_id(folder_of[follows.id] + "/"))
         if follows is not None and follows.id in folder_of else None,
-        "variableMeasured": [v for v in variables if v], "hasPart": parts,
+        "variableMeasured": [v for v in variables if v], "hasPart": parts, "citation": _citations(crate, base, entries),
     })
     return ds_id
+
+
+def _author(crate: _Crate, written: str) -> str:
+    """A paper's author ("Gottlieb, Hugo E.", as a References section stores them) as a Person node."""
+    family, _, given = written.strip().partition(",")
+    family, given = family.strip(), given.strip()
+    name = f"{given} {family}".strip() if given else family
+    pid = f"#author-{re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-') or 'unknown'}"
+    crate.add({"@id": pid, "@type": "Person", "name": name, "familyName": family if given else None, "givenName": given or None})
+    return pid
+
+
+def _citations(crate: _Crate, base: str, entries) -> list[dict]:
+    """Papers in References sections, as ScholarlyArticle nodes (a DOI is the node's @id, as RO-Crate recommends)."""
+    from . import doi
+    refs, n = [], 0
+    for e in entries:
+        if e.kind != EntryKind.references:
+            continue
+        for it in (e.content or {}).get("items") or []:
+            if doi.is_blank(it):
+                continue
+            n += 1
+            c = doi.cite(it)
+            node_id = c["link"] or f"#{base}-reference-{n}"
+            authors = [_ref(_author(crate, a)) for a in it.get("authors") or [] if isinstance(a, str) and a.strip() and a.strip() != "et al."]
+            crate.add({"@id": node_id, "@type": "ScholarlyArticle", "name": c["title"] or None, "identifier": c["link"] or None,
+                       "author": authors or None, "isPartOf": c["journal"] or None, "datePublished": c["year"] or None,
+                       "volumeNumber": c["volume"] or None, "issueNumber": c["issue"] or None, "pagination": c["pages"] or None,
+                       "description": c["note"] or None})
+            if {"@id": node_id} not in refs:
+                refs.append(_ref(node_id))
+    return refs
 
 
 def _preview(title: str, exps: list[Experiment], folder_of: dict[int, str]) -> bytes:

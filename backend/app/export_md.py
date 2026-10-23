@@ -20,7 +20,7 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from . import chem
+from . import chem, doi
 from .config import settings
 from .models import Attachment, EntryKind, Experiment, Notebook, User
 from .services import content_hash, live_entries, signatures_out
@@ -266,6 +266,8 @@ def experiment_markdown(session: Session, exp: Experiment, asset_dir: str = "_as
                     out += ["| " + " | ".join(str(col.get("name", "") if isinstance(col, dict) else col) for col in cols) + " |", "|" + "---|" * len(cols)]
                     out += ["| " + " | ".join(str(v).replace("|", "/") for v in r) + " |" for r in c.get("rows") or [] if isinstance(r, list)]
                     out.append("")
+            elif e.kind == EntryKind.references:
+                out += _references_md(c.get("items") or []) + [""]
             elif e.kind == EntryKind.custom:
                 from .plugins import text_of
                 out += [f"- {line}" for line in text_of(c).splitlines()] + [""]
@@ -290,6 +292,32 @@ def experiment_markdown(session: Session, exp: Experiment, asset_dir: str = "_as
         out.append("")
     out += ["---", f"*Exported from Benchtop. The signed record of truth is [{exp.eid} in Benchtop]({fm['benchtop']}); edits made here are not synced back.*", ""]
     return "\n".join(map(str, out))
+
+
+def _md_text(s: str) -> str:
+    """Text that stays text in Markdown (a title with * or [ shouldn't turn into formatting or a link)."""
+    return re.sub(r"([\\`*_\[\]<>|])", r"\\\1", s)
+
+
+def _references_md(items: list) -> list[str]:
+    """A numbered list, ACS style: Authors. Title. *Journal* **Year**, *Volume* (Issue), Pages. DOI link."""
+    out = []
+    for n, it in enumerate((x for x in items if not doi.is_blank(x)), 1):
+        c = doi.cite(it)
+        bits = [_md_text(x.rstrip(".")) + "." for x in (c["authors"], c["title"]) if x]
+        src = " ".join(x for x in (f"*{_md_text(c['journal'])}*" if c["journal"] else "", f"**{_md_text(c['year'])}**" if c["year"] else "") if x)
+        vol = (f"*{_md_text(c['volume'])}*" if c["volume"] else "") + (f" ({_md_text(c['issue'])})" if c["issue"] else "")
+        tail = ", ".join(x for x in (src, vol.strip(), _md_text(c["pages"])) if x)
+        if tail:
+            bits.append(tail + ".")
+        if c["link"]:
+            bits.append(f"<{c['link']}>")
+        elif str(it.get("doi") or "").strip():
+            bits.append(_md_text(str(it["doi"]).strip()))
+        out.append(f"{n}. {' '.join(bits)}")
+        if c["note"]:
+            out += [f"   {_md_text(line)}" for line in c["note"].splitlines() if line.strip()]
+    return out or ["_No references yet._"]
 
 
 def _asset_name(a: Attachment) -> str:

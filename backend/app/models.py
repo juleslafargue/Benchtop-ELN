@@ -47,6 +47,7 @@ class EntryKind(str, Enum):
     safety = "safety"
     screen = "screen"
     custom = "custom"  # a section type described by a plugin file
+    references = "references"  # papers, looked up by DOI (0.21)
 
 
 class User(SQLModel, table=True):

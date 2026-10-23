@@ -72,6 +72,13 @@ def _rich(client, h, nb, title="Suzuki coupling, 2 mmol"):
                     json={"kind": "table", "title": "HPLC", "content": {"columns": [{"name": "t (h)"}, {"name": "Conv. (%)"}],
                                                                         "rows": [["1", "40"], ["4", "98"]]}})
     assert r.status_code == 201, r.text
+    r = client.post(f"/api/experiments/{exp['id']}/entries", headers=h,  # 0.21: cited papers become ScholarlyArticle nodes
+                    json={"kind": "references", "title": "References", "content": {"items": [
+                        {"doi": "10.1021/jo971176v", "title": "NMR Chemical Shifts of Common Laboratory Solvents as Trace Impurities",
+                         "authors": ["Gottlieb, Hugo E.", "Kotlyar, Vadim", "Nudelman, Abraham"], "journal": "J. Org. Chem.",
+                         "year": "1997", "volume": "62", "issue": "21", "pages": "7512-7515"},
+                        {"title": "Unpublished results", "authors": ["Patel, P."]}]}})
+    assert r.status_code == 201, r.text
     client.post(f"/api/experiments/{exp['id']}/comments", headers=h, json={"body": "Pd black after 3 h"})
     return client.get(f"/api/experiments/{exp['id']}", headers=h).json()
 
@@ -142,7 +149,7 @@ def test_export_follows_the_format_rules(client, users, notebook):
         assert f["@type"] == "File" and f["contentSize"] == str(len(data)) and f["sha256"] == hashlib.sha256(data).hexdigest()
     for node in by.values():  # no empty values (the format's checker warns), references only as {"@id": …}
         assert all(v not in (None, "", [], {}) for v in node.values()), node["@id"]
-        for k in ("author", "comment", "hasPart", "mentions", "variableMeasured"):
+        for k in ("author", "comment", "hasPart", "mentions", "variableMeasured", "citation"):
             for ref in (node.get(k) if isinstance(node.get(k), list) else [node[k]] if k in node else []):
                 assert set(ref) == {"@id"} and ref["@id"] in by, (node["@id"], k, ref)
     if os.environ.get("BENCHTOP_ELN_SAMPLE"):  # CI runs the consortium's own checker on this file (deploy/github-tests.yml)

@@ -98,7 +98,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
-from .. import audit, chem, mailer, nmrpredict, plugins, timestamps, witness
+from .. import audit, chem, doi, mailer, nmrpredict, plugins, timestamps, witness
 from ..config import settings
 from ..models import (
     Attachment, Entry, EntryKind, EntryVersion, Experiment, ExperimentStatus, Notebook, Role,
@@ -232,6 +232,7 @@ DEFAULT_CONTENT: dict[EntryKind, dict] = {
     EntryKind.safety: {"controls": "", "waste": "", "emergency": "", "notes_html": "", "snapshot": None},
     EntryKind.screen: {"x_name": "Temperature (°C)", "y_name": "Catalyst loading (mol%)", "x_levels": ["25", "50", "80"],
                        "y_levels": ["1", "2.5", "5"], "response": "Yield (%)", "higher_is_better": True, "cells": {}},
+    EntryKind.references: {"items": []},
 }
 
 DEFAULT_SECTIONS = [
@@ -624,6 +625,8 @@ def _clean_content(kind: EntryKind, content: dict[str, Any]) -> dict[str, Any]:
         rows = content.get("rows") if isinstance(content.get("rows"), list) else []
         content["rows"] = [[v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else _str(v, 2000) for v in r]
                            for r in rows if isinstance(r, list)][:20000]
+    elif kind == EntryKind.references:
+        content = doi.clean_content(content)
     elif kind == EntryKind.custom:
         try:
             content = plugins.clean_content(content)
@@ -1279,6 +1282,8 @@ def _render_entry(e: Entry, atts: dict[int, Attachment], pdf: bool = False) -> s
             h += (f"<tr><td>{html.escape(it.get('technique', ''))}</td><td>{html.escape(it.get('conditions', ''))}</td>"
                   f"<td>{html.escape(it.get('data', ''))}</td><td>{html.escape(a.filename) if a else ''}</td></tr>")
         h += "</table>"
+    elif e.kind == EntryKind.references:
+        h += _references_html(c.get("items") or [])
     elif e.kind == EntryKind.file:
         h += "<ul>" + "".join(
             f"<li>{html.escape(atts[i].filename)} — {atts[i].size:,} bytes — sha256 <code>{atts[i].sha256}</code></li>"
@@ -1288,6 +1293,33 @@ def _render_entry(e: Entry, atts: dict[int, Attachment], pdf: bool = False) -> s
         if c.get("caption"):
             h += f"<p>{html.escape(str(c['caption']))}</p>"
     return h + "</section>"
+
+
+def _references_html(items: list) -> str:
+    """A numbered list, ACS style: Authors. Title. <i>Journal</i> <b>Year</b>, <i>Volume</i> (Issue), Pages. DOI link."""
+    out = []
+    for it in items:
+        if doi.is_blank(it):
+            continue
+        c = doi.cite(it)
+        bits = []
+        if c["authors"]:
+            bits.append(html.escape(c["authors"].rstrip(".")) + ".")
+        if c["title"]:
+            bits.append(html.escape(c["title"].rstrip(".")) + ".")
+        src = " ".join(x for x in (f"<i>{html.escape(c['journal'])}</i>" if c["journal"] else "",
+                                    f"<b>{html.escape(c['year'])}</b>" if c["year"] else "") if x)
+        vol = (f"<i>{html.escape(c['volume'])}</i>" if c["volume"] else "") + (f" ({html.escape(c['issue'])})" if c["issue"] else "")
+        tail = ", ".join(x for x in (src, vol.strip(), html.escape(c["pages"])) if x)
+        if tail:
+            bits.append(tail + ".")
+        if c["link"]:
+            bits.append(f"<a href=\"{html.escape(c['link'])}\">{html.escape(c['link'])}</a>")
+        elif str(it.get("doi") or "").strip():
+            bits.append(html.escape(str(it["doi"]).strip()))
+        note = f"<br><span class='meta'>{html.escape(c['note']).replace(chr(10), '<br>')}</span>" if c["note"] else ""
+        out.append(f"<li>{' '.join(bits)}{note}</li>")
+    return f"<ol class='refs'>{''.join(out)}</ol>" if out else "<p class='meta'>No references yet.</p>"
 
 
 @router.get("/experiments/{exp_id}/export")
@@ -1355,6 +1387,7 @@ table{{border-collapse:collapse;width:100%;margin:.5rem 0;font-size:12px}} td,th
 th{{background:#f2f2f2}} section{{margin:1.5rem 0;page-break-inside:avoid}} .rich::after{{content:"";display:block;clear:both}} .rxn svg{{max-width:100%;height:auto}}
 code{{font-size:11px}} ul[data-type=taskList]{{list-style:none;padding-left:.2em}} li[data-type=taskItem]::before{{content:'\\2610  '}}
 li[data-checked=true]::before{{content:'\\2611  '}} li[data-type=taskItem] div,li[data-type=taskItem] p{{display:inline}} blockquote{{border-left:3px solid #999;margin:.5rem 0;padding:.2rem .8rem;background:#f6f6f6}} mark{{background:#fff3a0}}
+.refs li{{margin-bottom:.35rem}} .refs a{{overflow-wrap:anywhere}}
 footer{{margin-top:2rem;border-top:1px solid #999;font-size:11px;color:#555}}{pdf_css}</style></head><body>
 {f'<div id="pdffoot">{exp.eid} · {html.escape(exp.title[:80])} · {html.escape(exp.status.value)} · page <pdf:pagenumber> of <pdf:pagecount></div>' if pdf else ''}
 <header><div class="meta">{exp.eid} · {html.escape(exp.status.value.upper())}</div><h1>{html.escape(exp.title)}</h1>

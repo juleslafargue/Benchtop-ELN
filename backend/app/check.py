@@ -32,6 +32,11 @@ def _sha256(p: Path) -> str:
     return h.hexdigest()
 
 
+def _all(n: int, many: str, one: str) -> str:
+    """"all 24 match their signatures", but "1, and it matches its signature" and "none yet"."""
+    return "none yet" if n == 0 else f"1, {one}" if n == 1 else f"all {n:,} {many}"
+
+
 def _item(name: str, ok: bool, detail: str) -> dict[str, Any]:
     return {"name": name, "ok": ok, "detail": detail}
 
@@ -79,7 +84,7 @@ def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
                 if sig is None or sig.content_hash != content_hash(s, exp):
                     bad.append(exp.eid)
             counts["signed_records"] = n
-            checks.append(_item("Signed records", not bad, f"all {n:,} match their signatures" if not bad
+            checks.append(_item("Signed records", not bad, _all(n, "match their signatures", "and it matches its signature") if not bad
                                 else f"{len(bad)} of {n} no longer match: {', '.join(bad[:10])}{'…' if len(bad) > 10 else ''}"))
             # 5. trusted timestamps still verify against what was signed, with the certificate they were fetched with
             from .models import AuditEvent, SignatureTimestamp
@@ -113,7 +118,7 @@ def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
                 note = (f"; {untraced} from a service whose certificate isn't traced to a well-known authority (e.g. FreeTSA)"
                         if untraced else "")
                 checks.append(_item("Trusted timestamps", not bad,
-                                    (f"all {good:,} verify" if not bad else f"{bad} don't verify (signatures {', '.join(bad_ids[:10])})")
+                                    (_all(good, "verify", "and it verifies") if not bad else f"{bad} don't verify (signatures {', '.join(bad_ids[:10])})")
                                     + note + (f"; {waiting} still to fetch" if waiting else "")))
             # 6. attached files
             missing, damaged, n = [], [], 0
@@ -125,7 +130,7 @@ def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
                 elif _sha256(p) != a.sha256:
                     damaged.append(a.filename)
             counts["attachments"] = n
-            detail = f"all {n:,} present and unchanged"
+            detail = _all(n, "present and unchanged", "present and unchanged")
             if missing or damaged:
                 detail = "; ".join(x for x in (f"{len(missing)} missing ({', '.join(missing[:5])})" if missing else "",
                                                f"{len(damaged)} changed ({', '.join(damaged[:5])})" if damaged else "") if x)

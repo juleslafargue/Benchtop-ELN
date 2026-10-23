@@ -24,6 +24,8 @@ export const SECTION_KINDS: { kind: EntryKind; label: string; hint: string; grou
     icon: <path d="M3 4h10M3 7h10M3 10h10M3 13h6" /> },
   { kind: 'table', label: 'Data table', hint: 'Free-form table of values', group: 'Record',
     icon: <><rect x="2.5" y="3" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M7 6.5V13" /></> },
+  { kind: 'references', label: 'References', hint: 'Papers by DOI: title, authors, journal', group: 'Record',
+    icon: <path d="M8 4.6C6.8 3.7 4.8 3.4 2.5 3.6v8.9c2.3-.2 4.3.1 5.5 1 1.2-.9 3.2-1.2 5.5-1V3.6c-2.3-.2-4.3.1-5.5 1zM8 4.6v8.9" /> },
   { kind: 'file', label: 'Files', hint: 'Attach any file to the record', group: 'Record',
     icon: <path d="M10.5 5.5 6 10a1.4 1.4 0 0 0 2 2l5-5a2.8 2.8 0 0 0-4-4L4 8a4.2 4.2 0 0 0 6 6l3.5-3.5" /> },
 ]

@@ -898,6 +898,16 @@ def _students(lab: Lab, NB):
     if items:
         lab.section("amorgan", e, "Characterisation", {"items": items})
     lab.html("amorgan", e, "Observations & results", "<p>Phasing was automatic; I nudged phase 0 a little on the 13C. All 10 carbons and 8 proton environments assigned with the prediction panel. One small singlet at 1.28 ppm doesn't belong to ibuprofen (grease?).</p>")
+    lab.add_section("amorgan", e, "references", "References", {"items": [
+        {"doi": "10.1021/om100106e", "title": "NMR Chemical Shifts of Trace Impurities: Common Laboratory Solvents, Organics, and Gases in "
+         "Deuterated Solvents Relevant to the Organometallic Chemist",
+         "authors": ["Fulmer, Gregory R.", "Miller, Alexander J. M.", "Sherden, Nathaniel H.", "Gottlieb, Hugo E.", "Nudelman, Abraham",
+                     "Stoltz, Brian M.", "Bercaw, John E.", "Goldberg, Karen I."],
+         "journal": "Organometallics", "year": "2010", "volume": "29", "issue": "9", "pages": "2176-2179",
+         "note": "Impurity table: hydrocarbon grease at 1.26 ppm in CDCl3"},
+        {"doi": "10.1021/jo971176v", "title": "NMR Chemical Shifts of Common Laboratory Solvents as Trace Impurities",
+         "authors": ["Gottlieb, Hugo E.", "Kotlyar, Vadim", "Nudelman, Abraham"],
+         "journal": "J. Org. Chem.", "year": "1997", "volume": "62", "issue": "21", "pages": "7512-7515", "note": ""}]})
     lab.comment("amorgan", e, "@mruiz Is the 1.28 ppm singlet grease? It doesn't match anything in ibuprofen.", minutes=20)
     lab.comment("mruiz", e, "Probably. Compare with the impurity table (Fulmer); hydrocarbon grease is ~1.26 ppm in CDCl3. Good first processing job!", minutes=400)
 

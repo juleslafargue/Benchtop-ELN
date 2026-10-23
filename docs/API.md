@@ -62,6 +62,13 @@ keep = [i["key"] for i in p["items"] if not i["already"]]          # skip ones i
 print(BT.post(f"/api/eln/import/{p['token']}", json={"notebook_id": 3, "items": keep}).json())
 ```
 
+A References section (`"kind": "references"`) holds `{"items": [...]}`, each item with `doi`, `title`, `authors` (a list,
+family name first), `journal`, `year`, `volume`, `issue`, `pages` and `note`, all text. To fill one in from a DOI:
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/doi?q=10.1021/jo971176v` | the paper's details from doi.org, as one such item (`q` may be a doi.org link). 400: not a DOI; 404: no such DOI; 502: doi.org unreachable or no details; 503: lookups turned off (`BENCHTOP_DOI=off`). Read & write tokens only |
+
 What tokens can and can't do:
 
 - A token acts as **you**. It sees what you can see, and everything it does is recorded in the audit trail under your name.

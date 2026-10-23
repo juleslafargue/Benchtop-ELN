@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, displayName, fmt, loadAttachmentImages, when, PURIFICATION_LABELS, type EntryKind, type UserBrief } from '../api'
 import Modal from './Modal'
 import CustomEntry from './CustomEntry'
+import { Citation, type Reference } from './ReferencesEntry'
 
 interface V { version: number; title: string; content: any; deleted: boolean; created_at: string; created_by: UserBrief }
 
@@ -27,6 +28,9 @@ function Preview({ kind, content }: { kind: EntryKind; content: any }) {
     <table className="plain"><tbody>{(content.items || []).map((it: any, i: number) => (
       <tr key={i}><td><b>{it.technique}</b> {it.conditions}</td><td>{it.data}</td></tr>))}</tbody></table>
   )
+  if (kind === 'references') return (content.items || []).length
+    ? <ol className="ref-list">{(content.items || []).map((r: Reference, i: number) => <li key={i} className="ref-item"><Citation r={{ ...r, authors: Array.isArray(r.authors) ? r.authors : [] }} /></li>)}</ol>
+    : <p className="faint">(no references)</p>
   return <p className="faint">{(content.attachment_ids || []).length} linked file(s). {content.caption}</p>
 }
 

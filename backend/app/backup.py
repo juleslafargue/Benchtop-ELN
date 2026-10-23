@@ -634,6 +634,25 @@ def maybe_backup() -> dict[str, Any] | None:
     return None
 
 
+def _which_backup() -> int:
+    """./benchtop restore without a file: the backups there are, and the commands to paste."""
+    import shlex
+    bs = list_backups()
+    if not bs:
+        print(f"No backups in {settings.backup_dir}, so there's nothing to restore.\n"
+              "To restore a backup from somewhere else, give its path: ./benchtop restore path/to/benchtop-backup-….zip")
+        return 1
+    print(f"Which backup? These are in {settings.backup_dir}, newest first:")
+    for b in bs[:10]:
+        print(f"  {b['name']}  {b['size'] / 1e6:6.1f} MB")
+    if len(bs) > 10:
+        print(f"  … and {len(bs) - 10} older ones (./benchtop backups lists them all)")
+    newest = shlex.quote(bs[0]["path"])
+    print(f"\nTo restore the newest (your current data is moved aside, not deleted):\n  ./benchtop restore {newest}\n"
+          f"To check a backup without changing anything:\n  ./benchtop check {newest}")
+    return 1
+
+
 def _main(argv: list[str]) -> int:
     cmd = argv[1] if len(argv) > 1 else "help"
     try:
@@ -656,6 +675,8 @@ def _main(argv: list[str]) -> int:
             r = test_latest_backup()
             print("No backups to test yet." if r is None else f"Tested {r['name']} ({r['where']}):\n" + report(r))
             return 0 if r is None or r["ok"] else 1
+        elif cmd == "restore" and len(argv) == 2:
+            return _which_backup()
         elif cmd == "restore" and len(argv) > 2:
             aside, problems = _restore(argv[2], allow_missing="--without-missing-files" in argv[3:])
             print(f"Restored {argv[2]}.\nYour previous data was kept in {aside}")

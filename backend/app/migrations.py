@@ -69,11 +69,20 @@ def _locked_status_for_imports(conn: Connection) -> None:
         conn.execute(text("ALTER TYPE experimentstatus ADD VALUE IF NOT EXISTS 'locked'"))
 
 
+def _references_sections(conn: Connection) -> None:
+    """A new kind of section, References (papers looked up by DOI). SQLite stores the kind as text, so nothing changes
+    there; Postgres keeps a list of allowed values. Like step 4, this raises the version so an older Benchtop (which
+    would fail on a References section) refuses the data and says to install this version."""
+    if conn.dialect.name == "postgresql":
+        conn.execute(text("ALTER TYPE entrykind ADD VALUE IF NOT EXISTS 'references'"))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "Start tracking database upgrades", _baseline),
     Migration(2, "Indexes for labs with thousands of experiments", _indexes_for_large_labs),
     Migration(3, "Backups keep attached files once, beside the zips", _backups_keep_files_beside_the_zip),
     Migration(4, "Read-only status for records imported from other ELNs", _locked_status_for_imports),
+    Migration(5, "References sections (papers by DOI)", _references_sections),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1].number
 assert [m.number for m in MIGRATIONS] == list(range(1, len(MIGRATIONS) + 1)), "migration numbers must be 1, 2, 3…"

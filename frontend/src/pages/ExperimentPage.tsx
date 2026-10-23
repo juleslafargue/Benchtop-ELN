@@ -359,7 +359,7 @@ export default function ExperimentPage() {
   }
   // insert before section `before` (an index into exp.entries), or at the end; then bring it into view
   const addSection = async (kind: EntryKind, before?: number, plugin?: string) => {
-    const titles: Record<EntryKind, string> = { text: 'Notes', reaction: 'Reaction', table: 'Data', file: 'Spectra & files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening', custom: '' }
+    const titles: Record<EntryKind, string> = { text: 'Notes', reaction: 'Reaction', table: 'Data', file: 'Spectra & files', purification: 'Work-up & purification', characterization: 'Characterisation', safety: 'Safety & risk assessment', screen: 'Screening', references: 'References', custom: '' }
     try {
       const position = before != null && exp.entries[before] ? exp.entries[before].position : undefined
       const e = await api.post<Entry>(`/api/experiments/${exp.id}/entries`, { kind, title: titles[kind], ...(plugin ? { plugin_section: plugin } : {}), ...(position != null ? { position } : {}) })

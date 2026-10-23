@@ -59,7 +59,7 @@ and kept out of the integrals:
 
 | Area | Features |
 |---|---|
-| **Notebooks & experiments** | Notebooks hold experiments (`EXP-00042`). Each experiment is a stack of sections (add one from the *Add section* menu at the top, between any two sections, or at the end): rich text (sub/superscript, tables, chemistry symbols), reaction, data table, files. Tags, templates, duplicate, printable report and JSON export. |
+| **Notebooks & experiments** | Notebooks hold experiments (`EXP-00042`). Each experiment is a stack of sections (add one from the *Add section* menu at the top, between any two sections, or at the end): rich text (sub/superscript, tables, chemistry symbols), reaction, data table, files, references. Tags, templates, duplicate, printable report and JSON export. |
 | **Chemistry** | Draw structures and reactions in [Ketcher](https://github.com/epam/ketcher) (runs fully in the browser via WebAssembly). Drawing a reaction fills the stoichiometry table automatically, keeping counter-ions together (NaBH₄ stays one row). RDKit computes MW, formula, InChIKey and depictions server-side. |
 | **Conditions** | Temperature (or rt/reflux), time, atmosphere and target concentration as real fields. Tick *fill to target M* on a solvent and its volume is calculated for you. |
 | **Stoichiometry** | Enter mass, volume, mmol or equivalents in any row; the rest is calculated from the limiting reagent, accounting for purity, density (neat liquids) and molarity (solutions). Products get theoretical mass and % yield. The cell you typed is highlighted so you always know what's input vs. calculated. |
@@ -83,6 +83,7 @@ and kept out of the integrals:
 | **Reagent lookup** | Type a name, CAS number or SMILES to fill in a new material (structure, MW, CAS, density, hazards) from PubChem, or to add a compound to a reaction straight from *Add from registry* without registering it first. |
 | **Green metrics** | Atom economy, reaction mass efficiency, E-factor, PMI and solvent L/kg under every reaction table and in the Reactions overview (reaction only; work-up and purification aren't counted). |
 | **Scale-up** | *Repeat at another scale* creates a new experiment at ×N (or a target mmol of the limiting reagent): typed amounts scale, equivalents don't, fill-to-concentration solvents recalculate, results and the risk assessment start fresh. |
+| **References** | A *References* section lists the papers an experiment relies on. Paste a DOI (or a doi.org link) and Benchtop fills in the title, authors, journal, year, volume, issue and pages from doi.org, which covers journal articles (Crossref) and datasets (DataCite, e.g. Zenodo). Each reference shows in ACS style with a link to the paper, can carry a note ("impurity table for CDCl₃"), and can be typed in by hand when there's no DOI or no internet. References appear in reports, PDFs, Markdown and search, and .eln exports list them as citations other ELNs can read. |
 | **Screening grids** | A two-factor screening section (e.g. base × temperature) with a heatmap of yields or any other response, best result highlighted, and each cell optionally linked to the experiment that produced it. |
 | **Compounds** | Every product and registered sample with cLogP, TPSA, HBD/HBA, rotatable bonds, Fsp³, QED and Lipinski/Veber flags (RDKit, on the parent structure), sortable, with a drug-like filter. |
 | **Materials & inventory** | Structure-deduplicated registry (`MAT-00007`) with CAS, density, hazards. Lots/containers with barcode, location, supplier, purity. Every withdrawal is a ledger entry with unit conversion (g ↔ mL via density). One click deducts a reaction's reagents from their lots (after showing exactly what will be taken), and each deduction can be undone; one click registers an isolated product as a new material + lot linked back to the experiment. |
@@ -136,8 +137,9 @@ to be running.
 ./benchtop lab                  # share it with labmates on the same network
 ./benchtop update               # install the newest version (see Updating, below)
 ./benchtop rollback             # go back to the version from before the last update
-./benchtop backup | backups | restore FILE
+./benchtop backup | backups | restore FILE   # restore without FILE lists your backups
 ./benchtop check                # is everything intact? (database, audit trail, signed records, files)
+./benchtop check FILE           # the same checks on a backup, without changing anything
 ./benchtop seed                 # demo data
 ./benchtop export-obsidian ~/Documents/Vault/Benchtop
 ./benchtop update-nmr-data      # rebuild the NMR shift table from the latest NMRShiftDB2 export
@@ -432,6 +434,7 @@ covers. A Benchtop that finds data from a newer version refuses to start rather 
 | `BENCHTOP_PORT` | `8000` | Port used by `./benchtop` |
 | `BENCHTOP_OBSIDIAN_DIR` | unset | Vault folder to sync Markdown notes into every hour |
 | `BENCHTOP_PUBCHEM` | `on` | `off` stops all PubChem lookups (works fully offline with whatever was fetched before) |
+| `BENCHTOP_DOI` | `on` | `off` stops DOI lookups at doi.org for References sections (references can still be typed in) |
 | `BENCHTOP_SAFETY_REFRESH_DAYS` | `30` | Safety data older than this is re-checked by the hourly housekeeping |
 | `BENCHTOP_NMR_AUTO_UPDATE` | `on` | `off` stops the monthly check for a newer NMRShiftDB2 export (the bundled table is still used) |
 | `BENCHTOP_UPDATE_CHECK` | `on` | `off` stops the daily look at GitHub for a newer Benchtop (`./benchtop update` still works when you run it) |
@@ -461,6 +464,7 @@ backend/   FastAPI + SQLModel + RDKit
   app/chem.py       structure parsing, depiction, reaction → rows, stoichiometry engine, search
   app/audit.py      hash-chained audit log + verifier
   app/backup.py     snapshot/zip backups, files kept once beside them, second copy, weekly test, restore (also a CLI)
+  app/doi.py        DOIs for References sections: tidying what's pasted, lookup at doi.org, citation parts
   app/check.py      health check: database, audit trail, signed records, files (./benchtop check)
   app/migrations.py numbered database upgrade steps
   app/writeup.py    SI-style experimental paragraph composer
@@ -536,7 +540,7 @@ that work.
 
 - Native Windows support: a double-click starter, and updates and rollback without WSL, tested on Windows by GitHub
   on every change (today Windows runs Benchtop through WSL, and labmates on Windows just use the browser)
-- Next: phone barcode scanning for lots and samples, DOI references, compound and batch registration with a route view, a full-text search index for very large notebooks
+- Next: phone barcode scanning for lots and samples, compound and batch registration with a route view, a full-text search index for very large notebooks
 - Signed .eln exports (minisign), so another system can check an export came from your Benchtop
 - Code plugins (Python packages with hooks, extra pages and widgets), building on today's plugin files
 - Plate/sample-set entities and a sample-tracking view
