@@ -304,9 +304,10 @@ def test_eln_export_cites_papers_and_another_benchtop_gets_the_section_back(clie
         ("Person", "Gregory R. Fulmer", "Fulmer", "Gregory R."), ("Person", "Karen I. Goldberg", "Goldberg", "Karen I.")]
     assert paper["datePublished"] == "2010" and paper["pagination"] == "2176–2179" and paper["identifier"] == "https://doi.org/10.1021/om100106e"
     ds = next(n for n in g.values() if n.get("genre") == "experiment" and n.get("name") == "Exported with references")
-    cited = [c["@id"] for c in ds["citation"]]
-    assert cited[0] == "https://doi.org/10.1021/om100106e" and len(cited) == 2  # the blank one is left out
-    assert g[cited[1]]["name"] == "Unpublished results" and g[cited[1]]["description"] == "Group meeting, May 2026"
+    # RO-Crate: a citation must be an absolute URI, so only papers with a DOI are cited; the others are mentioned
+    assert [c["@id"] for c in ds["citation"]] == ["https://doi.org/10.1021/om100106e"]
+    other = [g[m["@id"]] for m in ds["mentions"] if g[m["@id"]]["@type"] == "ScholarlyArticle"]
+    assert [(o["name"], o["description"]) for o in other] == [("Unpublished results", "Group meeting, May 2026")]  # the blank one is left out
 
     nb2 = client.post("/api/notebooks", headers=b, json={"name": "Bob's references"}).json()
     p = client.post("/api/eln/preview", headers=b, files={"file": ("x.eln", data, "application/zip")}).json()

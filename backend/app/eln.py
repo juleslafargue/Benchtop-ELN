@@ -301,6 +301,8 @@ def _experiment(session: Session, crate: _Crate, exp: Experiment, folders: _Uniq
                                       "description": "Attached file"})))
 
     chem_parts, mentions = _chemistry(crate, folder, base, entries)
+    cited, other_refs = _citations(crate, base, entries)
+    mentions += other_refs
     parts += chem_parts
 
     comments = list(session.exec(select(Comment).where(Comment.experiment_id == exp.id, Comment.deleted == False)  # noqa: E712
@@ -376,7 +378,7 @@ def _experiment(session: Session, crate: _Crate, exp: Experiment, folders: _Uniq
         "url": f"{settings.public_url}/experiments/{exp.id}" if settings.public_url.startswith("http") else None,
         "comment": comment_refs, "mentions": mentions, "isBasedOn": _ref(_id(folder_of[follows.id] + "/"))
         if follows is not None and follows.id in folder_of else None,
-        "variableMeasured": [v for v in variables if v], "hasPart": parts, "citation": _citations(crate, base, entries),
+        "variableMeasured": [v for v in variables if v], "hasPart": parts, "citation": cited,
     })
     return ds_id
 
@@ -391,10 +393,11 @@ def _author(crate: _Crate, written: str) -> str:
     return pid
 
 
-def _citations(crate: _Crate, base: str, entries) -> list[dict]:
-    """Papers in References sections, as ScholarlyArticle nodes (a DOI is the node's @id, as RO-Crate recommends)."""
+def _citations(crate: _Crate, base: str, entries) -> tuple[list[dict], list[dict]]:
+    """Papers in References sections, as ScholarlyArticle nodes. Those with a DOI are the record's citations, with the
+    DOI as @id (RO-Crate: a citation must be an absolute URI); the rest (typed in, no DOI) are only mentioned."""
     from . import doi
-    refs, n = [], 0
+    refs, others, n = [], [], 0
     for e in entries:
         if e.kind != EntryKind.references:
             continue
@@ -409,9 +412,10 @@ def _citations(crate: _Crate, base: str, entries) -> list[dict]:
                        "author": authors or None, "isPartOf": c["journal"] or None, "datePublished": c["year"] or None,
                        "volumeNumber": c["volume"] or None, "issueNumber": c["issue"] or None, "pagination": c["pages"] or None,
                        "description": c["note"] or None})
-            if {"@id": node_id} not in refs:
-                refs.append(_ref(node_id))
-    return refs
+            into = refs if c["link"] else others
+            if {"@id": node_id} not in into:
+                into.append(_ref(node_id))
+    return refs, others
 
 
 def _preview(title: str, exps: list[Experiment], folder_of: dict[int, str]) -> bytes:
