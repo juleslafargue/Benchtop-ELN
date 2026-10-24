@@ -468,19 +468,34 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
         const px = toPx((t.a + t.b) / 2)
         return { ...t, px, lx: px, peakY: Math.max(plotTop, toPy(top)), w: g.measureText(t.text).width + 10 }
       }).filter(t => t.px >= M.l && t.px <= w - M.r).sort((p, q) => p.px - q.px)
-      // push labels right until they don't overlap, then pull the row back inside the plot
-      for (let k = 1; k < tags.length; k++) tags[k].lx = Math.max(tags[k].lx, tags[k - 1].lx + (tags[k - 1].w + tags[k].w) / 2)
       const right = w - M.r
-      for (let k = tags.length - 1; k >= 0; k--) {
-        const lim = k === tags.length - 1 ? right - tags[k].w / 2 : tags[k + 1].lx - (tags[k + 1].w + tags[k].w) / 2
-        tags[k].lx = Math.min(tags[k].lx, lim)
+      // push labels right until they don't overlap, then pull the row back inside the plot; false if they don't fit
+      const spread = () => {
+        tags.forEach(t => { t.lx = t.px })
+        for (let k = 1; k < tags.length; k++) tags[k].lx = Math.max(tags[k].lx, tags[k - 1].lx + (tags[k - 1].w + tags[k].w) / 2)
+        for (let k = tags.length - 1; k >= 0; k--) {
+          const lim = k === tags.length - 1 ? right - tags[k].w / 2 : tags[k + 1].lx - (tags[k + 1].w + tags[k].w) / 2
+          tags[k].lx = Math.min(tags[k].lx, lim)
+        }
+        return !tags.length || tags[0].lx >= M.l + tags[0].w / 2
       }
-      if (tags.length && tags[0].lx < M.l + tags[0].w / 2) { // too many to fit in one row: fall back to their own positions
-        tags.forEach(t => { t.lx = Math.min(right - t.w / 2, Math.max(M.l + t.w / 2, t.px)) })
+      if (!spread()) {
+        // too many for one row (a narrow window, or zoomed out): just the shifts, which the table spells out in full
+        tags.forEach(t => { t.text = t.text.split(' ')[0]; t.w = g.measureText(t.text).width + 10 })
+        if (!spread()) {
+          // still too many: those that have room where they are, the others left out until you zoom in
+          let edge = -Infinity
+          for (const t of tags) {
+            t.lx = Math.min(right - t.w / 2, Math.max(M.l + t.w / 2, t.px))
+            if (t.lx - t.w / 2 < edge) t.text = ''
+            else edge = t.lx + t.w / 2
+          }
+        }
       }
       const textY = plotTop - predStrip - tagStrip + 12
       g.strokeStyle = pal.ink3; g.lineWidth = 0.8
       for (const t of tags) {
+        if (!t.text) continue
         g.beginPath(); g.moveTo(t.lx, textY + 4); g.lineTo(t.lx, textY + 9); g.lineTo(t.px, plotTop - 1); g.lineTo(t.px, Math.max(plotTop - 1, t.peakY - 4)); g.stroke()
       }
       g.fillStyle = pal.ink
@@ -865,8 +880,8 @@ function OverlayPicker({ near, exclude, onPick, onClose }: { near: number; exclu
       <input className="input" style={{ width: '100%', marginBottom: 10 }} autoFocus placeholder="Filter by file name, experiment ID or title" value={q} onChange={e => setQ(e.target.value)} />
       <ul className="list" style={{ maxHeight: 360, overflowY: 'auto' }}>
         {(items || []).filter(i => !exclude.includes(i.id)).map(i => (
-          <li key={i.id}><button className="list-row btn ghost" style={{ display: 'grid', gridTemplateColumns: '1fr auto', width: '100%', textAlign: 'left', borderRadius: 0 }} onClick={() => onPick(i)}>
-            <span><b style={{ fontWeight: 600 }}>{i.filename}</b><span className="faint" style={{ display: 'block' }}>{i.eid} · {i.title}</span></span>
+          <li key={i.id}><button className="list-row btn ghost" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 12, alignItems: 'center', width: '100%', textAlign: 'left', borderRadius: 0 }} onClick={() => onPick(i)}>
+            <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}><b style={{ fontWeight: 600 }}>{i.filename}</b><span className="faint" style={{ display: 'block' }}>{i.eid} · {i.title}</span></span>
             <span className="faint">{i.same_experiment ? 'this experiment' : new Date(i.created_at).toLocaleDateString()}</span>
           </button></li>
         ))}

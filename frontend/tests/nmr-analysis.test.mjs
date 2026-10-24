@@ -130,3 +130,18 @@ test('integrals with no formula: a tiny impurity singlet isn\'t "1 H" (regressio
   assert.equal(sp.protonUnit([1.02, 3.1, 8.9]), 1.02)  // N-methyl pivalamide: NH, NCH₃, tBu
   assert.equal(sp.protonUnit([0.3, 2, 2, 1, 3, 6]), 1)  // 0.3 left out, the 1 H signal kept
 })
+
+test('a CH split by eight protons is an "m", not a quintet (regression: ibuprofen\'s 1.87 was a "p": its region\'s edges left only the five middle lines above the threshold)', async () => {
+  for (const freq of [400, 600]) {
+    const s = multiplet(freq, Array(8).fill(6.7))
+    const half = 3.4 * 6.7 / freq  // a region whose edges sit just inside the outermost lines, as auto-analysis draws them
+    const m = sp.analyzeMultiplet(s, 3 - half, 3 + half)
+    assert.equal(m.mult, 'm', `${freq} MHz: ${m.mult} ${m.j}`)
+    assert.ok(m.hi - m.lo > 5 * 6.7 / freq, `reported as a range: ${m.lo}–${m.hi}`)
+  }
+  const s = await open('ibuprofen_1h_bruker_fid.zip')
+  const res = sp.findResidual(s)
+  const r = sp.autoAnalyse1H(s, 18, res.found - res.expected, 206.28, [7.13, 7.12, 3.71, 2.46, 1.86, 1.51, 0.87])  // as the viewer passes the prediction
+  const ch = r.regions.map(g => sp.analyzeMultiplet(s, g.a, g.b)).find(m => Math.abs(m.shift - 1.87) < 0.02)
+  assert.equal(ch?.mult, 'm', list(r.regions.map(g => sp.analyzeMultiplet(s, g.a, g.b))))
+})

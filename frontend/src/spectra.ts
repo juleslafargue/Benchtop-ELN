@@ -455,14 +455,18 @@ function binomialPattern(s: Spectrum, lo: number, hi: number, freq: number) {
     return l.y - Math.max(left, right) > Math.max(6 * noise, 0.01 * top)
   })
   const n = lines.length
-  if (n !== 6 && n !== 7) return null
+  if (n < 6) return null
   const gaps = lines.slice(1).map((l, i) => (l.x - lines[i].x) * freq)
   const mean = gaps.reduce((p, q) => p + q, 0) / gaps.length
   if (!gaps.every(g => near(g, mean, 0.7))) return null
+  const span = { j: mean, lo: lines[0].x, hi: lines[n - 1].x }
+  // more lines than a septet (ibuprofen's CH, split by 8 protons): no name for it, it's a multiplet
+  if (n > 7) return { mult: 'm', ...span }
   const want = binomial(n), wmax = Math.max(...want), ymax = Math.max(...lines.map(l => l.y))
   // each line within a factor of 2 of its share (roof effect and overlap tilt them a little)
-  if (!lines.every((l, k) => { const r = (l.y / ymax) / (want[k] / wmax); return r > 0.5 && r < 2 })) return null
-  return { mult: n === 6 ? 'sext' : 'hept', j: mean, lo: lines[0].x, hi: lines[n - 1].x }
+  const fits = lines.every((l, k) => { const r = (l.y / ymax) / (want[k] / wmax); return r > 0.5 && r < 2 })
+  if (!fits) return n === 7 ? { mult: 'm', ...span } : null  // seven lines too tall at the edges: the middle of a bigger one
+  return { mult: n === 6 ? 'sext' : 'hept', ...span }
 }
 
 /** Classify the lines inside [a, b] (ppm) as a first-order multiplet. */
@@ -472,7 +476,7 @@ export function analyzeMultiplet(s: Spectrum, a: number, b: number): Multiplet {
   const m = classify(s, lo, hi, freq)
   if (!s.isStick && ['q', 'p', 'dd', 'm'].includes(m.mult)) {
     const wide = binomialPattern(s, lo, hi, freq)
-    if (wide) return { shift: (wide.lo + wide.hi) / 2, lo: wide.lo, hi: wide.hi, mult: wide.mult, j: [Math.round(wide.j * 10) / 10] }
+    if (wide) return { shift: (wide.lo + wide.hi) / 2, lo: wide.lo, hi: wide.hi, mult: wide.mult, j: wide.mult === 'm' ? [] : [Math.round(wide.j * 10) / 10] }
   }
   return m
 }

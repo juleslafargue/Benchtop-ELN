@@ -38,8 +38,11 @@
    keeping the colours of O (red), N (blue) etc. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) img[src^="/api/chem/depict"] { filter: invert(0.9) hue-rotate(180deg); }
+  /* the inversion flips a panel background too: give it a light one, so it comes out dark under light lines */
+  :root:not([data-theme='light']) img.pred-struct { background: #eceef1; }
 }
 :root[data-theme='dark'] img[src^="/api/chem/depict"] { filter: invert(0.9) hue-rotate(180deg); }
+:root[data-theme='dark'] img.pred-struct { background: #eceef1; }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
