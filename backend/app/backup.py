@@ -623,6 +623,8 @@ def _restore(zip_path: str, allow_missing: bool = False) -> tuple[Path, list[str
             shutil.move(str(settings.attachments_dir), aside / "attachments")
         shutil.move(str(stage / "attachments"), settings.attachments_dir)
         db.write_bytes(db_bytes)
+        from . import integrity
+        integrity.forget()  # the last data check was about the data just moved aside
         if (stage / "plugins").is_dir():
             plug = settings.data_dir / "plugins"
             if plug.exists():

@@ -1482,5 +1482,20 @@
    "imported .eln: a signed record (locked) and an eLabFTW export",
    "References section"
   ]
+ },
+ "v0.24.0": {
+  "commit": "1b54607 (with changes not yet committed)",
+  "made": "2026-10-24",
+  "lab": "demo_lab",
+  "extras": [
+   "signed and witnessed record",
+   "2 trusted timestamps",
+   "API token",
+   "webhook (inactive)",
+   "sample codes",
+   "instrument folder: a file attached, one in the Inbox",
+   "imported .eln: a signed record (locked) and an eLabFTW export",
+   "References section"
+  ]
  }
 }

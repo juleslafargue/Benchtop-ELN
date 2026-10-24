@@ -99,7 +99,8 @@ def sweep(sync_playwright) -> list[tuple[str, str, str, str]]:
     runs = [("desktop", "slaurent", {"width": 1400, "height": 900}, "light", pages),
             ("phone", "slaurent", {"width": 390, "height": 844}, "light", pages),
             ("dark", "slaurent", {"width": 1400, "height": 900}, "dark", pages[:12]),
-            ("admin", "hweiss", {"width": 1400, "height": 900}, "light", ["/admin", "/"])]
+            ("admin", "hweiss", {"width": 1400, "height": 900}, "light", ["/admin", "/"]),
+            ("admin phone", "hweiss", {"width": 390, "height": 844}, "light", ["/admin", "/"])]  # 0.24: Admin was too wide
     # every colour theme, light and dark, on a few busy pages (the phone run covers narrow screens)
     themed = ["/", pages[10 + len(nbs)] if len(pages) > 10 + len(nbs) else "/", "/account", "/reactions"]
     for palette in ("notebook", "steel", "litmus", "contrast"):

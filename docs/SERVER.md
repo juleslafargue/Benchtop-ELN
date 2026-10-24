@@ -107,8 +107,8 @@ With the Postgres setup, take a `pg_dump` first, then
 
 Benchtop can keep its records in Postgres instead (`deploy/docker-compose.server-postgres.yml`). It's for a
 very large installation: hundreds of people writing at once, or several servers sharing one database.
-A research group doesn't need it. **Benchtop's built-in backups, weekly restore test, restore and
-`check` don't work with Postgres** (the admin dashboard says so). You then take care of two things yourself,
+A research group doesn't need it. **Benchtop's built-in backups, weekly restore test, daily data check,
+restore and `check` don't work with Postgres** (the admin dashboard and Admin → Backups say so). You then take care of two things yourself,
 on a schedule:
 
 ```bash

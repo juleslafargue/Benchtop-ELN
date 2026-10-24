@@ -187,6 +187,16 @@ copy* folder (iCloud Drive or an external drive) and every backup is copied ther
 Once a week Benchtop unpacks the newest backup into a temporary folder and checks it as if it had been
 restored, so you know your backups actually work; problems show on the admin's dashboard.
 
+**Daily data check.** Once a day Benchtop also checks the data it is using, in the background: the database file,
+the audit trail, that every signed record still matches its signature, trusted timestamps, and that every attached
+file is there and unchanged. A failing disk, or a file changed or deleted outside Benchtop, shows up the next day.
+Problems show on the admin's dashboard and in **Admin → Backups**, saying what to do, and admins with an email
+address get one email when a problem first appears. A missing or changed attached file can be put back from the
+backups with one click (*Put back from backups*; the damaged copy is kept aside, and nothing else changes). Attached
+files are re-read byte for byte every day while they total up to 20 GB; above that, every file is checked for size
+daily and a seventh of them are re-read each day, so each is re-read once a week. On a Postgres server the daily
+check doesn't run, and Admin says so.
+
 When you move or copy backups, take the zip **and** the `benchtop-files` folder beside it. Backups made
 before 0.15 hold their files inside the zip and still restore as before.
 
@@ -438,6 +448,7 @@ push). When releasing a version, add its backup: `python3 tests/make_upgrade_fix
 | `BENCHTOP_BACKUP_KEEP` | `14` | Number of backups kept |
 | `BENCHTOP_BACKUP_INTERVAL_HOURS` | `24` | `0` turns automatic backups off, including the one before a database upgrade |
 | `BENCHTOP_BACKUP_COPY_DIR` | (set in Admin → Backups) | Second folder every backup is copied to |
+| `BENCHTOP_CHECK_INTERVAL_HOURS` | `24` | How often the data check runs (database, audit trail, signatures, files); `0` turns it off |
 | `BENCHTOP_SMTP_HOST`, `_PORT`, `_SECURITY`, `_USER`, `_PASSWORD`, `_FROM` | (set in Admin → Email) | Email server; when set here, the app shows them as fixed |
 | `BENCHTOP_TIMESTAMPS` | `on` | `off` turns trusted timestamps off |
 | `BENCHTOP_TSA_URL` | `http://timestamp.digicert.com` | RFC 3161 timestamp service |
@@ -479,6 +490,7 @@ backend/   FastAPI + SQLModel + RDKit
   app/backup.py     snapshot/zip backups, files kept once beside them, second copy, weekly test, restore (also a CLI)
   app/doi.py        DOIs for References sections: tidying what's pasted, lookup at doi.org, citation parts
   app/check.py      health check: database, audit trail, signed records, files (./benchtop check)
+  app/integrity.py  the daily check of the live data, its warnings and email, putting files back from backups
   app/migrations.py numbered database upgrade steps
   app/writeup.py    SI-style experimental paragraph composer
   app/export_md.py  Markdown/Obsidian export and vault sync (also a CLI)
@@ -537,6 +549,8 @@ Tokens, webhooks (Slack, Teams, or signed JSON for your own code) and examples i
   (so it can't add anything to a download). An upload waiting for its preview can only be imported by the person who
   uploaded it, one import at a time (it's deleted after the import, or after a day). Exports contain only records the
   person can open.
+- **Tampering shows up**: the daily data check finds a signed record, audit event or attached file changed outside
+  Benchtop (for example, by editing the database directly) and tells the admins the next day.
 - **Browser protections**: a Content Security Policy (only Benchtop's own scripts run; pages can't be framed by other sites), `nosniff`, no referrer leaks, and API responses that aren't cached.
 - Report security problems privately as described in [SECURITY.md](SECURITY.md).
 

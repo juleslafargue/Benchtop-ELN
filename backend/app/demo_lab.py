@@ -930,6 +930,7 @@ def main() -> None:
     from . import models as m
     from .config import settings
     settings.demo = True  # the example plugins are on in the demo
+    settings.check_interval_hours = 0  # no daily data check of the half-built lab; the real server checks it when it starts
     m.datetime = _SimDatetime  # the simulated clock (models.utcnow reads it)
     try:
         from .main import app

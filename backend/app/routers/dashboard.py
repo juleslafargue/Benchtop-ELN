@@ -129,6 +129,7 @@ def dashboard(user: CurrentUser, session: DB):
         "spectra": spectra,
         # admins see backup problems where they'll notice them
         "system": {"backup_warnings": _backup_warnings() if user.role == Role.admin else [],
+                   "check_warnings": _check_warnings() if user.role == Role.admin else [],
                    "update": _update() if user.role == Role.admin else None},
         "inventory": {"low": low[:10], "expiring": expiring[:10], "safety_changes": safety_changes[:10], "low_fraction": LOW_STOCK_FRACTION, "expiry_days": EXPIRY_DAYS},
     }
@@ -142,6 +143,15 @@ def _update() -> dict[str, Any] | None:
     except Exception:  # noqa: BLE001 - a dashboard must load whatever is in the saved check
         return None
     return st if st["available"] else None
+
+
+def _check_warnings() -> list[str]:
+    """What the daily data check found (0.24); nothing when all is well."""
+    from .. import integrity
+    try:
+        return integrity.health()["warnings"]
+    except Exception:  # noqa: BLE001 - a dashboard must load whatever is in the saved result
+        return []
 
 
 def _backup_warnings() -> list[str]:

@@ -63,6 +63,11 @@ async def _housekeeping_loop() -> None:
         except Exception:
             log.exception("Backup test failed to run")
         try:
+            from . import integrity
+            await asyncio.to_thread(integrity.maybe_run)  # once a day; it logs and records what it finds
+        except Exception:  # never let the check take the server down
+            log.exception("Daily data check failed to run")
+        try:
             from . import mailer, timestamps, witness
             mailer.start()
             n = await asyncio.to_thread(witness.send_due_reminders)

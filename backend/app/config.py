@@ -39,6 +39,8 @@ class Settings:
         self.backup_dir = Path(os.environ.get("BENCHTOP_BACKUP_DIR", self.data_dir / "backups")).expanduser().resolve()
         self.backup_keep = int(os.environ.get("BENCHTOP_BACKUP_KEEP", "14"))
         self.backup_interval_hours = float(os.environ.get("BENCHTOP_BACKUP_INTERVAL_HOURS", "24"))
+        # the daily check of the live data (0.24): database, audit trail, signatures, timestamps, attached files; 0 = off
+        self.check_interval_hours = float(os.environ.get("BENCHTOP_CHECK_INTERVAL_HOURS", "24"))
         obs = os.environ.get("BENCHTOP_OBSIDIAN_DIR")
         self.obsidian_dir = Path(obs).expanduser().resolve() if obs else None  # hourly Markdown sync target
         self.port = int(os.environ.get("BENCHTOP_PORT", "8000"))

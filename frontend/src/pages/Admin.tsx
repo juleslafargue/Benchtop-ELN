@@ -76,6 +76,42 @@ interface BackupInfo {
   copy_dir: string | null; copy_dir_from_env: boolean; copies: number; warnings: string[]; files?: { files: number; bytes: number }
   last_copy: { ok: boolean; at: string; name: string; folder: string; error?: string } | null
   last_check: BackupTest | null; suggestions: { label: string; path: string }[]
+  data_check?: DataCheck
+}
+interface DataCheck {
+  enabled: boolean; available: boolean; interval_hours: number; full_check_gb: number; note: string | null; warnings: string[]
+  last: { ok: boolean; at: string; checks: CheckItem[]; every_file?: boolean; error?: string } | null
+}
+
+/** "today 03:12", "yesterday 03:12", or the date */
+function checkedWhen(iso: string) {
+  const d = new Date(iso), now = new Date()
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  const days = Math.round((new Date(now.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86400000)
+  return days === 0 ? `today ${time}` : days === 1 ? `yesterday ${time}` : when(iso)
+}
+
+function DataCheckBox({ dc, busy, onCheck, onPutBack }: { dc: DataCheck; busy: '' | 'check' | 'putback'; onCheck: () => void; onPutBack: () => void }) {
+  const last = dc.last
+  const files = last?.checks.some(c => c.name === 'Attached files' && !c.ok)
+  return (
+    <div className="panel backup-box">
+      <h3>Daily data check</h3>
+      <p>Once a day Benchtop checks the data it is using: the database, the audit trail, every signed record and trusted timestamp,
+        and that every attached file is there and unchanged. Files are re-read byte for byte every day while they total up to {dc.full_check_gb} GB; above that, a seventh of them each day, so each file once a week.</p>
+      {!dc.available ? <p className="faint">{dc.note}</p>
+        : !dc.enabled ? <p className="faint">Turned off on this server (BENCHTOP_CHECK_INTERVAL_HOURS=0). <code>./benchtop check</code> still checks when you ask.</p>
+        : !last ? <p className="faint">Not checked yet: the first check runs within the hour after Benchtop starts.</p> : null}
+      {dc.available && dc.enabled && last && <>
+        <p className={last.ok ? '' : 'error'}><b>Last checked {checkedWhen(last.at)}: {last.ok ? 'all good' : last.error ? "couldn't run" : 'problems found'}</b></p>
+        {dc.warnings.map(w => <p key={w}>{w}</p>)}
+        {last.checks.length > 0 && <ul className="check-list">{last.checks.map(c => <li key={c.name} className={c.ok ? 'ok' : 'bad'}><span aria-hidden>{c.ok ? '✓' : '✗'}</span> <b>{c.name}</b> <span className="faint">{c.detail}</span></li>)}</ul>}
+      </>}
+      {dc.available && dc.enabled && <div className="row" style={{ gap: 6 }}>
+        {files && <button className="btn primary sm" disabled={!!busy} onClick={onPutBack} title="Copies the good files back from the backups; nothing else changes">{busy === 'putback' ? 'Putting back…' : 'Put back from backups'}</button>}
+        <button className="btn sm" disabled={!!busy} onClick={onCheck}>{busy === 'check' ? 'Checking…' : 'Check now'}</button></div>}
+    </div>
+  )
 }
 
 function NmrData() {
@@ -114,7 +150,7 @@ function fmtBytes(n: number) {
 function Backups() {
   const { toast } = useApp()
   const [info, setInfo] = useState<BackupInfo | null>(null)
-  const [busy, setBusy] = useState<'' | 'backup' | 'test' | 'folder'>('')
+  const [busy, setBusy] = useState<'' | 'backup' | 'test' | 'folder' | 'check' | 'putback'>('')
   const [err, setErr] = useState('')
   const [folder, setFolder] = useState<string | null>(null)  // editing the second-copy folder
   const load = () => api.get<BackupInfo>('/api/admin/backups').then(setInfo).catch(e => setErr(e.message))
@@ -135,6 +171,15 @@ function Backups() {
     const r = await api.put<any>('/api/admin/backups/copy-dir', { path })
     setFolder(null)
     toast(!path ? 'Second copies turned off' : r.first_copy?.ok ? 'Folder set; the newest backup is already copied there' : r.first_copy ? `Folder set, but copying failed: ${r.first_copy.error}` : 'Folder set')
+  })
+  const checkNow = () => run('check', async () => {
+    const r = await api.post<DataCheck>('/api/admin/check')
+    toast(r.last?.ok ? 'Checked: all good' : 'The check found problems; see below')
+  })
+  const putBack = () => run('putback', async () => {
+    const r = await api.post<DataCheck & { put_back: string[]; no_good_copy: string[] }>('/api/admin/check/put-back-files')
+    const n = r.put_back.length
+    toast(r.no_good_copy.length ? `${n} put back; no good copy in the backups of ${r.no_good_copy.join(', ')}` : `${n} file${n === 1 ? '' : 's'} put back${r.last?.ok ? ': all good now' : ''}`)
   })
   const lc = info?.last_check
   return (
@@ -180,6 +225,7 @@ function Backups() {
             <ul className="check-list">{lc.checks.map(c => <li key={c.name} className={c.ok ? 'ok' : 'bad'}><span aria-hidden>{c.ok ? '✓' : '✗'}</span> <b>{c.name}</b> <span className="faint">{c.detail}</span></li>)}</ul>
           </> : <p className="faint">Not tested yet.</p>}
         </div>
+        {info.data_check && <DataCheckBox dc={info.data_check} busy={busy === 'check' || busy === 'putback' ? busy : ''} onCheck={checkNow} onPutBack={putBack} />}
       </div>}
 
       <div className="panel grid-wrap" style={{ border: 0 }}>

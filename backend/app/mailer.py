@@ -93,6 +93,11 @@ def render(kind: str, **c: Any) -> tuple[str, str, str]:
     elif kind == "returned":
         subject = f"{c['eid']} was returned to you"
         lines = [f"{e(c['witness'])} returned <b>{e(rec)}</b> to you for changes.", f"Reason: “{e(c.get('reason', ''))}”"]
+    elif kind == "data_check":
+        subject = "Benchtop's daily data check found a problem"
+        lines = ["Benchtop checks its data every day. Today's check found:"] + [e(p) for p in c.get("problems", [])] + [
+            "Admin → Backups shows the details. You'll get one email per new problem, not one a day."]
+        link = c.get("link")
     elif kind == "test":
         subject = "Benchtop test email"
         lines = ["This is a test from Benchtop's email settings. If you can read this, email is working."]

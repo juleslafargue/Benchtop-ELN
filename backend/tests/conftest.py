@@ -9,6 +9,7 @@ _tmp = tempfile.mkdtemp(prefix="benchtop-test-")
 os.environ["BENCHTOP_DATA_DIR"] = _tmp
 os.environ["BENCHTOP_ADMIN_PASSWORD"] = "adminpass"
 os.environ["BENCHTOP_BACKUP_INTERVAL_HOURS"] = "0"  # tests trigger backups explicitly
+os.environ["BENCHTOP_CHECK_INTERVAL_HOURS"] = "0"  # tests run the daily data check explicitly
 os.environ["BENCHTOP_PUBCHEM"] = "off"  # tests inject a mock PubChem
 os.environ["BENCHTOP_DOI"] = "off"  # no calls to doi.org; tests inject a mock
 os.environ["BENCHTOP_TIMESTAMPS"] = "off"  # no calls to real timestamp services; tests switch on a fake one

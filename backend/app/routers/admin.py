@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from .. import audit, backup, mailer, sitesettings, timestamps
+from .. import audit, backup, integrity, mailer, sitesettings, timestamps
 from ..config import settings
 from ..security import DB, Admin
 
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 def list_backups(_: Admin):
     return {"directory": str(settings.backup_dir), "keep": settings.backup_keep,
             "interval_hours": settings.backup_interval_hours, "backups": backup.list_backups(),
-            **backup.health(), "suggestions": backup.suggested_copy_dirs()}
+            **backup.health(), "suggestions": backup.suggested_copy_dirs(), "data_check": integrity.health()}
 
 
 class CopyDirIn(BaseModel):
@@ -52,6 +52,29 @@ async def test_backup(user: Admin, session: DB):
     audit.record(session, user, "backup_test", "system", None, name=res["name"], ok=res["ok"])
     session.commit()
     return res
+
+
+@router.post("/check")
+async def check_now(user: Admin, session: DB):
+    """Run the daily data check now (Admin → Backups), e.g. after restoring a file."""
+    if not integrity.available():
+        raise HTTPException(409, integrity.POSTGRES)
+    res = await run_in_threadpool(integrity.run)
+    audit.record(session, user, "data_check", "system", None, ok=res["ok"])
+    session.commit()
+    return integrity.health()
+
+
+@router.post("/check/put-back-files")
+async def put_back_files(user: Admin, session: DB):
+    """Copy missing or changed attached files back from the backups, then check again."""
+    if not integrity.available():
+        raise HTTPException(409, integrity.POSTGRES)
+    done = await run_in_threadpool(integrity.put_back_files)
+    audit.record(session, user, "put_back_files", "system", None, **done)
+    session.commit()
+    await run_in_threadpool(integrity.run)
+    return {**integrity.health(), **done}
 
 
 @router.post("/backups", status_code=201)

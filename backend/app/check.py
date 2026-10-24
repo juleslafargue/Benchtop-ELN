@@ -16,6 +16,7 @@ import sqlite3
 import sys
 import tempfile
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -41,8 +42,10 @@ def _item(name: str, ok: bool, detail: str) -> dict[str, Any]:
     return {"name": name, "ok": ok, "detail": detail}
 
 
-def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
-    """Every check on one database file plus its attachment folder (neither is modified)."""
+def check_files(db_path: Path, attachments_dir: Path, rehash: Callable[[str], bool] | None = None) -> dict[str, Any]:
+    """Every check on one database file plus its attachment folder (neither is modified).
+    `rehash`: re-read only the attached files it picks (by SHA-256); the rest are checked for being there with the right
+    size (the daily check of a big lab, which re-reads each file once a week). None re-reads every file."""
     from . import audit, migrations
     from .models import Attachment, Experiment, ExperimentStatus, Signature
     from .services import content_hash
@@ -121,16 +124,23 @@ def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
                                     (_all(good, "verify", "and it verifies") if not bad else f"{bad} don't verify (signatures {', '.join(bad_ids[:10])})")
                                     + note + (f"; {waiting} still to fetch" if waiting else "")))
             # 6. attached files
-            missing, damaged, n = [], [], 0
+            missing, damaged, n, reread = [], [], 0, 0
             for a in s.exec(select(Attachment)):
                 n += 1
                 p = attachments_dir / a.sha256[:2] / a.sha256
                 if not p.is_file():
                     missing.append(a.filename)
-                elif _sha256(p) != a.sha256:
+                elif a.size and p.stat().st_size != a.size:  # recorded since 0.7; a different size is a changed file
                     damaged.append(a.filename)
+                elif rehash is None or rehash(a.sha256):
+                    reread += 1
+                    if _sha256(p) != a.sha256:
+                        damaged.append(a.filename)
             counts["attachments"] = n
             detail = _all(n, "present and unchanged", "present and unchanged")
+            if rehash is not None and n:
+                detail = (f"all {n:,} present, the right size; {reread:,} re-read today and unchanged "
+                          "(each file is re-read once a week)")
             if missing or damaged:
                 detail = "; ".join(x for x in (f"{len(missing)} missing ({', '.join(missing[:5])})" if missing else "",
                                                f"{len(damaged)} changed ({', '.join(damaged[:5])})" if damaged else "") if x)
@@ -141,7 +151,7 @@ def check_files(db_path: Path, attachments_dir: Path) -> dict[str, Any]:
             "audit_head": chain["head"] if chain["ok"] else None}
 
 
-def check_live() -> dict[str, Any]:
+def check_live(rehash: Callable[[str], bool] | None = None) -> dict[str, Any]:
     """Check the running data via a consistent snapshot, so the server can keep running."""
     from .backup import _sqlite_path
     from .config import settings
@@ -153,7 +163,7 @@ def check_live() -> dict[str, Any]:
             src.backup(dst)
         src.close()
         dst.close()
-        return check_files(snap, settings.attachments_dir)
+        return check_files(snap, settings.attachments_dir, rehash)
 
 
 def check_backup(zip_path: Path) -> dict[str, Any]:
