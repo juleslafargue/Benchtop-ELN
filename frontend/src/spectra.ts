@@ -86,7 +86,7 @@ export function parseWithReader(raw: string, filename: string, r: FileReader): S
     isStick: r.kind === 'ms', technique: r.technique, conditions: r.conditions, reader: r.name,
   }, xs, ys)
 }
-export interface FidOptions { lb?: number; ph0?: number; ph1?: number }
+export interface FidOptions { lb?: number; ph0?: number; ph1?: number; groupDelay?: number; reverse?: boolean }
 
 const SQZ: Record<string, number> = { '@': 0, A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, I: 9, a: -1, b: -2, c: -3, d: -4, e: -5, f: -6, g: -7, h: -8, i: -9 }
 const DIF: Record<string, number> = { '%': 0, J: 1, K: 2, L: 3, M: 4, N: 5, O: 6, P: 7, Q: 8, R: 9, j: -1, k: -2, l: -3, m: -4, n: -5, o: -6, p: -7, q: -8, r: -9 }
@@ -155,12 +155,131 @@ function labels(raw: string): Map<string, string> {
   return m
 }
 
-export function parseJcamp(raw: string): Spectrum {
-  const text = raw.replace(/\$\$.*$/gm, '') // strip comments
-  const L = labels(text)
-  if (L.has('NTUPLES')) {
-    throw new Error('This file holds raw or complex data (NTUPLES). Export the processed real spectrum as JCAMP-DX XYDATA from your NMR software, then attach that.')
+/** The Y values of one XYDATA (or NTUPLES page) table, from the line after its header up to the next ##label,
+ * and the X value each line starts with. */
+function readXY(lines: string[], from: number): { ys: number[]; xFirsts: number[] } {
+  const ys: number[] = [], xFirsts: number[] = []
+  let prevDif = false
+  for (let i = from; i < lines.length && !lines[i].startsWith('##'); i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+    const [x, vals, endsDif] = parseLine(line)
+    const v = prevDif ? vals.slice(1) : vals // DIF check value repeats the previous line's last Y
+    xFirsts.push(x)
+    for (const y of v) ys.push(Number.isFinite(y) ? y : (ys.length ? ys[ys.length - 1] : NaN)) // unreadable token: hold the last value
+    prevDif = endsDif
   }
+  return { ys, xFirsts }
+}
+
+/** The data pages of an NTUPLES block, by symbol (R, I…), already multiplied by their factors (for tests and checks). */
+export function ntuplesPages(raw: string): Record<string, number[]> {
+  const block = spectrumBlock(raw.replace(/\$\$.*$/gm, ''))
+  const L = labels(block)
+  const syms = listOf(L.get('SYMBOL')).map(s => s.toUpperCase())
+  const factor = listOf(L.get('FACTOR')).map(Number)
+  const lines = block.split(/\r?\n/)
+  const out: Record<string, number[]> = {}
+  lines.forEach((l, at) => {
+    const m = l.match(/^##DATA\s*TABLE\s*=\s*\(\s*X\+\+\(\s*(\w+)\.\./i)
+    if (m) { const f = factor[syms.indexOf(m[1].toUpperCase())]; out[m[1].toUpperCase()] = readXY(lines, at + 1).ys.map(v => v * (Number.isFinite(f) ? f : 1)) }
+  })
+  return out
+}
+
+/** Hz to ppm. ##.SHIFT REFERENCE (method, compound, data point, shift) says which point has which shift: Bruker's
+ * NTUPLES export counts Hz from the right edge, so dividing by the frequency alone would be off. */
+function hzToPpm(xs: number[], L: Map<string, string>, freq: number): number[] {
+  const ref = (L.get('.SHIFTREFERENCE') || '').replace(/[()]/g, '').split(',').map(s => s.trim())
+  const point = Number(ref[2]), shift = Number(ref[3])
+  if (ref.length >= 4 && ref[2] !== '' && Number.isFinite(point) && Number.isFinite(shift) && xs.length) {
+    const k = Math.min(xs.length - 1, Math.max(0, Math.round(point) - 1)) // data points count from 1
+    const base = shift - xs[k] / freq
+    return xs.map(v => v / freq + base)
+  }
+  return xs.map(v => v / freq)
+}
+
+/** A JCAMP-DX file can hold several blocks (MestReNova: structure, peak list, spectrum): use the spectrum's. */
+function spectrumBlock(text: string): string {
+  const blocks = text.split(/(?=^##TITLE\s*=)/m).filter(b => /^##/m.test(b))
+  const has = (b: string, re: RegExp) => re.test(b)
+  const type = (b: string) => ((b.match(/^##DATA\s*TYPE\s*=\s*(.*)$/mi) || [])[1] || '').toUpperCase()
+  const rank = (b: string) => {
+    if (has(b, /^##(XYDATA|NTUPLES)\s*=/mi)) return /SPECTRUM|FID/.test(type(b)) ? 4 : 3
+    if (has(b, /^##(XYPOINTS|PEAK\s*TABLE)\s*=/mi)) return /ASSIGNMENT/.test(type(b)) ? 1 : 2
+    return 0
+  }
+  let best = '', score = 0
+  for (const b of blocks) { const r = rank(b); if (r > score) { score = r; best = b } }
+  return best || text
+}
+
+const listOf = (v: string | undefined) => (v || '').split(',').map(s => s.trim())
+
+/** NTUPLES: a processed spectrum stored as real and imaginary pages (TopSpin's JCAMP export), or a complex FID
+ * (benchtop spectrometers: Nanalysis, Oxford Instruments, Q Magnetics). The real page is the spectrum; an FID is
+ * processed like a raw Bruker one. */
+function parseNtuples(block: string, L: Map<string, string>, fidOpts: FidOptions): Spectrum {
+  const syms = listOf(L.get('SYMBOL')).map(s => s.toUpperCase())
+  const units = listOf(L.get('UNITS')).map(s => s.toUpperCase())
+  const nums = (k: string) => listOf(L.get(k)).map(s => Number(s.replace(/[^\d.eE+-]/g, '')))
+  const first = nums('FIRST'), last = nums('LAST'), factor = nums('FACTOR')
+  const xi = syms.indexOf('X'), ri = syms.indexOf('R'), ii = syms.indexOf('I')
+  if (xi < 0 || ri < 0) throw new Error('This JCAMP-DX file holds data Benchtop doesn\'t read (NTUPLES without a real spectrum or FID).')
+  const lines = block.split(/\r?\n/)
+  const page = (sym: string) => {
+    const at = lines.findIndex(l => new RegExp(`^##DATA\\s*TABLE\\s*=\\s*\\(\\s*X\\+\\+\\(\\s*${sym}\\.\\.${sym}\\s*\\)\\s*\\)`, 'i').test(l))
+    if (at < 0) return null
+    const f = Number.isFinite(factor[syms.indexOf(sym)]) ? factor[syms.indexOf(sym)] : 1
+    return readXY(lines, at + 1).ys.map(v => v * f)
+  }
+  if (lines.filter(l => /^##PAGE\s*=/i.test(l)).length > 2) throw new Error('This is a 2D experiment (or a series). Benchtop shows 1D spectra; this one is kept with the record as a file.')
+  const re = page('R')
+  if (!re || !re.length) throw new Error('This JCAMP-DX file has no real data page that Benchtop can read.')
+  const freq = Number((L.get('.OBSERVEFREQUENCY') || '').replace(/[^\d.eE+-]/g, '')) || undefined
+  const nucleus = L.get('.OBSERVENUCLEUS')?.replace(/[\^\s]/g, '')
+  const solvent = L.get('.SOLVENTNAME')
+  const title = L.get('TITLE') || 'Spectrum'
+  const n = re.length
+  const x0 = first[xi], x1 = last[xi]
+  const isFid = /FID/.test((L.get('DATATYPE') || '').toUpperCase()) || /SECOND|TIME/.test(units[xi] || '')
+  if (isFid) {
+    const im = ii >= 0 ? page('I') : null
+    if (!im || im.length < n) throw new Error('This JCAMP-DX FID has no imaginary page, so it can\'t be processed.')
+    if (!(Number.isFinite(x0) && Number.isFinite(x1) && x1 > x0)) throw new Error('This JCAMP-DX FID doesn\'t say how long it was acquired for, so it can\'t be processed.')
+    const sw = (n - 1) / (x1 - x0)
+    const num = (k: string) => Number((L.get(k) || '').replace(/[^\d.eE+-]/g, ''))
+    const sf = num('$SF') || freq
+    if (!sf) throw new Error('This JCAMP-DX FID doesn\'t give the spectrometer frequency, so it can\'t be processed.')
+    // the ppm at the spectrum's centre: from the transmitter and reference frequencies, a referenced point, or the left edge
+    const ref = listOf((L.get('.SHIFTREFERENCE') || '').replace(/[()]/g, ''))
+    const sfo1 = num('$SFO1')
+    const centre = sfo1 && num('$SF') ? (sfo1 - num('$SF')) / num('$SF') * 1e6
+      : ref.length >= 4 && ref[2] !== '' && Number.isFinite(Number(ref[2])) && Number.isFinite(Number(ref[3]))
+        ? Number(ref[3]) + (Number(ref[2]) - 1) * sw / n / sf - sw / 2 / sf
+        : Number.isFinite(num('$OFFSET')) && L.has('$OFFSET') ? num('$OFFSET') - sw / 2 / sf : 0
+    const reverse = fidOpts.reverse ?? /^\s*y/i.test(L.get('$REVERSE') || '')  // Oxford Instruments: "$REVERSE= yes"
+    // the time shift to apply: Bruker's JCAMP export states its digital filter's delay ($GRPDLY, or the firmware
+    // table); Oxford Instruments gives TopSpin's TDoff (negative: points missed at the start, which its own software
+    // back-predicts); otherwise the FID starts at time zero (where it peaks is just signals beating, not a delay)
+    const bruker = L.has('$GRPDLY') || L.has('$DSPFVS')
+    const groupDelay = fidOpts.groupDelay ?? (bruker ? brukerGroupDelay(Object.fromEntries(L))
+      : L.has('$TDOFF') && Number.isFinite(num('$TDOFF')) ? num('$TDOFF') : 0)
+    const f = processComplexFid(re, im, { sw, sf, centre, nucleus: nucleus || '1H', reverse, groupDelay }, fidOpts)
+    return { title, xLabel: 'δ (ppm)', yLabel: 'Intensity', kind: 'nmr', reversed: true, dips: false, nucleus, frequency: sf, solvent,
+      isStick: false, x: f.x, y: f.y, fid: f }
+  }
+  let xs = Array.from({ length: n }, (_, i) => x0 + (n > 1 ? i * (x1 - x0) / (n - 1) : 0))
+  if (units[xi] === 'HZ' && freq) xs = hzToPpm(xs, L, freq)
+  return finish({ title, xLabel: 'δ (ppm)', yLabel: 'Intensity', kind: 'nmr', reversed: true, dips: false, nucleus, frequency: freq, solvent,
+    isStick: false }, xs, re)
+}
+
+export function parseJcamp(raw: string, fidOpts: FidOptions = {}): Spectrum {
+  const text = spectrumBlock(raw.replace(/\$\$.*$/gm, '')) // strip comments
+  const L = labels(text)
+  if (L.has('NTUPLES')) return parseNtuples(text, L, fidOpts)
   const num = (k: string) => (L.has(k) ? Number(L.get(k)!.replace(/[^\d.eE+-]/g, '')) : undefined)
   const xFactor = num('XFACTOR') ?? 1
   const yFactor = num('YFACTOR') ?? 1
@@ -176,17 +295,9 @@ export function parseJcamp(raw: string): Spectrum {
   const xyIdx = lines.findIndex(l => /^##XYDATA\s*=/i.test(l))
   const ptIdx = lines.findIndex(l => /^##(XYPOINTS|PEAK\s*TABLE)\s*=/i.test(l))
   if (xyIdx >= 0) {
-    let prevDif = false
-    const xFirsts: number[] = []
-    for (let i = xyIdx + 1; i < lines.length && !lines[i].startsWith('##'); i++) {
-      const line = lines[i].trim()
-      if (!line) continue
-      const [x, vals, endsDif] = parseLine(line)
-      const v = prevDif ? vals.slice(1) : vals // DIF check value repeats the previous line's last Y
-      xFirsts.push(x)
-      for (const y of v) ys.push(Number.isFinite(y) ? y * yFactor : (ys.length ? ys[ys.length - 1] : 0)) // unreadable token: hold the last value
-      prevDif = endsDif
-    }
+    const t = readXY(lines, xyIdx + 1)
+    const xFirsts = t.xFirsts
+    ys = t.ys.map(v => (Number.isFinite(v) ? v * yFactor : 0))
     const firstX = num('FIRSTX') ?? xFirsts[0] * xFactor
     const lastX = num('LASTX') ?? (xFirsts[xFirsts.length - 1] * xFactor)
     const n = ys.length
@@ -201,12 +312,19 @@ export function parseJcamp(raw: string): Spectrum {
     for (let i = 0; i + 1 < nums.length; i += 2) {
       if (Number.isFinite(nums[i]) && Number.isFinite(nums[i + 1])) { xs.push(nums[i] * xFactor); ys.push(nums[i + 1] * yFactor) }
     }
+    // a "peak table" of thousands of evenly spaced points is a continuous spectrum (simulators write them this way)
+    if (isStick && !dataType.includes('MASS') && xs.length > 2000) {
+      const d = xs[1] - xs[0]
+      let even = d !== 0
+      for (let i = 1; even && i < xs.length; i++) if (Math.abs(xs[i] - xs[i - 1] - d) > 0.01 * Math.abs(d)) even = false
+      if (even) isStick = false
+    }
   } else {
     throw new Error('No ##XYDATA or ##PEAK TABLE block found in this JCAMP-DX file.')
   }
 
   let xLabel = xUnits || 'x'
-  if (xUnits === 'HZ' && freq) { xs = xs.map(v => v / freq); xLabel = 'PPM' }
+  if (xUnits === 'HZ' && freq) { xs = hzToPpm(xs, L, freq); xLabel = 'PPM' }
   const kind: Spectrum['kind'] = dataType.includes('NMR') || xLabel === 'PPM' ? 'nmr'
     : dataType.includes('INFRARED') || xUnits.includes('1/CM') ? 'ir'
     : dataType.includes('MASS') ? 'ms' : dataType.includes('UV') ? 'uv' : 'other'
@@ -246,9 +364,10 @@ function finish(meta: Omit<Spectrum, 'x' | 'y'>, xs: number[], ys: number[]): Sp
 
 export { SPECTRUM_EXT, canViewSpectrum } from './viewable'
 import { solventKey } from './solvents'
+import { brukerGroupDelay, processComplexFid, processFid } from './fid'
 
-export function parseSpectrumFile(raw: string, filename: string): Spectrum {
-  if (/^\s*##/.test(raw)) return parseJcamp(raw)
+export function parseSpectrumFile(raw: string, filename: string, fidOpts: FidOptions = {}): Spectrum {
+  if (/^\s*##/.test(raw)) return parseJcamp(raw, fidOpts)
   return parseDelimited(raw, filename)
 }
 
@@ -437,22 +556,23 @@ function brukerParams(text: string): Record<string, string> {
 }
 
 /** Read pdata/N/1r + procs (+ acqus for nucleus/solvent) from a zipped Bruker experiment. */
+const TWO_D = 'This is a 2D experiment (or a series, such as T1 or diffusion). Benchtop shows 1D spectra; this one is kept with the record as a file.'
+
 export async function parseBrukerZip(buf: ArrayBuffer, filename: string, fidOpts: FidOptions = {}): Promise<Spectrum> {
   const { unzipSync, strFromU8 } = await import('fflate')
   const files = unzipSync(new Uint8Array(buf))
   const names = Object.keys(files).filter(n => !/(^|\/)__MACOSX\//.test(n) && !/(^|\/)\._/.test(n)) // macOS zip junk
   const real = names.filter(n => /(^|\/)pdata\/\d+\/1r$/.test(n)).sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b, undefined, { numeric: true }))
   if (!real.length) {
-    const jdx = names.find(n => /\.(jdx|dx|jcamp)$/i.test(n))
-    if (jdx) return parseJcamp(strFromU8(files[jdx]))
     const fids = names.filter(n => /(^|\/)fid$/.test(n)).sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b, undefined, { numeric: true }))
     if (fids.length) {
       const dir = fids[0].slice(0, -3)
       if (!files[dir + 'acqus']) throw new Error('Found a raw FID but not its acqus file, so it can\'t be processed. Zip the whole experiment folder.')
       const acqus = brukerParams(strFromU8(files[dir + 'acqus']))
-      if (Number(acqus.PARMODE || 0) > 0 || names.some(n => n === dir + 'ser')) throw new Error('This is a 2D experiment; only 1D FIDs can be processed here.')
-      const { processFid } = await import('./fid')
-      const f = processFid(files[fids[0]], acqus, fidOpts)
+      if (Number(acqus.PARMODE || 0) > 0 || names.some(n => n === dir + 'ser')) throw new Error(TWO_D)
+      // referenced in TopSpin (SR)? Its procs SF says so; keep that referencing
+      const procs = files[dir + 'pdata/1/procs'] ? brukerParams(strFromU8(files[dir + 'pdata/1/procs'])) : null
+      const f = processFid(files[fids[0]], acqus, { ...fidOpts, sf: Number(procs?.SF) || undefined })
       const nucleus = acqus.NUC1 || '1H'
       return {
         title: `${filename.replace(/\.zip$/i, '')} (${dir.replace(/\/$/, '') || 'experiment'})`, xLabel: 'δ (ppm)', yLabel: 'Intensity',
@@ -460,6 +580,10 @@ export async function parseBrukerZip(buf: ArrayBuffer, filename: string, fidOpts
         isStick: false, x: f.x, y: f.y, fid: f,
       }
     }
+    // a JCAMP-DX spectrum zipped on its own; not a JCAMP inside a Bruker experiment (TopSpin writes fit curves there)
+    const jdx = names.find(n => /\.(jdx|dx|jcamp)$/i.test(n) && !names.some(m => m.endsWith('acqus') && n.startsWith(m.slice(0, -5))))
+    if (jdx) return parseJcamp(strFromU8(files[jdx]), fidOpts)
+    if (names.some(n => /(^|\/)(ser|pdata\/\d+\/2rr)$/.test(n))) throw new Error(TWO_D)
     throw new Error('No processed Bruker spectrum (pdata/…/1r) or JCAMP-DX file found in this zip.')
   }
   const path = real[0]
@@ -504,7 +628,7 @@ export async function parseSpectrumBuffer(buf: ArrayBuffer, filename: string, fi
     const r = matchReader(await fileReaders(), filename, text.slice(0, 4096))
     if (r) return parseWithReader(text, filename, r)
   }
-  return parseSpectrumFile(text, filename)
+  return parseSpectrumFile(text, filename, fidOpts)
 }
 
 /** Characterisation label for a spectrum: technique + conditions. */

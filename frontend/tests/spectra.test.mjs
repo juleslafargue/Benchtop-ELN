@@ -2,22 +2,11 @@
 // field, and the compound's own signals are kept. (spectra.ts imports its neighbours without file extensions, as
 // Vite wants, so it is bundled with esbuild first.)
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { after, before, test } from 'node:test'
-import { pathToFileURL } from 'node:url'
+import { before, test } from 'node:test'
+import { loadSpectra } from './bundle.mjs'
 
-let sp, dir
-before(async () => {
-  const { build } = await import('esbuild')
-  dir = mkdtempSync(join(tmpdir(), 'benchtop-spectra-'))
-  const out = join(dir, 'spectra.mjs')
-  await build({ entryPoints: [new URL('../src/spectra.ts', import.meta.url).pathname], bundle: true, platform: 'node', format: 'esm',
-    outfile: out, logLevel: 'error', external: ['fflate'] })
-  sp = await import(pathToFileURL(out).href)
-})
-after(() => rmSync(dir, { recursive: true, force: true }))
+let sp
+before(async () => { sp = await loadSpectra() })
 
 /** A 1D ¹H spectrum: Lorentzian lines on a noisy baseline. lines: [ppm, height, J (Hz), pattern, width (Hz)] */
 function spectrum({ freq, solvent, lines, noise = 0.02, n = 131072, lo = -1, hi = 12 }) {

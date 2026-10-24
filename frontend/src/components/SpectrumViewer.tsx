@@ -733,7 +733,7 @@ export default function SpectrumViewer({ attachmentId, filename, onInsert, saved
               <input type="range" min={0} max={360} step={0.5} value={fid.ph0} onChange={e => setPhase(Number(e.target.value), fid.ph1)} aria-label="Zero-order phase (degrees)" />
               <span className="num">{fid.ph0.toFixed(0)}°</span></label>
             <label className="row sp-phase" style={{ gap: 4 }}>1
-              <input type="range" min={-720} max={720} step={1} value={fid.ph1} onChange={e => setPhase(fid.ph0, Number(e.target.value))} aria-label="First-order phase (degrees)" />
+              <input type="range" min={Math.min(-720, Math.floor(fid.auto.ph1 - 360))} max={Math.max(720, Math.ceil(fid.auto.ph1 + 360))} step={1} value={fid.ph1} onChange={e => setPhase(fid.ph0, Number(e.target.value))} aria-label="First-order phase (degrees)" />
               <span className="num">{fid.ph1.toFixed(0)}°</span></label>
             <button className="btn ghost sm" onClick={() => setPhase(fid.auto.ph0, fid.auto.ph1)} title="Back to the automatic phase">Auto phase</button>
           </div>
