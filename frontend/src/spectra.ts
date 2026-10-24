@@ -226,6 +226,8 @@ function parseNtuples(block: string, L: Map<string, string>, fidOpts: FidOptions
   const nums = (k: string) => listOf(L.get(k)).map(s => Number(s.replace(/[^\d.eE+-]/g, '')))
   const first = nums('FIRST'), last = nums('LAST'), factor = nums('FACTOR')
   const xi = syms.indexOf('X'), ri = syms.indexOf('R'), ii = syms.indexOf('I')
+  // 2D (COSY, HSQC…) and series (pseudo-2D T1): two axes, F1/F2 or T1/T2, or an "nD" data type
+  if (syms.some(v => /^(F|T)\d$/.test(v)) || /\bn\s*D\b|NDNMR/i.test(`${L.get('NTUPLES') || ''} ${L.get('DATA TYPE') || ''}`)) throw new Error(TWO_D)
   if (xi < 0 || ri < 0) throw new Error('This JCAMP-DX file holds data Benchtop doesn\'t read (NTUPLES without a real spectrum or FID).')
   const lines = block.split(/\r?\n/)
   const page = (sym: string) => {
@@ -433,10 +435,47 @@ export interface Multiplet {
 
 const near = (a: number, b: number, tolHz: number) => Math.abs(a - b) <= Math.max(tolHz, 0.12 * Math.max(a, b))
 
+const binomial = (n: number) => { let row = [1]; for (let k = 1; k < n; k++) row = [1, ...row.slice(1).map((v, i) => v + row[i]), 1]; return row }
+
+/** Equally spaced lines with heights close to Pascal's triangle (1:5:10:10:5:1, 1:6:15:20:15:6:1): a sextet or
+ *  septet. Their outer lines are weak, so they are looked for again below the usual line-picking threshold. */
+function binomialPattern(s: Spectrum, lo: number, hi: number, freq: number) {
+  let top = 0
+  const i0 = lowerBound(s.x, lo), i1 = Math.min(lowerBound(s.x, hi), s.x.length - 1)
+  for (let i = i0; i <= i1; i++) top = Math.max(top, s.y[i])
+  if (top <= 0) return null
+  const noise = noiseLevel(s)
+  const picked = pickPeaks(s, lo, hi, Math.max(0.02, 6 * noise / top), 40).sort((p, q) => p.x - q.x)
+  // keep lines that rise clear of the dips either side (a wiggle of noise in a valley doesn't)
+  const dip = (x0: number, x1: number) => { let v = Infinity; for (let i = lowerBound(s.x, x0); i <= Math.min(lowerBound(s.x, x1), s.x.length - 1); i++) v = Math.min(v, s.y[i]); return v }
+  const lines = picked.filter((l, k) => {
+    const left = dip(k ? picked[k - 1].x : lo, l.x), right = dip(l.x, k < picked.length - 1 ? picked[k + 1].x : hi)
+    return l.y - Math.max(left, right) > Math.max(6 * noise, 0.01 * top)
+  })
+  const n = lines.length
+  if (n !== 6 && n !== 7) return null
+  const gaps = lines.slice(1).map((l, i) => (l.x - lines[i].x) * freq)
+  const mean = gaps.reduce((p, q) => p + q, 0) / gaps.length
+  if (!gaps.every(g => near(g, mean, 0.7))) return null
+  const want = binomial(n), wmax = Math.max(...want), ymax = Math.max(...lines.map(l => l.y))
+  // each line within a factor of 2 of its share (roof effect and overlap tilt them a little)
+  if (!lines.every((l, k) => { const r = (l.y / ymax) / (want[k] / wmax); return r > 0.5 && r < 2 })) return null
+  return { mult: n === 6 ? 'sext' : 'hept', j: mean, lo: lines[0].x, hi: lines[n - 1].x }
+}
+
 /** Classify the lines inside [a, b] (ppm) as a first-order multiplet. */
 export function analyzeMultiplet(s: Spectrum, a: number, b: number): Multiplet {
   const lo = Math.min(a, b), hi = Math.max(a, b)
   const freq = s.frequency || 400
+  const m = classify(s, lo, hi, freq)
+  if (!s.isStick && ['q', 'p', 'dd', 'm'].includes(m.mult)) {
+    const wide = binomialPattern(s, lo, hi, freq)
+    if (wide) return { shift: (wide.lo + wide.hi) / 2, lo: wide.lo, hi: wide.hi, mult: wide.mult, j: [Math.round(wide.j * 10) / 10] }
+  }
+  return m
+}
+
+function classify(s: Spectrum, lo: number, hi: number, freq: number): Multiplet {
   const lines = pickPeaks(s, lo, hi, 0.12, 40).sort((p, q) => p.x - q.x)
   const n = lines.length
   const xs = lines.map(l => l.x), ys = lines.map(l => l.y)
@@ -474,6 +513,21 @@ export function analyzeMultiplet(s: Spectrum, a: number, b: number): Multiplet {
     if (near(gaps[0], gaps[2], tol) && near(gaps[2], gaps[4], tol) && near(gaps[1], gaps[3], tol)) {
       return out('td', [(xs[2] - xs[0]) * freq, gaps[0]])
     }
+  }
+  if (n === 8) {
+    // ddd (eight equal lines) or dq (two 1:3:3:1 quartets): rebuild the lines from the couplings and compare
+    const rel = xs.map(x => (x - xs[0]) * freq)
+    const fits = (pos: number[], h: number[]) => {
+      const order = pos.map((p, k) => [p, h[k]]).sort((p, q) => p[0] - q[0])
+      const hmax = Math.max(...h), ymax = Math.max(...ys)
+      return order.every(([p, w], k) => near(rel[k], p, tol) && (ys[k] / ymax) / (w / hmax) > 0.5 && (ys[k] / ymax) / (w / hmax) < 2)
+    }
+    const j3 = rel[1], j2 = rel[2]
+    for (const j1 of [rel[4], rel[3]]) {
+      if (j1 > j2 + tol && j2 > j3 + tol && fits([0, j3, j2, j2 + j3, j1, j1 + j3, j1 + j2, j1 + j2 + j3], [1, 1, 1, 1, 1, 1, 1, 1])) return out('ddd', [j1, j2, j3])
+    }
+    const q = (rel[1] + rel[2] / 2 + rel[3] / 3) / 3, big = rel[4]
+    if (big > 3 * q + tol && fits([0, q, 2 * q, 3 * q, big, big + q, big + 2 * q, big + 3 * q], [1, 3, 3, 1, 1, 3, 3, 1])) return out('dq', [big, q])
   }
   return out('m')
 }
@@ -750,14 +804,32 @@ function nearestLine(s: Spectrum, at: number, search: number, label = ''): numbe
   const i0 = Math.max(1, lowerBound(s.x, at - search)), i1 = Math.min(lowerBound(s.x, at + search), s.x.length - 2)
   const step = Math.abs(s.x[1] - s.x[0]) || 1e-9
   const k = Math.max(2, Math.round(3 / freq / step))  // look 3 Hz either side for the valleys
-  let best = -1
-  for (let i = i0; i <= i1; i++) {
+  const lines: number[] = []
+  const pad = 12 / freq  // also look a little outside, for the partners of lines near the edge
+  for (let i = Math.max(1, lowerBound(s.x, at - search - pad)); i <= Math.min(lowerBound(s.x, at + search + pad), s.x.length - 2); i++) {
     if (!(s.y[i] > s.y[i - 1] && s.y[i] >= s.y[i + 1]) || s.y[i] - base < 10 * noise) continue
     let left = s.y[i], right = s.y[i]
     for (let j = Math.max(0, i - k); j < i; j++) left = Math.min(left, s.y[j])
     for (let j = i + 1; j <= Math.min(s.x.length - 1, i + k); j++) right = Math.min(right, s.y[j])
     if (s.y[i] - Math.max(left, right) < 5 * noise) continue  // not a line of its own
-    if (best < 0 || Math.abs(s.x[i] - at) < Math.abs(s.x[best] - at)) best = i
+    lines.push(i)
+  }
+  const inside = lines.filter(i => i >= i0 && i <= i1)
+  const dist = (i: number) => Math.abs(s.x[i] - at)
+  // A singlet residual (CHCl₃, water) is a line on its own. When the spectrum is referenced a little off, the
+  // nearest line to 7.26 can be one line of the compound's own doublet (ibuprofen's at 7.25, with CHCl₃ at 7.29):
+  // a line with a partner of about the same height 1.5–12 Hz away is part of a multiplet, so a line standing
+  // clear of everything else close by is preferred (if CHCl₃ sits on the compound's lines, there is none, and the
+  // nearest line is kept). The residual multiplets (DMSO-d₅, CHD₂OD…) are left as they were.
+  const within12 = (i: number, lo: number, hi: number) => lines.some(j => {
+    const d = Math.abs(s.x[j] - s.x[i]) * freq, r = (s.y[j] - base) / (s.y[i] - base)
+    return j !== i && d > 1.5 && d < 12 && r > lo && r < hi
+  })
+  const nearest = (c: number[]) => c.reduce((b, i) => (b < 0 || dist(i) < dist(b) ? i : b), -1)
+  let best = nearest(inside)
+  if (best >= 0 && !MULTIPLET_RESIDUALS.has(label) && within12(best, 0.5, 2)) {
+    const lone = nearest(inside.filter(i => !within12(i, 0.3, Infinity) && dist(i) < 0.05))
+    if (lone >= 0) best = lone
   }
   if (best >= 0 && MULTIPLET_RESIDUALS.has(label)) {
     const span = 5 / freq
@@ -803,18 +875,40 @@ export function solventCuts(s: Spectrum, solventShift = 0, productShifts: number
   return out
 }
 
+/** With no formula: the area of one proton, normally the smallest signal's. But a small impurity (grease, a trace of
+ * solvent) mustn't become "1 H" and make everything else 8 H: when the smallest signals are well apart from the rest
+ * (2.5 times smaller or more, under a tenth of the total) and the rest come out as clearly better whole numbers
+ * without them, they are left out of the choice. */
+export function protonUnit(areas: number[]): number {
+  const a = [...areas].sort((p, q) => p - q)
+  const total = a.reduce((p, q) => p + q, 0)
+  const off = (u: number, from: number) => { let d = 0; for (let k = from; k < a.length; k++) d += Math.abs(a[k] / u - Math.round(a[k] / u)); return d / (a.length - from) }
+  let below = 0
+  for (let i = 0; i + 3 < a.length && i < 3; i++) {
+    below += a[i]
+    if (below > 0.1 * total) break
+    if (a[i + 1] >= 2.5 * a[i] && off(a[i + 1], i + 1) + 0.03 < 0.6 * off(a[0], i + 1)) return a[i + 1]
+  }
+  return a[0]
+}
+
 export function autoAnalyse1H(s: Spectrum, expectedH: number | null, solventShift = 0, productMW: number | null = null, productShifts: number[] = []): AutoResult {
   const freq = s.frequency || 400
   const point = (p: number) => ({ lo: p - 3.5 / freq, hi: p + 3.5 / freq })
   const fixed = [...solventCuts(s, solventShift, productShifts), point(solventShift)]  // the solvent's lines, and TMS
   const explained = (w: { lo: number; hi: number }) => productShifts.some(p => p + solventShift > w.lo - 0.12 && p + solventShift < w.hi + 0.12)
   const cands = findImpurityCandidates(s, solventShift)
-    .filter(c => c.def.signals.filter(g => g.mult !== 'm').length <= c.windows.length || c.windows.length === c.def.signals.length)
+    // its distinctive signals (singlets, triplets, quartets…) must all be there: two aromatic doublets in the 7.1–7.3
+    // region aren't toluene without toluene's CH₃ singlet at 2.36
+    .filter(c => c.windows.filter(w => w.mult !== 'm').length === c.def.signals.filter(g => g.mult !== 'm').length)
+    // and about the same size per proton: a ¹³C satellite at 2.36 is not toluene's CH₃ next to aromatic doublets 100
+    // times bigger (one signal overlapping the compound's can be bigger, so a factor of 4 is allowed)
+    .filter(c => { const ph = c.windows.map(w => integrate(s, w.lo - 4 / freq, w.hi + 4 / freq) / w.nH); return Math.max(...ph) < 4 * Math.min(...ph) })
     .filter(c => !productShifts.length || c.windows.filter(w => !explained(w)).length >= Math.min(2, c.def.signals.length))
 
   const scale = (areas: number[]) => {
     const total = areas.reduce((p, q) => p + q, 0)
-    return expectedH && expectedH > 0 ? total / expectedH : Math.min(...areas)
+    return expectedH && expectedH > 0 ? total / expectedH : protonUnit(areas)
   }
   // measure a little wider than the cut window so the Lorentzian tails are counted
   const perH = (c: FoundImpurity) => Math.min(...c.windows.map(w => integrate(s, w.lo - 4 / freq, w.hi + 4 / freq) / w.nH))
@@ -845,7 +939,9 @@ export function autoAnalyse1H(s: Spectrum, expectedH: number | null, solventShif
 
   let note = expectedH && expectedH > 0
     ? `Scaled so the integrals add up to ${expectedH} H, the product's formula.`
-    : 'Scaled so the smallest signal is 1 H (no product formula to check against).'
+    : areas.some(a => a < 0.9 * unit)
+      ? `Scaled so the smallest signal is 1 H, apart from ${areas.filter(a => a < 0.9 * unit).length === 1 ? 'one much smaller signal (an impurity?)' : 'a few much smaller signals (impurities?)'}. No product formula to check against.`
+      : 'Scaled so the smallest signal is 1 H (no product formula to check against).'
   // reference = the signal whose value is closest to a whole number
   let refIdx = 0, best = Infinity
   areas.forEach((a, i) => { const v = a / unit, d = Math.abs(v - Math.round(v)) / Math.max(1, v); if (Math.round(v) >= 1 && d < best) { best = d; refIdx = i } })
@@ -980,7 +1076,7 @@ function halfWidth(sig: ImpSignal, freq: number) {
 
 export interface FoundImpurity {
   def: ImpurityDef
-  windows: { lo: number; hi: number; nH: number }[] // where its signals actually are
+  windows: { lo: number; hi: number; nH: number; mult: ImpSignal['mult'] }[] // where its signals actually are
   matched: number                                  // how many of its signals were seen
   confident: boolean                               // multi-signal match (vs a lone singlet)
 }
@@ -1005,6 +1101,9 @@ export function findImpurityCandidates(s: Spectrum, shift = 0): FoundImpurity[] 
       // must be a real peak top, not a point on the flank of a bigger neighbour
       const near = (hz: number) => { const j0 = lowerBound(s.x, s.x[best] - hz / freq), j1 = Math.min(lowerBound(s.x, s.x[best] + hz / freq), s.x.length - 1); let m = -Infinity; for (let j = j0; j <= j1; j++) m = Math.max(m, s.y[j]); return m }
       if (near(4) > s.y[best] * 1.001) continue
+      // nor a ¹³C satellite: about 0.5% of a big line 50–90 Hz away (half of ¹J(CH), 100–180 Hz)
+      const parent = Math.max(...[-1, 1].map(d => { const a = s.x[best] + d * 50 / freq, b = s.x[best] + d * 90 / freq; let m = -Infinity; for (let j = lowerBound(s.x, Math.min(a, b)); j <= Math.min(lowerBound(s.x, Math.max(a, b)), s.x.length - 1); j++) m = Math.max(m, s.y[j]); return m }))
+      if (parent - base > 40 * (s.y[best] - base)) continue
       const hw = halfWidth(sig, freq)
       if (def.signals.length === 1) {
         // a lone solvent singlet stands apart: the baseline returns on both sides within ~10 Hz
@@ -1020,7 +1119,7 @@ export function findImpurityCandidates(s: Spectrum, shift = 0): FoundImpurity[] 
         const c = (xs[0] + xs[xs.length - 1]) / 2
         lo = c - hw; hi = c + hw
       }
-      windows.push({ lo, hi, nH: sig.nH })
+      windows.push({ lo, hi, nH: sig.nH, mult: sig.mult })
     }
     const need = def.signals.length === 1 ? 1 : 2
     if (windows.length >= need) out.push({ def, windows, matched: windows.length, confident: def.signals.length > 1 })

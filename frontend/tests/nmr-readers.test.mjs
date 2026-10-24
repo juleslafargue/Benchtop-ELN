@@ -207,6 +207,12 @@ test('2D experiments and series (ser, 2rr) say so plainly; a JCAMP fit curve ins
   for (const files of [{ '1/acqus': e.acqus, '1/ser': e.fid }, { '1/acqus': e.acqus, '1/ser': e.fid, '1/pdata/1/2rr': e.fid, '1/pdata/1/t1t2.dx': t1t2 }]) {
     await assert.rejects(sp.parseSpectrumBuffer(zip(files), 'cosy.zip'), /2D experiment/)
   }
+  // and as JCAMP-DX: a processed COSY, a 2D FID, a Nanalysis pseudo-2D T1 series (headers as those programs write them)
+  for (const head of ['##DATA TYPE= nD NMR SPECTRUM\n##NTUPLES= nD NMR SPECTRUM\n##SYMBOL=    F1,            F2,              Y',
+    '##DATA TYPE= nD NMR FID\n##NTUPLES= nD NMR FID\n##SYMBOL=    T1,            T2,              R,               I',
+    '##DATA TYPE=NDNMRFID\n##NTUPLES= NDNMRFID\n##SYMBOL= T1, T2, R, I']) {
+    assert.throws(() => sp.parseJcamp(`##TITLE=x\n##JCAMP-DX=6.0\n${head}\n##PAGE= F1=1\n##DATA TABLE= (F2++(Y..Y)), PROFILE\n1 2 3\n##END NTUPLES=\n##END=\n`), /2D experiment/, head)
+  }
 })
 
 test('broken files give a plain message, never a crash or a wrong spectrum', async () => {
