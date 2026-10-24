@@ -1,0 +1,53 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Cell-biology - Transfection-of-p103D12-22-into-RPE-1-Actin-RFP - 7855b2e1/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://d5d9a96c536d1958169f370af86038105f487d26ebc8b280ec2132652c3ee89a?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "dateModified": "2025-09-16T10:32:54+02:00",
+   "temporal": "2025-01-02T00:00:00+01:00",
+   "name": "Transfection of p103Δ12-22 into RPE-1 Actin-RFP",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=51",
+   "genre": "experiment",
+   "creativeWorkStatus": "Success",
+   "identifier": "20250916-7855b2e1be224262b958ef9acb13e3b95a3147ac",
+   "keywords": "generated from yml,transfection,biocell,RPE-1",
+   "text": "<h1>Goal</h1><p>Transfecting the plasmid p103Δ12-22 into the RPE-1 Actin-RFP cells and look at the death rate.</p>",
+   "about": {
+    "@id": "#category-Cell biology"
+   },
+   "variableMeasured": [
+    {
+     "@id": "pv://2b68c45b-2d41-4546-9292-30aecae78fea"
+    }
+   ]
+  },
+  {
+   "@id": "pv://2b68c45b-2d41-4546-9292-30aecae78fea",
+   "@type": "PropertyValue",
+   "propertyID": "elabftw_metadata",
+   "description": "eLabFTW metadata JSON as string",
+   "value": "{}"
+  },
+  {
+   "@id": "#category-Cell biology",
+   "@type": "Thing",
+   "name": "Cell biology",
+   "color": "A02D33"
+  },
+  {
+   "@id": "person://d5d9a96c536d1958169f370af86038105f487d26ebc8b280ec2132652c3ee89a?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Jaquelin",
+   "familyName": "Leffler",
+   "email": "nobis-60442517@yopmail.com"
+  }
+ ]
+}

@@ -1,0 +1,53 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Demo - Testing-relationship-between-acceleration-and-gravity - 321efb16/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://8f5ab7f6890c9999cf1ba3890ad36f6c1c6908743bddd38a58c76426d61a648c?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "dateModified": "2025-09-16T10:32:54+02:00",
+   "temporal": "2025-01-02T00:00:00+01:00",
+   "name": "Testing relationship between acceleration and gravity",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=56",
+   "genre": "experiment",
+   "creativeWorkStatus": "Success",
+   "identifier": "20250916-321efb1682f88a435d9f25e66f2ba1ad1279f851",
+   "keywords": "generated from yml,has-mathjax,physics",
+   "text": "<h1>Determination of Acceleration Due to Gravity</h1>\n<p>\nThe acceleration due to gravity is a fundamental constant that determines the gravitational force between two objects. In this experiment, we aimed to determine the value of acceleration due to gravity using a simple pendulum.\n</p>\n<h2>Experimental Design</h2>\n<p>\nWe suspended a metal ball from a string and measured the time taken for one complete oscillation of the pendulum. We repeated this measurement for different lengths of the pendulum and recorded the corresponding times. Using the formula $T=2\\pi\\sqrt{\\frac{L}{g}}$, where $T$ is the period of the pendulum, $L$ is the length of the pendulum, and $g$ is the acceleration due to gravity, we calculated the value of $g$. The period $T$ can also be expressed in terms of the frequency $f$ using the equation $T=\\frac{1}{f}$.\n</p>\n<h2>Results</h2>\n<p>\nThe results showed that the value of acceleration due to gravity was $9.81 \\text{ m/s}^2$, which is consistent with the accepted value. We also found that the period of the pendulum increased with increasing length, as predicted by the formula $T=2\\pi\\sqrt{\\frac{L}{g}}$. The relationship between the length and period of the pendulum can be expressed as $T^2=\\frac{4\\pi^2}{g}L$, which is a linear relationship with a slope of $\\frac{4\\pi^2}{g}$.\n</p>\n",
+   "about": {
+    "@id": "#category-Demo"
+   },
+   "variableMeasured": [
+    {
+     "@id": "pv://3e5bcf0e-0ae5-4441-9e7d-8abb6fbf1553"
+    }
+   ]
+  },
+  {
+   "@id": "pv://3e5bcf0e-0ae5-4441-9e7d-8abb6fbf1553",
+   "@type": "PropertyValue",
+   "propertyID": "elabftw_metadata",
+   "description": "eLabFTW metadata JSON as string",
+   "value": "{}"
+  },
+  {
+   "@id": "#category-Demo",
+   "@type": "Thing",
+   "name": "Demo",
+   "color": "A9B2B7"
+  },
+  {
+   "@id": "person://8f5ab7f6890c9999cf1ba3890ad36f6c1c6908743bddd38a58c76426d61a648c?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Avis",
+   "familyName": "Gutkowski",
+   "email": "user1@demo.elabftw.net"
+  }
+ ]
+}

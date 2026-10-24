@@ -1,0 +1,59 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Demo - Synthesis-and-Characterization-of-a-Novel-Organic-Compound-with-Antimicrobial-Properties - 92786b81/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://d5d9a96c536d1958169f370af86038105f487d26ebc8b280ec2132652c3ee89a?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "dateModified": "2025-09-16T10:32:54+02:00",
+   "temporal": "2025-01-02T00:00:00+01:00",
+   "name": "Synthesis and Characterization of a Novel Organic Compound with Antimicrobial Properties",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=53",
+   "genre": "experiment",
+   "creativeWorkStatus": "Fail",
+   "identifier": "20250916-92786b81ef6a1a5718f7f26c99bc4a7629eafd6f",
+   "keywords": "generated from yml,synthesis,antimicrobial,chemistry",
+   "text": "<h1>Synthesis and Characterization of a Novel Organic Compound with Antimicrobial Properties</h1>\n<p>\nThe emergence of drug-resistant bacterial strains has become a major public health concern, highlighting the need for the development of new antimicrobial agents. In this study, we aimed to synthesize a novel organic compound with potential antimicrobial activity.\n</p>\n<h2>Experimental Design</h2>\n<p>\nThe compound was synthesized via a multi-step reaction scheme. The starting material, benzaldehyde, was reacted with aniline in the presence of an acid catalyst to form the intermediate product, N-phenylbenzamide. The intermediate product was then reacted with thionyl chloride to form the corresponding acid chloride. The acid chloride was then reacted with aminoguanidine in the presence of a base catalyst to form the final product, which was purified by recrystallization.\n</p>\n<h2>Characterization</h2>\n<p>\nThe synthesized compound was characterized using various spectroscopic techniques. The melting point of the compound was determined using a melting point apparatus and compared to the literature value. The IR spectrum of the compound was obtained using a Fourier transform infrared spectrometer and compared to the expected spectrum. The NMR spectrum of the compound was obtained using a nuclear magnetic resonance spectrometer and analyzed to confirm the structure of the compound.\n</p>\n<h2>Antimicrobial Activity</h2>\n<p>\nThe antimicrobial activity of the synthesized compound was evaluated against several bacterial strains using the disk diffusion method. The results showed that the compound exhibited significant antimicrobial activity against both Gram-positive and Gram-negative bacteria, suggesting its potential as a new antimicrobial agent.\n</p>\n",
+   "about": {
+    "@id": "#category-Demo"
+   },
+   "variableMeasured": [
+    {
+     "@id": "pv://ad266378-7851-4667-a150-8cceeb67c623"
+    }
+   ],
+   "aggregateRating": {
+    "@id": "rating://5f578456-5a44-4e7c-be17-9a37a5efb02e",
+    "@type": "AggregateRating",
+    "ratingValue": 1,
+    "reviewCount": 1
+   }
+  },
+  {
+   "@id": "pv://ad266378-7851-4667-a150-8cceeb67c623",
+   "@type": "PropertyValue",
+   "propertyID": "elabftw_metadata",
+   "description": "eLabFTW metadata JSON as string",
+   "value": "{}"
+  },
+  {
+   "@id": "#category-Demo",
+   "@type": "Thing",
+   "name": "Demo",
+   "color": "A9B2B7"
+  },
+  {
+   "@id": "person://d5d9a96c536d1958169f370af86038105f487d26ebc8b280ec2132652c3ee89a?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Jaquelin",
+   "familyName": "Leffler",
+   "email": "nobis-60442517@yopmail.com"
+  }
+ ]
+}

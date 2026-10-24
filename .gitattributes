@@ -1,0 +1,2 @@
+# Old versions' backups for the upgrade test: stored exactly as they are (their SHA-256 is checked), and not shown as diffs
+backend/tests/upgrades/** -text -diff

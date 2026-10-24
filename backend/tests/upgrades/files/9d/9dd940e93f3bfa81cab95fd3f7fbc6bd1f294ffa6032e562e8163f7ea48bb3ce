@@ -1,0 +1,38 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Microscope - Video-microscope-Bravo - 6bf0e813/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://9d870f42291406588b2f8876eefe7dd5f9ab41593809a7fc1b2e737149dfaa91?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:57+02:00",
+   "dateModified": "2025-09-16T10:32:57+02:00",
+   "temporal": "2022-02-09T00:00:00+01:00",
+   "name": "Video microscope Bravo",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/database.php?mode=view&id=110",
+   "genre": "resource",
+   "identifier": "20250916-6bf0e8137d59707cd849d19f47698e806357cecb",
+   "about": {
+    "@id": "#category-🔬 Microscope"
+   }
+  },
+  {
+   "@id": "#category-🔬 Microscope",
+   "@type": "Thing",
+   "name": "🔬 Microscope",
+   "color": "29A6A3"
+  },
+  {
+   "@id": "person://9d870f42291406588b2f8876eefe7dd5f9ab41593809a7fc1b2e737149dfaa91?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Jevon",
+   "familyName": "Conroy",
+   "email": "dolores-17378653@yopmail.com"
+  }
+ ]
+}

@@ -406,9 +406,9 @@ npm run dev                              # http://localhost:5173, proxies /api t
 To serve the built app from the API (what the Docker image does):
 `npm run build`, then start uvicorn with `BENCHTOP_STATIC_DIR=../frontend/dist`.
 
-**Automatic tests on GitHub.** `.github/workflows/tests.yml` runs on every push: the server tests, a
-type-check and build of the app, and a browser pass over every page of the demo lab on desktop, phone and
-dark mode. Results are in the repository's *Actions* tab. The workflow's source is
+**Automatic tests on GitHub.** `.github/workflows/tests.yml` runs on every push: the server tests, upgrades
+from every past version, a type-check and build of the app, and a browser pass over every page of the demo lab
+on desktop, phone and dark mode (also on the oldest demo lab, upgraded). Results are in the repository's *Actions* tab. The workflow's source is
 `deploy/github-tests.yml`; `./benchtop` keeps the copy in `.github/` up to date.
 
 **Colour themes** are defined in `frontend/scripts/themes.py`, which checks every theme's text contrast and writes `src/themes.css` and `src/themeList.ts`; run `python3 scripts/themes.py` from `frontend/` after changing one.
@@ -416,6 +416,12 @@ dark mode. Results are in the repository's *Actions* tab. The workflow's source 
 **Database upgrades** live in `backend/app/migrations.py` as numbered steps; the database records which
 it has had. A step must also work on an empty database and must never change content that a signature
 covers. A Benchtop that finds data from a newer version refuses to start rather than misread it.
+
+**Upgrade tests.** `backend/tests/upgrades/` holds a backup made by each released version's own code (from 0.7.1
+on). `tests/test_v24_upgrades.py` restores each one with the current code, upgrades it and checks that every row
+is still there and unchanged, `./benchtop check` passes, and every record and attached file opens. `pytest` tries
+five of them; `BENCHTOP_UPGRADE_TESTS=all pytest tests/test_v24_upgrades.py` tries them all (GitHub does, on every
+push). When releasing a version, add its backup: `python3 tests/make_upgrade_fixture.py` (from `backend/`).
 
 ### Configuration
 

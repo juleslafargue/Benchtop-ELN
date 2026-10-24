@@ -1,0 +1,53 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Enzymo - Effect-of-temperature-on-enzyme-activity - 96ce1b12/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://d5d9a96c536d1958169f370af86038105f487d26ebc8b280ec2132652c3ee89a?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "dateModified": "2025-09-16T10:32:54+02:00",
+   "temporal": "2025-01-02T00:00:00+01:00",
+   "name": "Effect of temperature on enzyme activity",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=55",
+   "genre": "experiment",
+   "creativeWorkStatus": "Need to be redone",
+   "identifier": "20250916-96ce1b1268b62a7e083ce8b1afa3fda5dd6e26a5",
+   "keywords": "generated from yml,enzymology,test,Project ENZYTEMP",
+   "text": "<h1>Effect of Temperature on Enzyme Activity</h1>\n<p>\nEnzymes are biological molecules that catalyze chemical reactions in living organisms. In this experiment, we investigated the effect of temperature on the activity of the enzyme amylase, which catalyzes the hydrolysis of starch into glucose.\n</p>\n<h2>Experimental Design</h2>\n<p>\nWe prepared a solution of starch and added a small amount of amylase to the solution. We then incubated the solution at different temperatures, ranging from 4°C to 70°C, for 5 minutes. After the incubation period, we added iodine to the solution to detect the presence of starch. The disappearance of the blue-black color of the iodine indicated the breakdown of starch into glucose.\n</p>\n<h2>Results</h2>\n<p>\nThe results showed that the activity of amylase increased with increasing temperature up to 37°C, which is the optimum temperature for amylase activity. At temperatures above 37°C, the activity of amylase decreased rapidly, and at 70°C, the enzyme was completely denatured and lost its catalytic activity.\n</p>\n<p>\nThe relationship between temperature and enzyme activity can be described by the Arrhenius equation, which relates the rate constant of a reaction to the activation energy and temperature. The equation can be written as:\n</p>\n<p>\n$$k = Ae^{-E_a/RT}$$\n</p>\n<p>\nwhere k is the rate constant, A is the pre-exponential factor, E_a is the activation energy, R is the gas constant, and T is the absolute temperature. The activation energy is the energy required to break the bonds in the reactants and form the products. The rate constant increases with increasing temperature due to the increase in the number of reactant molecules with sufficient kinetic energy to overcome the activation energy barrier.\n</p>\n<p>\nThe effect of temperature on enzyme activity can also be described by the Q10 value, which is the ratio of the reaction rate at a given temperature to the reaction rate at a temperature 10°C lower. The Q10 value for most enzyme-catalyzed reactions is around 2-3, indicating that the reaction rate doubles or triples with each 10°C increase in temperature.\n</p>\n",
+   "about": {
+    "@id": "#category-Enzymo"
+   },
+   "variableMeasured": [
+    {
+     "@id": "pv://43819275-a431-4a95-8c5a-1b993c1f4c38"
+    }
+   ]
+  },
+  {
+   "@id": "pv://43819275-a431-4a95-8c5a-1b993c1f4c38",
+   "@type": "PropertyValue",
+   "propertyID": "elabftw_metadata",
+   "description": "eLabFTW metadata JSON as string",
+   "value": "{}"
+  },
+  {
+   "@id": "#category-Enzymo",
+   "@type": "Thing",
+   "name": "Enzymo",
+   "color": "A8A321"
+  },
+  {
+   "@id": "person://d5d9a96c536d1958169f370af86038105f487d26ebc8b280ec2132652c3ee89a?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Jaquelin",
+   "familyName": "Leffler",
+   "email": "nobis-60442517@yopmail.com"
+  }
+ ]
+}

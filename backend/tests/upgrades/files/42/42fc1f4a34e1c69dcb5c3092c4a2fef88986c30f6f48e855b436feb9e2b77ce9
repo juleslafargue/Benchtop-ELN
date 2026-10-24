@@ -1,0 +1,105 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Demo - Testing-the-eLabFTW-lab-notebook - 4192afd2/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://fab8c19cc817cbd5361ff4dd62ce16cad61192bfb42bf06919cee96e0f238818?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "dateModified": "2025-09-16T10:32:54+02:00",
+   "temporal": "2025-03-03T00:00:00+01:00",
+   "name": "Testing the eLabFTW lab notebook",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=58",
+   "genre": "experiment",
+   "comment": [
+    {
+     "@id": "comment://891dc96e9ae4bd17ea96077e8c8e8fa117d1e465ac95937d5024c8480dfd5ccb?hash_algo=sha256"
+    }
+   ],
+   "creativeWorkStatus": "Running",
+   "identifier": "20250916-4192afd20591278aff2da65172b334ee059d5b56",
+   "keywords": "generated from yml,demo,test",
+   "text": "<h1>Goal</h1><p>Test the software.</p><h1>Procedure</h1><p>Click everywhere and explore everything.</p><h1>Results</h1><p>It's really nice, I think I'll adopt it for our lab.</p>",
+   "about": {
+    "@id": "#category-Demo"
+   },
+   "variableMeasured": [
+    {
+     "@id": "pv://8d0cca89-4be2-450e-a607-16191e4f2db7"
+    },
+    {
+     "@id": "pv://b840ebc1-9d8c-4913-8914-4647af9aa636"
+    },
+    {
+     "@id": "pv://ea0f90e0-3f9d-4916-bd92-de96cc965607"
+    },
+    {
+     "@id": "pv://d131e37c-fcfe-418d-9c4e-361a72372688"
+    }
+   ],
+   "aggregateRating": {
+    "@id": "rating://3bad36d3-887a-4732-83ce-85c07e7c7a85",
+    "@type": "AggregateRating",
+    "ratingValue": 5,
+    "reviewCount": 1
+   }
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://d131e37c-fcfe-418d-9c4e-361a72372688",
+   "propertyID": "This is a custom list input",
+   "valueReference": "select",
+   "value": "Some choice",
+   "description": "The value is selected from a pre-defined list"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://ea0f90e0-3f9d-4916-bd92-de96cc965607",
+   "propertyID": "Annie, are you okay",
+   "valueReference": "checkbox",
+   "value": "",
+   "description": "This is a checkbox custom input"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://b840ebc1-9d8c-4913-8914-4647af9aa636",
+   "propertyID": "Raw data URL",
+   "valueReference": "url",
+   "value": "https://datalake.example.com/experiments/3921"
+  },
+  {
+   "@id": "pv://8d0cca89-4be2-450e-a607-16191e4f2db7",
+   "@type": "PropertyValue",
+   "propertyID": "elabftw_metadata",
+   "description": "eLabFTW metadata JSON as string",
+   "value": "{\"extra_fields\": {\"Raw data URL\": {\"type\": \"url\", \"value\": \"https://datalake.example.com/experiments/3921\"}, \"Annie, are you okay\": {\"type\": \"checkbox\", \"value\": \"\", \"description\": \"This is a checkbox custom input\"}, \"This is a custom list input\": {\"type\": \"select\", \"value\": \"Some choice\", \"options\": [\"Some choice\", \"Another choice\", \"A third choice\"], \"description\": \"The value is selected from a pre-defined list\"}}}"
+  },
+  {
+   "@id": "#category-Demo",
+   "@type": "Thing",
+   "name": "Demo",
+   "color": "A9B2B7"
+  },
+  {
+   "@id": "comment://891dc96e9ae4bd17ea96077e8c8e8fa117d1e465ac95937d5024c8480dfd5ccb?hash_algo=sha256",
+   "@type": "Comment",
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "text": "Well, it's always reassuring to know that scientists are spending their time and our tax dollars discovering what the rest of us already learned in third-grade science class.",
+   "author": {
+    "@id": "person://fab8c19cc817cbd5361ff4dd62ce16cad61192bfb42bf06919cee96e0f238818?hash_algo=sha256"
+   }
+  },
+  {
+   "@id": "person://fab8c19cc817cbd5361ff4dd62ce16cad61192bfb42bf06919cee96e0f238818?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Lee",
+   "familyName": "Schoen",
+   "email": "voluptas-45963321@yopmail.com"
+  }
+ ]
+}

@@ -1,0 +1,53 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./ -  - bb8b469d/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://7299c4c87f75c05c1e9e61c91fd26328eb9b249f8fdceb1425a6a7dc5833ca09?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "dateModified": "2025-09-16T10:32:54+02:00",
+   "temporal": "2025-01-02T00:00:00+01:00",
+   "name": "フルーツフライの食性に関する研究",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=54",
+   "genre": "experiment",
+   "creativeWorkStatus": "Success",
+   "identifier": "20250916-bb8b469d651822d0006046449a33b5c8822b5691",
+   "keywords": "generated from yml,CJK,ショウジョウバエ",
+   "text": "<p>背景： フルーツフライは、果物の成熟過程に大きな影響を与えます。そのため、フルーツフライの食性について研究することは、果物産業にとって重要な意義を持ちます。</p>\n\n<p>目的： この研究の目的は、フルーツフライの好んで食べる果物の種類を調べることです。</p>\n\n<p>方法： まず、フルーツフライを捕獲し、実験室で飼育します。次に、果物を複数用意し、フルーツフライが好んで食べる果物を調べます。果物は、リンゴ、バナナ、オレンジ、キウイフルーツ、グレープフルーツ、パイナップル、マンゴーの7種類を用意します。各果物を1つずつケージの中に入れ、フルーツフライが果物を食べたかどうかを確認します。果物は毎日交換し、同じ果物が連続して入れられないようにします。また、フルーツフライが果物を食べる時間帯も調べます。</p>\n\n<p>結果： 実験の結果、フルーツフライが好んで食べる果物は、バナナ、マンゴー、パイナップルであることがわかりました。また、フルーツフライが果物を食べる時間帯は、午前中が多いことがわかりました。</p>\n\n<p>結論： フルーツフライは、バナナ、マンゴー、パイナップルを好んで食べることが明らかになりました。この結果は、果物生産業にとって重要な情報となります。</p>\n",
+   "about": {
+    "@id": "#category-ハエ"
+   },
+   "variableMeasured": [
+    {
+     "@id": "pv://b028004c-ffdc-4449-8330-ce1e21ad685c"
+    }
+   ]
+  },
+  {
+   "@id": "pv://b028004c-ffdc-4449-8330-ce1e21ad685c",
+   "@type": "PropertyValue",
+   "propertyID": "elabftw_metadata",
+   "description": "eLabFTW metadata JSON as string",
+   "value": "{}"
+  },
+  {
+   "@id": "#category-ハエ",
+   "@type": "Thing",
+   "name": "ハエ",
+   "color": "B12FB6"
+  },
+  {
+   "@id": "person://7299c4c87f75c05c1e9e61c91fd26328eb9b249f8fdceb1425a6a7dc5833ca09?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Neva",
+   "familyName": "Heaney",
+   "email": "maiores-78008163@yopmail.com"
+  }
+ ]
+}

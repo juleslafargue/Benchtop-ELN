@@ -1,0 +1,144 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Demo - Test-the-grouped-extra-fields - a9ca1362/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://8f5ab7f6890c9999cf1ba3890ad36f6c1c6908743bddd38a58c76426d61a648c?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:53+02:00",
+   "dateModified": "2025-09-16T10:32:53+02:00",
+   "temporal": "2024-12-31T00:00:00+01:00",
+   "name": "Test the grouped extra fields",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=49",
+   "genre": "experiment",
+   "creativeWorkStatus": "Success",
+   "identifier": "20250916-a9ca1362117bbef62dbd4144fc38f280075ee32e",
+   "keywords": "generated from yml,dev,extra fields",
+   "about": {
+    "@id": "#category-Demo"
+   },
+   "variableMeasured": [
+    {
+     "@id": "pv://03ccef4f-bbdd-4de7-a6d0-4f8b18807280"
+    },
+    {
+     "@id": "pv://8b0e9509-c33d-40d4-aac6-3f0e8a6378f4"
+    },
+    {
+     "@id": "pv://4703bf4b-f4dd-4dd5-92ef-6b61fb38619e"
+    },
+    {
+     "@id": "pv://0a7753ca-07a4-4da4-966e-8b437bf2c984"
+    },
+    {
+     "@id": "pv://6f9b8f05-175e-44a7-81d0-bd179f468b25"
+    },
+    {
+     "@id": "pv://70c4f417-ef37-4fe1-9ec0-f930864c6458"
+    },
+    {
+     "@id": "pv://564d05a3-1284-4b18-9d23-8d2237bc17f6"
+    },
+    {
+     "@id": "pv://e31610a5-f990-44f2-84c7-d3d7c4aa9dab"
+    },
+    {
+     "@id": "pv://920249f6-fdfe-41f9-849e-ceaf27e7556c"
+    },
+    {
+     "@id": "pv://0303af80-053a-41ff-895c-f93e1be6bdcb"
+    }
+   ]
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://0303af80-053a-41ff-895c-f93e1be6bdcb",
+   "propertyID": "Has group_id that is not in elabftw.groups",
+   "valueReference": "text",
+   "value": "I am lost!"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://920249f6-fdfe-41f9-849e-ceaf27e7556c",
+   "propertyID": "Another one without group_id property",
+   "valueReference": "select",
+   "value": "Some choice",
+   "description": "this element has no group property defined"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://e31610a5-f990-44f2-84c7-d3d7c4aa9dab",
+   "propertyID": "Group_id 2 and position 3",
+   "valueReference": "url",
+   "value": ""
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://564d05a3-1284-4b18-9d23-8d2237bc17f6",
+   "propertyID": "Group_id 2 and position 2",
+   "valueReference": "url",
+   "value": "https://datalake.example.com/experiments/3921"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://70c4f417-ef37-4fe1-9ec0-f930864c6458",
+   "propertyID": "Group_id 2 and position 1",
+   "valueReference": "url",
+   "value": ""
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://6f9b8f05-175e-44a7-81d0-bd179f468b25",
+   "propertyID": "Group_id 1 and position 1",
+   "valueReference": "checkbox",
+   "value": "",
+   "description": "This is a checkbox custom input"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://0a7753ca-07a4-4da4-966e-8b437bf2c984",
+   "propertyID": "Has no group_id property",
+   "valueReference": "text",
+   "value": ""
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://4703bf4b-f4dd-4dd5-92ef-6b61fb38619e",
+   "propertyID": "Has group_id 3 as string",
+   "valueReference": "text",
+   "value": ""
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://8b0e9509-c33d-40d4-aac6-3f0e8a6378f4",
+   "propertyID": "Has group_id 3 as number",
+   "valueReference": "text",
+   "value": ""
+  },
+  {
+   "@id": "pv://03ccef4f-bbdd-4de7-a6d0-4f8b18807280",
+   "@type": "PropertyValue",
+   "propertyID": "elabftw_metadata",
+   "description": "eLabFTW metadata JSON as string",
+   "value": "{\"elabftw\": {\"display_main_text\": false, \"extra_fields_groups\": [{\"id\": 1, \"name\": \"Group with id 1, first position\"}, {\"id\": 2, \"name\": \"Group with id 2, second position\"}, {\"id\": 3, \"name\": \"Group with id 3, third position\"}]}, \"extra_fields\": {\"Has group_id 3 as number\": {\"type\": \"text\", \"value\": \"\", \"group_id\": 3}, \"Has group_id 3 as string\": {\"type\": \"text\", \"value\": \"\", \"group_id\": \"3\"}, \"Has no group_id property\": {\"type\": \"text\", \"value\": \"\"}, \"Group_id 1 and position 1\": {\"type\": \"checkbox\", \"value\": \"\", \"group_id\": 1, \"position\": 1, \"description\": \"This is a checkbox custom input\"}, \"Group_id 2 and position 1\": {\"type\": \"url\", \"value\": \"\", \"group_id\": 2, \"position\": 1}, \"Group_id 2 and position 2\": {\"type\": \"url\", \"value\": \"https://datalake.example.com/experiments/3921\", \"group_id\": 2, \"position\": 2}, \"Group_id 2 and position 3\": {\"type\": \"url\", \"value\": \"\", \"group_id\": 2, \"position\": 3}, \"Another one without group_id property\": {\"type\": \"select\", \"value\": \"Some choice\", \"options\": [\"Some choice\", \"Another choice\", \"A third choice\"], \"description\": \"this element has no group property defined\"}, \"Has group_id that is not in elabftw.groups\": {\"type\": \"text\", \"value\": \"I am lost!\", \"group_id\": \"19\"}}}"
+  },
+  {
+   "@id": "#category-Demo",
+   "@type": "Thing",
+   "name": "Demo",
+   "color": "A9B2B7"
+  },
+  {
+   "@id": "person://8f5ab7f6890c9999cf1ba3890ad36f6c1c6908743bddd38a58c76426d61a648c?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Avis",
+   "familyName": "Gutkowski",
+   "email": "user1@demo.elabftw.net"
+  }
+ ]
+}

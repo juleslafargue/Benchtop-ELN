@@ -7,6 +7,10 @@ dark mode. Used by the GitHub workflow; to run it yourself (needs the built fron
     cd backend
     pip install -r requirements-dev.txt && python -m playwright install chromium
     python tests/smoke_browser.py
+
+On data from an older version, upgraded by this one (the oldest demo lab is 0.9.3; see tests/test_v24_upgrades.py):
+
+    python tests/smoke_browser.py --upgraded v0.9.3
 """
 from __future__ import annotations
 
@@ -28,7 +32,7 @@ PW = "demo-lab-password"
 IGNORE = ("fonts.googleapis", "fonts.gstatic", "pubchem.ncbi", "ERR_TUNNEL", "ERR_NAME_NOT_RESOLVED", "ERR_INTERNET_DISCONNECTED")
 
 
-def main() -> int:
+def main(argv: list[str]) -> int:
     if not (DIST / "index.html").exists():
         print(f"Build the frontend first (cd frontend && npm run build); {DIST} is missing")
         return 2
@@ -37,8 +41,15 @@ def main() -> int:
     data = Path(tempfile.mkdtemp(prefix="benchtop-smoke-"))
     env = {**os.environ, "BENCHTOP_DATA_DIR": str(data), "BENCHTOP_DEMO": "1", "BENCHTOP_PUBCHEM": "off",
            "BENCHTOP_NMR_AUTO_UPDATE": "off", "BENCHTOP_BACKUP_INTERVAL_HOURS": "0", "BENCHTOP_STATIC_DIR": str(DIST)}
-    print("Building the demo lab…", flush=True)
-    subprocess.run([sys.executable, "-m", "app.demo_lab"], cwd=BACKEND, env=env, check=True, stdout=subprocess.DEVNULL)
+    if len(argv) > 2 and argv[1] == "--upgraded":
+        sys.path.insert(0, str(BACKEND / "tests"))
+        from test_v24_upgrades import restore_and_upgrade
+        print(f"Restoring the {argv[2]} demo lab and upgrading it…", flush=True)
+        data = restore_and_upgrade(argv[2], data)["data"]
+        env["BENCHTOP_DATA_DIR"] = str(data)
+    else:
+        print("Building the demo lab…", flush=True)
+        subprocess.run([sys.executable, "-m", "app.demo_lab"], cwd=BACKEND, env=env, check=True, stdout=subprocess.DEVNULL)
     log_path = data / "server.log"
     log_file = open(log_path, "w")  # a file, not a pipe: an unread pipe fills up and stalls the server
     server = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT)], cwd=BACKEND, env=env,
@@ -154,4 +165,4 @@ def sweep(sync_playwright) -> list[tuple[str, str, str, str]]:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv))

@@ -1,0 +1,55 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Molecular-biology - Facilis-illum-sed-reprehenderit - a7658b02/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://f6084a2b68f4c7e039aebf7d53fe634a7a74e30a5a48e4623d222775c61b9921?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:50+02:00",
+   "dateModified": "2025-09-16T10:32:50+02:00",
+   "temporal": "2021-04-14T00:00:00+02:00",
+   "name": "Facilis illum sed reprehenderit.",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=32",
+   "genre": "experiment",
+   "creativeWorkStatus": "Running",
+   "hasPart": [
+    {
+     "@id": "./Molecular-biology - Facilis-illum-sed-reprehenderit - a7658b02/autesse.json"
+    }
+   ],
+   "identifier": "20250916-a7658b02dcd43bdaabb9430614184264702ae754",
+   "keywords": "Fly,Copper,lab supplies",
+   "text": "TRUE--\" that's the jury-box,' thought Alice, 'or perhaps they won't walk the way down one side and up the fan and gloves--that is, if I like being that person, I'll come up: if not, I'll stay down here! It'll be no use in waiting by the hand, it hurried off, without waiting for the moment how large she had not gone (We know it to make the arches. The chief difficulty Alice found at first was in the distance. 'Come on!' cried the Mock Turtle: 'nine the next, and so on.' 'What a curious dream, dear, certainly: but now run in to your places!' shouted the Queen. 'I haven't opened it yet,' said the Cat: 'we're all mad here. I'm mad. You're mad.' 'How do you know about it, you know.' It was, no doubt: only Alice did not answer, so Alice soon began talking again. 'Dinah'll miss me very much at this, she was quite impossible to say 'creatures,' you see, because some of the sort!' said Alice. 'Then it doesn't matter much,' thought Alice, 'it'll never do to hold it. As soon as the game began.",
+   "about": {
+    "@id": "#category-Molecular biology"
+   }
+  },
+  {
+   "@id": "#category-Molecular biology",
+   "@type": "Thing",
+   "name": "Molecular biology",
+   "color": "3026BC"
+  },
+  {
+   "@id": "./Molecular-biology - Facilis-illum-sed-reprehenderit - a7658b02/autesse.json",
+   "@type": "File",
+   "name": "autesse.json",
+   "alternateName": "fd/fdedffebcfbbdc8eb9a554d54951783ced67e23ac0c38445f67112bfb81543147d8960561fcd7745e3e3ec098ded2d5f86730ad635520319e502c11c5260ba2c.json",
+   "encodingFormat": "application/octet-stream",
+   "contentSize": 21,
+   "sha256": "66bd0965616378a8b4698bf8b01784e7d29f15c7bde4fe86fb4f5dc959cf189c"
+  },
+  {
+   "@id": "person://f6084a2b68f4c7e039aebf7d53fe634a7a74e30a5a48e4623d222775c61b9921?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Nicola",
+   "familyName": "Mohr",
+   "email": "somesamluser@example.com"
+  }
+ ]
+}

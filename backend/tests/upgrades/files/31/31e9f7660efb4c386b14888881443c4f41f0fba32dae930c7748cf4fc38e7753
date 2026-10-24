@@ -1,0 +1,53 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Synthesis - Synthesis-of-Aspirin - 076f68c6/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://8f5ab7f6890c9999cf1ba3890ad36f6c1c6908743bddd38a58c76426d61a648c?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "dateModified": "2025-09-16T10:32:54+02:00",
+   "temporal": "2025-01-02T00:00:00+01:00",
+   "name": "Synthesis of Aspirin",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=57",
+   "genre": "experiment",
+   "creativeWorkStatus": "Success",
+   "identifier": "20250916-076f68c6b56f8ab6cb023ff295e869e3c0d6e0f0",
+   "keywords": "generated from yml,chemistry,has-mathjax",
+   "text": "<h1>Introduction</h1>\n<p>\nAspirin is a widely used pain-relieving and anti-inflammatory drug. In this experiment, we aimed to synthesize aspirin from salicylic acid and acetic anhydride.\n</p>\n<h2>Experimental Design</h2>\n<p>\nWe mixed salicylic acid and acetic anhydride in the presence of a catalyst, sulfuric acid. The reaction produced aspirin and acetic acid, as shown in the following chemical equation:\n</p>\n<p>\n$$\\ce{C7H6O3 + (CH3CO)2O -&gt;[\\text{H2SO4}] C9H8O4 + CH3COOH}$$\n</p>\n<p>\nAfter the reaction, we purified the aspirin by recrystallization from hot water. The purity of the aspirin was confirmed using thin-layer chromatography (TLC) and melting point analysis.\n</p>\n<h2>Results</h2>\n<p>\nThe yield of aspirin was 80% based on the amount of salicylic acid used. The purity of the aspirin was confirmed using TLC, which showed a single spot corresponding to aspirin. The melting point of the aspirin was 135-136°C, which is consistent with the literature value of 135-136.5°C.\n</p>\n<p>\nThe chemical reaction involved in the synthesis of aspirin can be written as:\n</p>\n<p>\n$$\\ce{C7H6O3 + (CH3CO)2O -&gt;[\\text{H2SO4}] C9H8O4 + CH3COOH}$$\n</p>\n<p>\nThe theoretical yield of aspirin can be calculated using the stoichiometry of the reaction. Assuming that all the salicylic acid reacts and no aspirin is lost during the purification process, the theoretical yield is calculated as follows:\n</p>\n<p>\n$$\\text{Theoretical yield} = \\frac{\\text{moles of salicylic acid used}}{\\text{molar ratio of salicylic acid to aspirin}} \\times \\text{molar mass of aspirin}$$\n</p>\n<p>\nThe actual yield of aspirin can be calculated by dividing the mass of the purified aspirin by the mass of salicylic acid used and multiplying by 100%. The percent yield can be calculated by dividing the actual yield by the theoretical yield and multiplying by 100%.\n</p>\n",
+   "about": {
+    "@id": "#category-Synthesis"
+   },
+   "variableMeasured": [
+    {
+     "@id": "pv://283374c3-0aaa-430f-b390-a71157cd64a9"
+    }
+   ]
+  },
+  {
+   "@id": "pv://283374c3-0aaa-430f-b390-a71157cd64a9",
+   "@type": "PropertyValue",
+   "propertyID": "elabftw_metadata",
+   "description": "eLabFTW metadata JSON as string",
+   "value": "{}"
+  },
+  {
+   "@id": "#category-Synthesis",
+   "@type": "Thing",
+   "name": "Synthesis",
+   "color": "2825B0"
+  },
+  {
+   "@id": "person://8f5ab7f6890c9999cf1ba3890ad36f6c1c6908743bddd38a58c76426d61a648c?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Avis",
+   "familyName": "Gutkowski",
+   "email": "user1@demo.elabftw.net"
+  }
+ ]
+}

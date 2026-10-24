@@ -1,0 +1,313 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Demo - Gold-master-experiment - 4af4da4e/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://f6084a2b68f4c7e039aebf7d53fe634a7a74e30a5a48e4623d222775c61b9921?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "dateModified": "2025-09-16T10:37:05+02:00",
+   "temporal": "2025-01-03T00:00:00+01:00",
+   "name": "Gold master experiment",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=52",
+   "genre": "experiment",
+   "alternateName": 1,
+   "comment": [
+    {
+     "@id": "comment://f10fb61bae7a073a0c94363b8cb5de2fef812491b92067e3ef8dc02fcb0687ff?hash_algo=sha256"
+    }
+   ],
+   "creativeWorkStatus": "Success",
+   "hasPart": [
+    {
+     "@id": "./Demo - Gold-master-experiment - 4af4da4e/example.jpg"
+    }
+   ],
+   "identifier": "20250916-4af4da4ef50c6512782c3b0b484aad236ccd7591",
+   "keywords": "generated from yml,test-data,eln,tag with space,special chars {[éèÀ®]}:*<>×÷±",
+   "mentions": [
+    {
+     "@id": "./Molecular-biology - Facilis-illum-sed-reprehenderit - a7658b02/"
+    },
+    {
+     "@id": "./Synthesis - Synthesis-of-Aspirin - 076f68c6/"
+    },
+    {
+     "@id": "./Microscope - Video-microscope-Bravo - 6bf0e813/"
+    }
+   ],
+   "text": "<h1 style=\"line-height:1;\">Level 1 title</h1>\n<h2>Level 2 title</h2>\n<p>The <strong>goal</strong> of this <em>experiment</em> is to have <span style=\"text-decoration:underline;\">all</span> <span style=\"background-color:rgb(241,196,15);color:rgb(224,62,45);\">attributes</span>:</p>\n<ul>\n<li>all extra fields types</li>\n<li>links to experiments and items</li>\n<li>links from experiments and items</li>\n<li>status, category, tags and uploaded files</li>\n</ul>\n<h3>Here is a table</h3>\n<table style=\"width:100%;\" border=\"1\">\n\n<tr>\n<td>Something</td>\n<td>in H<sub>2</sub></td>\n<td>the</td>\n</tr>\n<tr>\n<td>table</td>\n<td style=\"background-color:rgb(185,106,217);border:2px dashed rgb(224,62,45);\">31<sup>321</sup></td>\n<td>there</td>\n</tr>\n\n</table>\n<p>an emoji: 🤪</p>\n<p>∞ ∑</p>\n<h4>An image</h4>\n<p><img src=\"app/download.php?name=example.jpg&amp;f=7b/7b82e081f08828fa461979b340d28673a32773169bf19884b61276355c0d873098977ad10b68d6845209108b8470ac4b72a1992b3d81140d0ab0af9e25d886a0.jpg&amp;storage=1\" width=\"261\" height=\"392\" alt=\"7b82e081f08828fa461979b340d28673a32773169bf19884b61276355c0d873098977ad10b68d6845209108b8470ac4b72a1992b3d81140d0ab0af9e25d886a0.jpg&amp;storage=1\"></p>\n<p><a href=\"https://www.elabftw.net/\" target=\"_blank\" rel=\"noreferrer noopener\">A link to elabftw.net</a>.</p>\n<p> </p>",
+   "about": {
+    "@id": "#category-Demo"
+   },
+   "variableMeasured": [
+    {
+     "@id": "pv://d4c36197-bf2a-42e6-be7d-95d1941d793c"
+    },
+    {
+     "@id": "pv://78b5f21c-5836-4b74-8a72-12be5ab2e22a"
+    },
+    {
+     "@id": "pv://6dc4e3ce-72e7-4312-a832-e846d51b129b"
+    },
+    {
+     "@id": "pv://2ae99eae-c274-4391-ae5a-087442932bbb"
+    },
+    {
+     "@id": "pv://d31cf5eb-4ccd-40e2-aa66-57c49fcf55e1"
+    },
+    {
+     "@id": "pv://dddd1d2a-037c-4c44-b05a-c9262c24124d"
+    },
+    {
+     "@id": "pv://171ec8df-9d33-4333-8c07-721ebc8a6b79"
+    },
+    {
+     "@id": "pv://ce3ce33a-9d80-42f2-be01-5fe14514bed7"
+    },
+    {
+     "@id": "pv://f0df19c8-c0fb-4db0-a4a1-1de217dffc81"
+    },
+    {
+     "@id": "pv://dde49431-0854-457b-a57b-1d4e0dd99fda"
+    },
+    {
+     "@id": "pv://fa0b7569-2b88-4b7c-b539-b0eaf1ba8e18"
+    },
+    {
+     "@id": "pv://873c2683-238d-4c95-ba64-91a2a77f6fee"
+    },
+    {
+     "@id": "pv://bb0fc618-e7b4-497e-ba0f-fdfae64851ce"
+    },
+    {
+     "@id": "pv://f61ac5f5-3786-465b-bc1c-af0d4474584d"
+    },
+    {
+     "@id": "pv://91955c74-12cb-489a-bb99-a0ab097bef05"
+    },
+    {
+     "@id": "pv://39bff384-ad71-4c85-9ecf-c18ad2d62301"
+    },
+    {
+     "@id": "pv://5fd11741-4b17-441e-9bf3-678217bcc389"
+    }
+   ],
+   "aggregateRating": {
+    "@id": "rating://b312930e-fb5b-44cb-88bf-bdc2302301c0",
+    "@type": "AggregateRating",
+    "ratingValue": 4,
+    "reviewCount": 1
+   },
+   "step": [
+    {
+     "@id": "howtostep://817043b4-689d-4496-96bb-7adfd4f15177"
+    },
+    {
+     "@id": "howtostep://9e8429e1-d380-4fd5-b75a-6e1151be1a9f"
+    }
+   ]
+  },
+  {
+   "@id": "howtostep://9e8429e1-d380-4fd5-b75a-6e1151be1a9f",
+   "@type": "HowToStep",
+   "position": 2,
+   "creativeWorkStatus": "unfinished",
+   "itemListElement": {
+    "@id": "howtodirection://75973fb2-f043-49e3-81fa-b21f896af4e0"
+   }
+  },
+  {
+   "@id": "howtodirection://75973fb2-f043-49e3-81fa-b21f896af4e0",
+   "@type": "HowToDirection",
+   "text": "another step"
+  },
+  {
+   "@id": "howtostep://817043b4-689d-4496-96bb-7adfd4f15177",
+   "@type": "HowToStep",
+   "position": 1,
+   "creativeWorkStatus": "finished",
+   "temporal": "2025-09-16T10:36:24+02:00",
+   "itemListElement": {
+    "@id": "howtodirection://7e020a09-293c-47f4-a00e-203de6c41248"
+   }
+  },
+  {
+   "@id": "howtodirection://7e020a09-293c-47f4-a00e-203de6c41248",
+   "@type": "HowToDirection",
+   "text": "a step"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://5fd11741-4b17-441e-9bf3-678217bcc389",
+   "propertyID": "Multi dropdown menu",
+   "valueReference": "select",
+   "value": "Option 1",
+   "description": "Allows multiple selection"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://39bff384-ad71-4c85-9ecf-c18ad2d62301",
+   "propertyID": "Unchecked checkbox",
+   "valueReference": "checkbox",
+   "value": "",
+   "description": "this one is not checked"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://91955c74-12cb-489a-bb99-a0ab097bef05",
+   "propertyID": "Number with units",
+   "valueReference": "number",
+   "value": "12",
+   "description": "this one has units",
+   "unitText": "mM"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://f61ac5f5-3786-465b-bc1c-af0d4474584d",
+   "propertyID": "Type experiment",
+   "valueReference": "experiments",
+   "value": 57,
+   "description": "This is a link to an experiment"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://bb0fc618-e7b4-497e-ba0f-fdfae64851ce",
+   "propertyID": "Text input name",
+   "valueReference": "text",
+   "value": "some text",
+   "description": "type text + all attributes"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://873c2683-238d-4c95-ba64-91a2a77f6fee",
+   "propertyID": "A dropdown menu",
+   "valueReference": "select",
+   "value": "Choice 1",
+   "description": "Single select"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://fa0b7569-2b88-4b7c-b539-b0eaf1ba8e18",
+   "propertyID": "Type resource",
+   "valueReference": "items",
+   "value": 208,
+   "description": "This is a link to a resource"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://dde49431-0854-457b-a57b-1d4e0dd99fda",
+   "propertyID": "Radio buttons",
+   "valueReference": "radio",
+   "value": "Oui",
+   "description": "radio description"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://f0df19c8-c0fb-4db0-a4a1-1de217dffc81",
+   "propertyID": "Date and time",
+   "valueReference": "datetime-local",
+   "value": "2024-07-14T13:37",
+   "description": "datetime description"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://ce3ce33a-9d80-42f2-be01-5fe14514bed7",
+   "propertyID": "Email input",
+   "valueReference": "email",
+   "value": "louis@example.com",
+   "description": "type email"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://171ec8df-9d33-4333-8c07-721ebc8a6b79",
+   "propertyID": "A checkbox",
+   "valueReference": "checkbox",
+   "value": "on",
+   "description": "is checked"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://dddd1d2a-037c-4c44-b05a-c9262c24124d",
+   "propertyID": "Type user",
+   "valueReference": "users",
+   "value": 1,
+   "description": "this is a link to a user"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://d31cf5eb-4ccd-40e2-aa66-57c49fcf55e1",
+   "propertyID": "Some date",
+   "valueReference": "date",
+   "value": "2024-07-14",
+   "description": "is a date"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://2ae99eae-c274-4391-ae5a-087442932bbb",
+   "propertyID": "Just time",
+   "valueReference": "time",
+   "value": "17:00",
+   "description": "tea time"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://6dc4e3ce-72e7-4312-a832-e846d51b129b",
+   "propertyID": "Type URL",
+   "valueReference": "url",
+   "value": "https://www.elabftw.net",
+   "description": "a link (readonly)"
+  },
+  {
+   "@type": "PropertyValue",
+   "@id": "pv://78b5f21c-5836-4b74-8a72-12be5ab2e22a",
+   "propertyID": "Number",
+   "valueReference": "number",
+   "value": "12",
+   "description": "no units"
+  },
+  {
+   "@id": "pv://d4c36197-bf2a-42e6-be7d-95d1941d793c",
+   "@type": "PropertyValue",
+   "propertyID": "elabftw_metadata",
+   "description": "eLabFTW metadata JSON as string",
+   "value": "{\"elabftw\": {\"display_main_text\": true, \"extra_fields_groups\": [{\"id\": 1, \"name\": \"Group 1\"}, {\"id\": 2, \"name\": \"Group 2\"}, {\"id\": 3, \"name\": \"Last group\"}]}, \"extra_fields\": {\"Number\": {\"type\": \"number\", \"unit\": \"\", \"units\": [], \"value\": \"12\", \"group_id\": 2, \"description\": \"no units\"}, \"Type URL\": {\"type\": \"url\", \"value\": \"https://www.elabftw.net\", \"group_id\": 2, \"readonly\": true, \"description\": \"a link (readonly)\"}, \"Just time\": {\"type\": \"time\", \"value\": \"17:00\", \"group_id\": 2, \"description\": \"tea time\"}, \"Some date\": {\"type\": \"date\", \"value\": \"2024-07-14\", \"group_id\": 2, \"description\": \"is a date\"}, \"Type user\": {\"type\": \"users\", \"value\": 1, \"group_id\": 3, \"description\": \"this is a link to a user\"}, \"A checkbox\": {\"type\": \"checkbox\", \"value\": \"on\", \"group_id\": 2, \"description\": \"is checked\"}, \"Email input\": {\"type\": \"email\", \"value\": \"louis@example.com\", \"group_id\": 2, \"description\": \"type email\"}, \"Date and time\": {\"type\": \"datetime-local\", \"value\": \"2024-07-14T13:37\", \"group_id\": 2, \"description\": \"datetime description\"}, \"Radio buttons\": {\"type\": \"radio\", \"value\": \"Oui\", \"options\": [\"Oui\", \"Non\", \"Peut-être\"], \"group_id\": 1, \"description\": \"radio description\"}, \"Type resource\": {\"type\": \"items\", \"value\": 208, \"group_id\": 3, \"description\": \"This is a link to a resource\"}, \"A dropdown menu\": {\"type\": \"select\", \"value\": \"Choice 1\", \"options\": [\"Choice 1\", \"Choice 2\", \"Choice 3\"], \"group_id\": 1, \"description\": \"Single select\"}, \"Text input name\": {\"type\": \"text\", \"value\": \"some text\", \"group_id\": 1, \"readonly\": true, \"required\": true, \"description\": \"type text + all attributes\", \"blank_value_on_duplicate\": true}, \"Type experiment\": {\"type\": \"experiments\", \"value\": 57, \"group_id\": 3, \"description\": \"This is a link to an experiment\"}, \"Number with units\": {\"type\": \"number\", \"unit\": \"mM\", \"units\": [\"mM\", \"μM\", \"nM\"], \"value\": \"12\", \"group_id\": 2, \"description\": \"this one has units\"}, \"Unchecked checkbox\": {\"type\": \"checkbox\", \"value\": \"\", \"group_id\": 2, \"description\": \"this one is not checked\"}, \"Multi dropdown menu\": {\"type\": \"select\", \"value\": \"Option 1\", \"options\": [\"Option 1\", \"Option 2\", \"Option 3\"], \"group_id\": 1, \"description\": \"Allows multiple selection\", \"allow_multi_values\": true}}}"
+  },
+  {
+   "@id": "#category-Demo",
+   "@type": "Thing",
+   "name": "Demo",
+   "color": "A9B2B7"
+  },
+  {
+   "@id": "./Demo - Gold-master-experiment - 4af4da4e/example.jpg",
+   "@type": "File",
+   "name": "example.jpg",
+   "alternateName": "7b/7b82e081f08828fa461979b340d28673a32773169bf19884b61276355c0d873098977ad10b68d6845209108b8470ac4b72a1992b3d81140d0ab0af9e25d886a0.jpg",
+   "encodingFormat": "application/octet-stream",
+   "contentSize": 85530,
+   "sha256": "b73626c9a9ed8561ed6126df2493bc0d84fb8feedc9fe34aed94f7d2d5f4f60f"
+  },
+  {
+   "@id": "comment://f10fb61bae7a073a0c94363b8cb5de2fef812491b92067e3ef8dc02fcb0687ff?hash_algo=sha256",
+   "@type": "Comment",
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "text": "Great results on the DNA extraction. The yield and purity look good. For the wash steps, consider extending the final centrifugation to 3 minutes to ensure no residual buffer. Nice work!",
+   "author": {
+    "@id": "person://f6084a2b68f4c7e039aebf7d53fe634a7a74e30a5a48e4623d222775c61b9921?hash_algo=sha256"
+   }
+  },
+  {
+   "@id": "person://f6084a2b68f4c7e039aebf7d53fe634a7a74e30a5a48e4623d222775c61b9921?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Nicola",
+   "familyName": "Mohr",
+   "email": "somesamluser@example.com"
+  }
+ ]
+}

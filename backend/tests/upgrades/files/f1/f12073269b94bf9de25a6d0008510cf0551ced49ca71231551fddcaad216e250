@@ -1,0 +1,79 @@
+{
+ "source": "eLabFTW",
+ "source_url": "https://www.elabftw.net",
+ "exported": "2025-09-16T08:37:31+00:00",
+ "@graph": [
+  {
+   "@id": "./Demo - An-example-experiment - bf9a1a34/",
+   "@type": "Dataset",
+   "author": {
+    "@id": "person://7299c4c87f75c05c1e9e61c91fd26328eb9b249f8fdceb1425a6a7dc5833ca09?hash_algo=sha256"
+   },
+   "dateCreated": "2025-09-16T10:32:53+02:00",
+   "dateModified": "2025-09-16T10:32:53+02:00",
+   "temporal": "2025-01-01T00:00:00+01:00",
+   "name": "An example experiment",
+   "encodingFormat": "text/html",
+   "url": "https://elab.local:3148/experiments.php?mode=view&id=50",
+   "genre": "experiment",
+   "comment": [
+    {
+     "@id": "comment://59ca77985ac5eb364f5cc41c48d8c7dc278ffccae5b82d213120f13171bc5bf7?hash_algo=sha256"
+    },
+    {
+     "@id": "comment://252b2078f3205342cc1bc59dfea7a828e66008da85e517672f3b9c9bc2cc3fb8?hash_algo=sha256"
+    }
+   ],
+   "creativeWorkStatus": "Success",
+   "identifier": "20250916-bf9a1a34eed57f3ace21f6fe32cd6c149eafcd8c",
+   "keywords": "generated from yml,example,demo",
+   "text": "This is the content of the experiment",
+   "about": {
+    "@id": "#category-Demo"
+   },
+   "variableMeasured": [
+    {
+     "@id": "pv://847947e7-cdbe-476f-b500-01d44a829dd8"
+    }
+   ]
+  },
+  {
+   "@id": "pv://847947e7-cdbe-476f-b500-01d44a829dd8",
+   "@type": "PropertyValue",
+   "propertyID": "elabftw_metadata",
+   "description": "eLabFTW metadata JSON as string",
+   "value": "{}"
+  },
+  {
+   "@id": "#category-Demo",
+   "@type": "Thing",
+   "name": "Demo",
+   "color": "A9B2B7"
+  },
+  {
+   "@id": "comment://252b2078f3205342cc1bc59dfea7a828e66008da85e517672f3b9c9bc2cc3fb8?hash_algo=sha256",
+   "@type": "Comment",
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "text": "Well, it's a relief to see that the scientific community is hard at work discovering what we already suspected: that the sky is indeed blue. I can't wait for their next groundbreaking revelation that grass is green.",
+   "author": {
+    "@id": "person://7299c4c87f75c05c1e9e61c91fd26328eb9b249f8fdceb1425a6a7dc5833ca09?hash_algo=sha256"
+   }
+  },
+  {
+   "@id": "person://7299c4c87f75c05c1e9e61c91fd26328eb9b249f8fdceb1425a6a7dc5833ca09?hash_algo=sha256",
+   "@type": "Person",
+   "givenName": "Neva",
+   "familyName": "Heaney",
+   "email": "maiores-78008163@yopmail.com"
+  },
+  {
+   "@id": "comment://59ca77985ac5eb364f5cc41c48d8c7dc278ffccae5b82d213120f13171bc5bf7?hash_algo=sha256",
+   "@type": "Comment",
+   "dateCreated": "2025-09-16T10:32:54+02:00",
+   "text": "Oh, how fascinating. I'm sure the groundbreaking discovery that water is wet will change the course of human history forever.",
+   "author": {
+    "@id": "person://7299c4c87f75c05c1e9e61c91fd26328eb9b249f8fdceb1425a6a7dc5833ca09?hash_algo=sha256"
+   }
+  }
+ ]
+}

@@ -53,6 +53,26 @@ jobs:
           fi
           cat /tmp/eln-req.txt
 
+  upgrades:
+    # Data made by each released version (backend/tests/upgrades/), restored and upgraded by this code: nothing lost,
+    # signed records still verify, every record and file opens. The server tests try five of them; this tries all.
+    name: Upgrades from every past version
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r backend/requirements-dev.txt pytest-xdist
+      - name: Restore, upgrade and open each version's data
+        working-directory: backend
+        env:
+          BENCHTOP_UPGRADE_TESTS: all
+        run: python -m pytest -q -n 4 tests/test_v24_upgrades.py
+
   frontend:
     name: Build the app
     runs-on: ubuntu-latest
@@ -99,6 +119,9 @@ jobs:
       - name: Open every page
         working-directory: backend
         run: python tests/smoke_browser.py
+      - name: Open every page on the oldest demo lab (0.9.3), upgraded
+        working-directory: backend
+        run: python tests/smoke_browser.py --upgraded v0.9.3
 
   docker:
     name: Lab-server setup (Docker image builds, starts and backs up)
@@ -154,7 +177,7 @@ jobs:
     # page, with notes from the commits and a ready-to-run zip (interface built, so no Node needed). That's what
     # ./benchtop update, deploy/update-server.sh and the admin's "newer version" notice look for.
     name: Publish a release (when the version changed on main)
-    needs: [backend, frontend, browser, docker]
+    needs: [backend, upgrades, frontend, browser, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15

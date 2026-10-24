@@ -521,6 +521,9 @@ def test_a_broken_saved_check_never_breaks_the_dashboard(client, admin):
 def test_release_zip_has_one_benchtop_folder_the_built_interface_and_runnable_launchers(tmp_path):
     src = make_program(tmp_path / "src", "50.0.0")
     (src / ".github/workflows/extra.yml").write_text("x")
+    (src / "backend/tests/upgrades").mkdir(parents=True)
+    (src / "backend/tests/upgrades/v0.7.1.zip").write_bytes(b"an old version's backup, for the upgrade test")
+    (src / "backend/tests/test_v2.py").write_text("# the tests themselves stay in\n")
     git(src, "add", "-A")
     git(src, "commit", "-qm", "more")
     _built_ui(src)
@@ -533,6 +536,7 @@ def test_release_zip_has_one_benchtop_folder_the_built_interface_and_runnable_la
     assert all(n.startswith("benchtop/") for n in names)
     assert "benchtop/frontend/dist/index.html" in names and "benchtop/backend/app/__init__.py" in names
     assert not any(n.startswith("benchtop/.github/") for n in names)
+    assert not any("tests/upgrades" in n for n in names) and "benchtop/backend/tests/test_v2.py" in names  # 0.24: tests only
     assert modes["benchtop/benchtop"] & 0o111 and modes["benchtop/Benchtop.command"] & 0o111
     assert dates["benchtop/frontend/dist/index.html"] >= dates["benchtop/frontend/src/main.tsx"]
 
