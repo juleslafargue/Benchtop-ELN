@@ -404,6 +404,8 @@ def predict(smiles: str, nucleus: str = "1H", use_lab: bool = True) -> dict[str,
     if mol is None:
         raise ValueError("Couldn't read that structure")
     frags = Chem.GetMolFrags(mol, asMols=True)
+    if not frags:
+        raise ValueError("Couldn't read that structure")
     main = max(frags, key=lambda f: f.GetNumHeavyAtoms())
     smi = Chem.MolToSmiles(main)
     mol = Chem.MolFromSmiles(smi)  # indices now match a fresh parse of `smi`
@@ -415,7 +417,7 @@ def predict(smiles: str, nucleus: str = "1H", use_lab: bool = True) -> dict[str,
     ranks = list(Chem.CanonicalRankAtoms(mol, breakTies=False))
     envs = environments(mol)
     lab = lab_shifts(nuc, envs) if use_lab else {}
-    dia = diastereotopic_ch2(mol) if nuc == 1 else set()
+    dia = (diastereotopic_ch2(mol) | geminal_alkene_ch2(mol)) if nuc == 1 else set()
     groups: dict[int, dict[str, Any]] = {}
     for a in mol.GetAtoms():
         i, nh = a.GetIdx(), a.GetTotalNumHs()
@@ -471,6 +473,25 @@ def diastereotopic_ch2(mol: Chem.Mol) -> set[int]:
         near = any(c != i and (dist[i][c] <= 3 or any(i in ring and c in ring for ring in ri.AtomRings())) for c in centres)
         if near:
             out.add(i)
+    return out
+
+
+def geminal_alkene_ch2(mol: Chem.Mol) -> set[int]:
+    """=CH2 carbons whose two protons differ: one is cis and one trans to a substituent, as in styrene or methyl
+    acrylate (two signals, about 5.2 and 5.7 ppm in styrene). Not when the other end carries two identical groups
+    (isobutylene's =CH2 is one signal)."""
+    ranks = list(Chem.CanonicalRankAtoms(mol, breakTies=False))
+    out = set()
+    for a in mol.GetAtoms():
+        if a.GetAtomicNum() != 6 or a.GetTotalNumHs() != 2 or a.GetIsAromatic():
+            continue
+        for b in a.GetBonds():
+            if b.GetBondType() != Chem.BondType.DOUBLE:
+                continue
+            other = b.GetOtherAtom(a)
+            subs = [ranks[n.GetIdx()] for n in other.GetNeighbors() if n.GetIdx() != a.GetIdx()] + [-1] * other.GetTotalNumHs()
+            if len(subs) == 2 and subs[0] != subs[1]:
+                out.add(a.GetIdx())
     return out
 
 

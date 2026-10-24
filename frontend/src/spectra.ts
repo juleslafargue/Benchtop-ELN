@@ -263,11 +263,13 @@ function parseNtuples(block: string, L: Map<string, string>, fidOpts: FidOptions
         : Number.isFinite(num('$OFFSET')) && L.has('$OFFSET') ? num('$OFFSET') - sw / 2 / sf : 0
     const reverse = fidOpts.reverse ?? /^\s*y/i.test(L.get('$REVERSE') || '')  // Oxford Instruments: "$REVERSE= yes"
     // the time shift to apply: Bruker's JCAMP export states its digital filter's delay ($GRPDLY, or the firmware
-    // table); Oxford Instruments gives TopSpin's TDoff (negative: points missed at the start, which its own software
-    // back-predicts); otherwise the FID starts at time zero (where it peaks is just signals beating, not a delay)
+    // table); Oxford Instruments gives TDoff (negative: points missed at the start, rebuilt by back-prediction; it
+    // counts real and imaginary values, so -16 is 8 complex points: with 16 the baseline rolls and the lines need a
+    // large extra phase correction, with 8 it is flat); otherwise the FID starts at time zero (where it peaks is just
+    // signals beating, not a delay)
     const bruker = L.has('$GRPDLY') || L.has('$DSPFVS')
     const groupDelay = fidOpts.groupDelay ?? (bruker ? brukerGroupDelay(Object.fromEntries(L))
-      : L.has('$TDOFF') && Number.isFinite(num('$TDOFF')) ? num('$TDOFF') : 0)
+      : L.has('$TDOFF') && Number.isFinite(num('$TDOFF')) ? num('$TDOFF') / 2 : 0)
     const f = processComplexFid(re, im, { sw, sf, centre, nucleus: nucleus || '1H', reverse, groupDelay }, fidOpts)
     return { title, xLabel: 'δ (ppm)', yLabel: 'Intensity', kind: 'nmr', reversed: true, dips: false, nucleus, frequency: sf, solvent,
       isStick: false, x: f.x, y: f.y, fid: f }

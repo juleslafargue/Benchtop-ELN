@@ -168,6 +168,49 @@ export function baselineCorrect(y: Float64Array): Float64Array {
   return out
 }
 
+/** Points missing at the start of an FID (a benchtop spectrometer's dead time), rebuilt by backward linear
+ * prediction: an autoregressive model (Burg's method) fitted to the first points recorded, run backwards. Without
+ * them the baseline rolls in broad waves across the whole spectrum. */
+export function predictBackward(re: ArrayLike<number>, im: ArrayLike<number>, missing: number): { re: Float64Array; im: Float64Array } {
+  const M = Math.min(re.length, im.length, 512), p = Math.min(40, Math.floor(M / 4))
+  // reversed, so predicting "forwards" goes back in time
+  const fr = new Float64Array(M), fi = new Float64Array(M)
+  for (let n = 0; n < M; n++) { fr[n] = re[M - 1 - n]; fi[n] = im[M - 1 - n] }
+  const br = Float64Array.from(fr), bi = Float64Array.from(fi)
+  let ar = new Float64Array(p + 1), ai = new Float64Array(p + 1)
+  ar[0] = 1
+  for (let m = 1; m <= p; m++) {
+    let nr = 0, ni = 0, den = 0
+    for (let n = m; n < M; n++) {  // f[n]·conj(b[n-1])
+      nr += fr[n] * br[n - 1] + fi[n] * bi[n - 1]; ni += fi[n] * br[n - 1] - fr[n] * bi[n - 1]
+      den += fr[n] * fr[n] + fi[n] * fi[n] + br[n - 1] * br[n - 1] + bi[n - 1] * bi[n - 1]
+    }
+    if (!(den > 0)) break
+    const kr = -2 * nr / den, ki = -2 * ni / den
+    for (let n = M - 1; n >= m; n--) {
+      const fnr = fr[n], fni = fi[n], bpr = br[n - 1], bpi = bi[n - 1]
+      fr[n] = fnr + kr * bpr - ki * bpi; fi[n] = fni + kr * bpi + ki * bpr
+      br[n] = bpr + kr * fnr + ki * fni; bi[n] = bpi + kr * fni - ki * fnr  // + conj(k)·f
+    }
+    const nar = Float64Array.from(ar), nai = Float64Array.from(ai)
+    for (let i = 1; i <= m; i++) {  // a[i] += k·conj(a[m-i])
+      nar[i] = ar[i] + kr * ar[m - i] + ki * ai[m - i]; nai[i] = ai[i] + ki * ar[m - i] - kr * ai[m - i]
+    }
+    ar = nar; ai = nai
+  }
+  // x[n] = -Σ a[i]·x[n-i], on the reversed series
+  const xr = Array.from({ length: M }, (_, n) => re[M - 1 - n]), xi = Array.from({ length: M }, (_, n) => im[M - 1 - n])
+  for (let k = 0; k < missing; k++) {
+    let sr = 0, si = 0
+    const n = xr.length
+    for (let i = 1; i <= p; i++) { sr -= ar[i] * xr[n - i] - ai[i] * xi[n - i]; si -= ar[i] * xi[n - i] + ai[i] * xr[n - i] }
+    xr.push(sr); xi.push(si)
+  }
+  const outR = new Float64Array(missing), outI = new Float64Array(missing)
+  for (let k = 0; k < missing; k++) { outR[missing - 1 - k] = xr[M + k]; outI[missing - 1 - k] = xi[M + k] }
+  return { re: outR, im: outI }
+}
+
 /** Process a Bruker fid with its acqus parameters. `sf` is TopSpin's reference frequency (procs SF) when the zip
  * has it: a spectrum referenced in TopSpin (SR) then keeps that referencing. */
 export function processFid(raw: Uint8Array, acqus: Params, opts: { lb?: number; ph0?: number; ph1?: number; sf?: number } = {}): FidData & { y: Float64Array } {
@@ -195,7 +238,18 @@ export function processFid(raw: Uint8Array, acqus: Params, opts: { lb?: number; 
  * points if known; otherwise taken from where the FID peaks. */
 export function processComplexFid(fre: ArrayLike<number>, fim: ArrayLike<number>,
   p: { sw: number; sf: number; centre: number; nucleus: string; groupDelay?: number; reverse?: boolean },
-  opts: { lb?: number; ph0?: number; ph1?: number } = {}): FidData & { y: Float64Array } {
+  opts: { lb?: number; ph0?: number; ph1?: number } = {}): FidData & { y: Float64Array; predicted?: number } {
+  if (Number(p.groupDelay) <= -1 && Math.min(fre.length, fim.length) >= 64) {
+    // points missing at the start: rebuild them, and only a fraction of a point is left to shift
+    const missing = Math.min(Math.round(-Number(p.groupDelay)), 256)
+    const before = predictBackward(fre, fim, missing)
+    const n0 = Math.min(fre.length, fim.length)
+    const r2 = new Float64Array(missing + n0), i2 = new Float64Array(missing + n0)
+    r2.set(before.re); i2.set(before.im)
+    for (let i = 0; i < n0; i++) { r2[missing + i] = fre[i]; i2[missing + i] = fim[i] }
+    const out = processComplexFid(r2, i2, { ...p, groupDelay: Number(p.groupDelay) + missing }, opts)
+    return { ...out, groupDelay: Number(p.groupDelay), predicted: missing }
+  }
   const npts = Math.min(fre.length, fim.length)
   if (npts < 16) throw new Error('This FID is too short to process.')
   const { sw, sf, centre } = p

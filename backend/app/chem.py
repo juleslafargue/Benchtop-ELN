@@ -566,19 +566,26 @@ def reaction_similarity(q: dict[str, Any], c: dict[str, Any]) -> Optional[dict[s
 def structure_check(text: str) -> dict[str, Any]:
     """Topologically distinct carbons and proton environments (symmetry from canonical ranks).
 
-    Diastereotopic protons are not distinguished, so CH2 groups next to stereocentres may show
-    more signals than predicted; the UI words its comparison accordingly."""
+    The two protons of a CH2 next to a stereocentre, or at the end of a C=C (styrene, acrylates), count as two
+    environments: they usually give two signals. When they happen to overlap, fewer signals than environments
+    is worded as "some probably overlap"."""
+    from .nmrpredict import diastereotopic_ch2, geminal_alkene_ch2
     mol = mol_from_any(text)
-    molH = Chem.AddHs(mol)
+    split = diastereotopic_ch2(mol) | geminal_alkene_ch2(mol)
+    molH = Chem.AddHs(mol)  # heavy atoms keep their indices; the hydrogens come after them
     ranks = list(Chem.CanonicalRankAtoms(molH, breakTies=False))
     carbons = {ranks[a.GetIdx()] for a in molH.GetAtoms() if a.GetSymbol() == "C"}
-    groups: dict[int, dict[str, Any]] = {}
+    groups: dict[Any, dict[str, Any]] = {}
+    seen: dict[int, int] = {}
     for a in molH.GetAtoms():
         if a.GetSymbol() != "H":
             continue
         heavy = a.GetNeighbors()[0]
-        g = groups.setdefault(ranks[a.GetIdx()], {"count": 0, "on": heavy.GetSymbol(),
-                                                   "aromatic": heavy.GetIsAromatic()})
+        key: Any = ranks[a.GetIdx()]
+        if heavy.GetIdx() in split:  # its two H apart (the same half of symmetry-equivalent CH2s together)
+            half = seen[heavy.GetIdx()] = seen.get(heavy.GetIdx(), -1) + 1
+            key = ("split", ranks[heavy.GetIdx()], half)
+        g = groups.setdefault(key, {"count": 0, "on": heavy.GetSymbol(), "aromatic": heavy.GetIsAromatic()})
         g["count"] += 1
     env = sorted(groups.values(), key=lambda g: -g["count"])
     exchangeable = sum(g["count"] for g in env if g["on"] in ("O", "N", "S"))

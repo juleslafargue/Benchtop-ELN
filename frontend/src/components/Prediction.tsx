@@ -238,7 +238,7 @@ export function PredictionPanel({ pred, assignment, nucleus, observedLabel, stat
             const a = assignment?.byGroup[gi]
             return <tr key={gi} onMouseEnter={() => setHl(g.atoms)} onMouseLeave={() => setHl([])} onFocus={() => setHl(g.atoms)} tabIndex={0}>
               <td>{groupLabel(g)}{g.exchangeable ? <span className="faint"> (OH/NH)</span> : null}
-                {g.diastereotopic && <span className="faint" title="The two protons of this CH2 sit next to a stereocentre, so they can appear as two separate signals"> (diastereotopic)</span>}</td>
+                {g.diastereotopic && <span className="faint" title="The two protons of this CH2 are not equivalent (it sits next to a stereocentre, or at the end of a C=C), so they can appear as two separate signals"> (diastereotopic)</span>}</td>
               {nucleus === '1H' && <td>{g.nH}</td>}
               <td title={g.shift !== null ? `${g.n} example${g.n === 1 ? '' : 's'} in NMRShiftDB2 with the same surroundings out to ${g.sphere} bond${g.sphere === 1 ? '' : 's'}${g.lo !== undefined ? `; range ${g.lo}–${g.hi}` : ''}` : 'No matching environment in the database'}>
                 {g.shift !== null ? <>{g.shift.toFixed(nucleus === '1H' ? 2 : 1)}{nucleus === '1H' ? ` ${predMult(g)}` : ''} <span className={`conf ${g.confidence}`}>{g.confidence}</span>

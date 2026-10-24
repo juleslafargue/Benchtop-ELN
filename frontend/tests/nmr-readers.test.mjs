@@ -122,9 +122,17 @@ test('Nanalysis 60 MHz FID (JCAMP-DX): ibuprofen\'s lines where they belong, pha
   assert.ok(neg / pos < 0.03, `negative/positive ${neg / pos}`)
 })
 
-test('Oxford Instruments 60 MHz FID: mirrored ($REVERSE) and shifted by its TDoff, ethyl crotonate comes out upright (regression: mirror image, twisted lines)', async () => {
+test('Oxford Instruments 60 MHz FID: mirrored ($REVERSE), its missing first points (TDoff) rebuilt, ethyl crotonate comes out upright on a flat baseline (regression: mirror image, twisted lines, then a baseline rolling in waves that auto-analysis took for signals at 13, -7 and -38 ppm)', async () => {
   const s = await open('oxford_ethylcrotonate_1h_fid.jdx.gz')
-  assert.ok(s.fid); assert.equal(s.fid.groupDelay, -16)
+  assert.ok(s.fid); assert.equal(s.fid.groupDelay, -8); assert.equal(s.fid.predicted, 8)  // TDoff = -16 values = 8 complex points
+  const mx = max(s.y)
+  for (const [a, z] of [[13, 17], [9, 12], [7.6, 8.4], [5.0, 5.6], [2.5, 3.5], [-9, -5], [-40, -36]]) {
+    const v = Array.from(s.y.slice(sp.lowerBound(s.x, a), sp.lowerBound(s.x, z))).sort((p, q) => p - q)
+    assert.ok(Math.abs(v[v.length >> 1]) < 0.01 * mx, `baseline at ${a}–${z} ppm: ${(100 * v[v.length >> 1] / mx).toFixed(2)}% of the tallest line`)
+  }
+  assert.ok(Math.abs(s.fid.ph1) < 720, `hardly any first-order phase left to correct: ${s.fid.ph1}°`)
+  const found = sp.autoAnalyse1H(s, 10).regions.map(r => (r.a + r.b) / 2)
+  assert.ok(found.every(c => c > 0.5 && c < 7.5), `signals only where ethyl crotonate has them: ${found.map(c => c.toFixed(2))}`)
   // CH3 triplet 1.28, CH3 dd 1.87, OCH2 quartet 4.18, =CH 5.84 and 6.97
   for (const ppm of [1.28, 1.87, 4.18, 5.84, 6.97]) assert.deepEqual(linesAt(s, [ppm], 0.12, 0.03), [], `${ppm}`)
   const i0 = sp.lowerBound(s.x, 0), i1 = sp.lowerBound(s.x, 8)
@@ -133,6 +141,23 @@ test('Oxford Instruments 60 MHz FID: mirrored ($REVERSE) and shifted by its TDof
   // the processing settings (line broadening) are honoured for JCAMP FIDs too
   const broad = await open('oxford_ethylcrotonate_1h_fid.jdx.gz', { lb: 3 })
   assert.equal(broad.fid.lb, 3)
+})
+
+test('missing first FID points are rebuilt from the rest (backward linear prediction), to within 1%', () => {
+  const n = 4096, sw = 5000, re = new Float64Array(n), im = new Float64Array(n)
+  let seed = 3
+  for (let i = 0; i < n; i++) {
+    for (const [hz, amp, t2] of [[-1210, 1, 0.3], [-1203, 1, 0.3], [415, 3, 0.5], [1890, 0.5, 0.2]]) {
+      const t = i / sw, a = amp * Math.exp(-t / t2)
+      re[i] += a * Math.cos(2 * Math.PI * hz * t); im[i] += a * Math.sin(2 * Math.PI * hz * t)
+    }
+    seed = (seed * 16807) % 2147483647; re[i] += 0.002 * (seed / 2147483647 - 0.5)
+  }
+  const missing = 10, got = sp.fid.predictBackward(re.subarray(missing), im.subarray(missing), missing)
+  for (let k = 0; k < missing; k++) {
+    const err = Math.hypot(got.re[k] - re[k], got.im[k] - im[k]) / Math.hypot(re[k], im[k])
+    assert.ok(err < 0.01, `point ${k}: off by ${(100 * err).toFixed(2)}%`)
+  }
 })
 
 test('Varian and JEOL exports read on their own ppm scales', async () => {
